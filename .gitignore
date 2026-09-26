@@ -1,0 +1,148 @@
+# ==============================================================================
+# Disaster Response Coordination Hub (DRCH) - Global .gitignore
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Frontend (Next.js / Node.js)
+# ------------------------------------------------------------------------------
+# Dependencies
+frontend/node_modules/
+frontend/.pnp
+frontend/.pnp.js
+
+# Testing
+frontend/coverage/
+
+# Next.js Build Output
+frontend/.next/
+frontend/out/
+frontend/build/
+
+# ------------------------------------------------------------------------------
+# 2. Backend & AI-Workers (Python)
+# ------------------------------------------------------------------------------
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.sfdx
+.hypothesis/
+.pytest_cache/
+cover/
+
+# Virtual Environments (CRITICAL)
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.env/
+.venv/
+backend/venv/
+backend/.venv/
+ai-workers/venv/
+ai-workers/.venv/
+pip-wheel-metadata/
+
+# FastAPI/Uvicorn/Celery/Kafka/Redis logs
+*.log
+celerybeat-schedule
+celerybeat.pid
+
+# ------------------------------------------------------------------------------
+# 3. Environment Variables & Secrets
+# ------------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+docker-compose.override.yml
+
+# ------------------------------------------------------------------------------
+# 4. OS / IDE / Editor Files
+# ------------------------------------------------------------------------------
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# IDEs (VSCode, PyCharm, etc.)
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.jupyter/

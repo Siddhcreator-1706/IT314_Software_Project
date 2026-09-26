@@ -325,8 +325,8 @@ gantt
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/Tanishq7361/Disaster-Response-Coordination-Hub.git
-cd Disaster-Response-Coordination-Hub
+git clone https://github.com/Siddhcreator-1706/IT314_Software_Project.git
+cd IT314_Software_Project
 ```
 
 ### 2. Configure Environment Variables
@@ -335,28 +335,38 @@ cp .env.example .env
 # Edit .env with your LLM API keys, DB credentials, and mock ports
 ```
 
-### 3. Launch Core Infrastructure (Database, GIS, Redis, Queue)
+### 3. Launch the Entire Platform (Docker)
+Since the project is fully containerized, you can launch the Next.js frontend, FastAPI backend, Python AI workers, and all core infrastructure (PostgreSQL, Redis, RabbitMQ) with a single command:
+
 ```bash
-docker compose up -d postgres-postgis redis rabbitmq
+docker compose up --build
 ```
 
-### 4. Run Backend & Ingestion Workers
-```bash
-# Terminal 1 - Backend API & WebSockets
-cd backend && npm install && npm run dev
+### 4. Access the Applications
+Once the containers are running, you can access the different parts of the system:
+- **Frontend (Web Client & Portals):** `http://localhost:3000`
+- **Backend API Docs (Swagger UI):** `http://localhost:8000/docs`
+- **RabbitMQ Admin UI:** `http://localhost:15672` (guest/guest)
 
-# Terminal 2 - Ingestion & GenAI Triage Worker
-cd ai-workers && python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt
-python worker.py
-```
-
-### 5. Run Web Client & Role Portals
-```bash
-# Terminal 3 - Frontend Application
-cd frontend && npm install && npm run dev
-```
 Open `http://localhost:3000` to access the DRCH platform.
+
+---
+
+## 🤝 Contributing to DRCH
+
+We welcome contributions from all 10 team members! To keep our codebase clean and organized, please follow these guidelines:
+
+1. **How to Decide What to Work On:**
+   - Cross-reference the **Team Roster** and **Phase-wise Roadmap** above.
+   - Find an unassigned GitHub Issue matching your phase/role and assign it to yourself.
+2. **Branching Strategy:**
+   - Never commit directly to `main`. 
+   - Create a new branch: `feature/<module>-<description>` (e.g., `feature/medic-dashboard`) or `bugfix/<description>`.
+3. **Commit Messages:**
+   - Follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) format (e.g., `feat(frontend): add map pins`, `fix(backend): resolve db crash`).
+4. **Submitting a Pull Request (PR):**
+   - Push your branch, open a PR against `main`, and link the Issue it resolves.
+   - Request a code review from the Team Lead or a peer. Once approved and CI passes, it will be merged.
 
 ---
 

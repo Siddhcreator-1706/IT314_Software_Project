@@ -1,0 +1,86 @@
+version: '3.8'
+
+services:
+  # ------------------------------------------------------------------------------
+  # Core Infrastructure
+  # ------------------------------------------------------------------------------
+  postgres-postgis:
+    image: postgis/postgis:16-3.4
+    container_name: drch_postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
+      POSTGRES_DB: ${POSTGRES_DB:-drch_db}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: drch_redis
+    ports:
+      - "6379:6379"
+    restart: unless-stopped
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: drch_rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-guest}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASS:-guest}
+    ports:
+      - "5672:5672"
+      - "15672:15672" # Admin UI
+    restart: unless-stopped
+
+  # ------------------------------------------------------------------------------
+  # Application Services
+  # ------------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+    container_name: drch_frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=development
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+    container_name: drch_backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-password}@postgres-postgis:5432/${POSTGRES_DB:-drch_db}
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./backend:/app
+    depends_on:
+      - postgres-postgis
+      - redis
+      - rabbitmq
+
+  ai-workers:
+    build:
+      context: ./ai-workers
+    container_name: drch_ai_workers
+    environment:
+      - RABBITMQ_URL=amqp://${RABBITMQ_USER:-guest}:${RABBITMQ_PASS:-guest}@rabbitmq:5672/
+      - REDIS_URL=redis://redis:6379/0
+    volumes:
+      - ./ai-workers:/app
+    depends_on:
+      - rabbitmq
+      - redis
+
+volumes:
+  pgdata:
