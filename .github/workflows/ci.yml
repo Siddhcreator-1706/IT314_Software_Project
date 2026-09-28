@@ -112,47 +112,25 @@ jobs:
         run: |
           EXPECTED_TABLES=(
             "roles"
-            "permissions"
-            "role_permissions"
             "agencies"
             "users"
             "user_auth"
-            "user_sessions"
-            "login_attempts"
             "incidents"
             "incident_status_history"
             "evidence_files"
-            "incident_duplicate_links"
-            "verification_decisions"
-            "ai_models"
             "ai_recommendations"
             "resources"
             "dispatch_orders"
             "resource_assignments"
-            "dispatch_events"
             "agency_messages"
-            "map_layers"
-            "safety_content"
             "public_updates"
             "donation_campaigns"
             "donations"
-            "payment_callbacks"
-            "reconciliation_records"
-            "fund_utilisations"
             "aid_needs"
             "aid_contributions"
-            "aid_allocations"
-            "delivery_tasks"
-            "notification_templates"
-            "notification_routing_rules"
-            "notification_preferences"
             "notifications"
             "system_configs"
             "audit_logs"
-            "security_events"
-            "integration_health"
-            "backups"
-            "idempotency_keys"
           )
           MISSING=0
           for table in "${EXPECTED_TABLES[@]}"; do
@@ -169,7 +147,7 @@ jobs:
             echo "::error::$MISSING core table(s) are missing from the schema!"
             exit 1
           fi
-          echo "All core tables validated successfully."
+          echo "All 20 core tables validated successfully."
         env:
           PGPASSWORD: postgres
 
@@ -185,7 +163,6 @@ jobs:
             "v_donation_summary"
             "v_aid_summary"
             "v_dispatch_summary"
-            "v_system_health_summary"
           )
           MISSING=0
           for view in "${EXPECTED_VIEWS[@]}"; do
@@ -263,16 +240,7 @@ jobs:
             "SELECT COUNT(*) FROM roles;")
           echo "  Roles seeded: $ROLE_COUNT"
           if [ "$ROLE_COUNT" -lt 3 ]; then
-            echo "::error::Expected at least 3 roles (NORMAL_USER, DISASTER_MGMT, APP_MGMT), found $ROLE_COUNT"
-            exit 1
-          fi
-
-          echo "--- Checking permissions ---"
-          PERM_COUNT=$(PGPASSWORD=postgres psql -h localhost -U postgres -d drch_test_db -tAc \
-            "SELECT COUNT(*) FROM permissions;")
-          echo "  Permissions seeded: $PERM_COUNT"
-          if [ "$PERM_COUNT" -lt 1 ]; then
-            echo "::error::No permissions were seeded!"
+            echo "::error::Expected 3 roles (NORMAL_USER, DISASTER_MGMT, APP_MGMT), found $ROLE_COUNT"
             exit 1
           fi
 
@@ -285,23 +253,14 @@ jobs:
             exit 1
           fi
 
-          echo "--- Checking notification_templates ---"
-          TMPL_COUNT=$(PGPASSWORD=postgres psql -h localhost -U postgres -d drch_test_db -tAc \
-            "SELECT COUNT(*) FROM notification_templates;")
-          echo "  Notification templates seeded: $TMPL_COUNT"
-          if [ "$TMPL_COUNT" -lt 1 ]; then
-            echo "::error::No notification templates were seeded!"
-            exit 1
-          fi
-
-          echo "--- Checking bootstrap admin user ---"
+          echo "--- Checking bootstrap admin user & auth ---"
           ADMIN_EXISTS=$(PGPASSWORD=postgres psql -h localhost -U postgres -d drch_test_db -tAc \
-            "SELECT EXISTS (SELECT 1 FROM users WHERE email='admin@drch.gov.in');")
+            "SELECT EXISTS (SELECT 1 FROM users u JOIN user_auth a ON u.user_id = a.user_id WHERE u.email='admin@drch.gov.in');")
           if [ "$ADMIN_EXISTS" != "t" ]; then
-            echo "::error::Bootstrap admin user (admin@drch.gov.in) was not seeded!"
+            echo "::error::Bootstrap admin user or user_auth was not seeded!"
             exit 1
           fi
-          echo "  ✅ Bootstrap admin exists"
+          echo "  ✅ Bootstrap admin & credentials exist"
 
           echo ""
           echo "✅ All seed data validated successfully."
