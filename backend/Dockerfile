@@ -1,7 +1,7 @@
 # ==============================================================================
 # Stage 1: Builder
 # ==============================================================================
-FROM python:3.10-slim AS builder
+FROM python:3.12-slim AS builder
 
 WORKDIR /app
 
@@ -28,7 +28,7 @@ RUN pip install --upgrade pip && \
 # ==============================================================================
 # Stage 2: Production Runner
 # ==============================================================================
-FROM python:3.10-slim AS runner
+FROM python:3.12-slim AS runner
 
 WORKDIR /app
 
