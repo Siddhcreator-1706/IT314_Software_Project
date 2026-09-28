@@ -15,6 +15,8 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./backend/drch_schema.sql:/docker-entrypoint-initdb.d/01_drch_schema.sql
+      - ./backend/seed_data.sql:/docker-entrypoint-initdb.d/02_seed_data.sql
     restart: unless-stopped
 
   redis:
@@ -39,6 +41,7 @@ services:
   # Application Services
   # ------------------------------------------------------------------------------
   frontend:
+    image: drch_frontend:latest
     build:
       context: ./frontend
     container_name: drch_frontend
@@ -54,6 +57,7 @@ services:
       - backend
 
   backend:
+    image: drch_backend:latest
     build:
       context: ./backend
     container_name: drch_backend
@@ -70,6 +74,7 @@ services:
       - rabbitmq
 
   ai-workers:
+    image: drch_ai_workers:latest
     build:
       context: ./ai-workers
     container_name: drch_ai_workers
