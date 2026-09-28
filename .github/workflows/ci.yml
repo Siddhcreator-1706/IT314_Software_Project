@@ -88,9 +88,7 @@ jobs:
 
       # Install Trivy for Container Security Scanning
       - name: Install Trivy
-        run: |
-          wget https://github.com/aquasecurity/trivy/releases/download/v0.45.0/trivy_0.45.0_Linux-64bit.deb
-          sudo dpkg -i trivy_0.45.0_Linux-64bit.deb
+        run: curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sudo sh -s -- -b /usr/local/bin
 
       # Scan images (Fails build on CRITICAL vulnerabilities)
       - name: Scan Frontend Image
