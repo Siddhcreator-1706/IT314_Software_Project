@@ -139,18 +139,30 @@ INSERT INTO ai_models (name, version, provider, is_active) VALUES
 ON CONFLICT (name, version) DO NOTHING;
 
 -- ---------------------------------------------------------------------
--- 8. INITIAL BOOTSTRAP ADMIN & SYSTEM CONFIGURATION (AM-FR-02/03)
+-- 8. INITIAL BOOTSTRAP ADMIN & AUTH CREDENTIALS (AM-FR-02/03)
 -- ---------------------------------------------------------------------
-INSERT INTO users (email, phone, password_hash, status, mfa_enabled, role_id)
-SELECT 'admin@drch.gov.in', '+919999999999', '$argon2id$v=19$m=65536,t=3,p=4$drch_bootstrap_admin_hash', 'ACTIVE', FALSE, r.role_id
+INSERT INTO users (user_id, role_id, email, phone, full_name, status)
+SELECT 'a0000000-0000-0000-0000-000000000001'::uuid,
+       r.role_id,
+       'admin@drch.gov.in',
+       '+919999999999',
+       'System Administrator',
+       'ACTIVE'
 FROM roles r WHERE r.code = 'APP_MGMT'
 ON CONFLICT (email) DO NOTHING;
+
+INSERT INTO user_auth (user_id, password_hash, mfa_enabled)
+SELECT u.user_id,
+       '$argon2id$v=19$m=65536,t=3,p=4$drch_bootstrap_admin_hash',
+       FALSE
+FROM users u WHERE u.email = 'admin@drch.gov.in'
+ON CONFLICT (user_id) DO NOTHING;
 
 INSERT INTO system_configs (config_key, value, version, is_active, changed_by, change_note)
 SELECT 'SCENARIOS_SUPPORTED',
        '{"scenarios": ["CYCLONE", "INDUSTRIAL_FIRE", "URBAN_FLOODING"], "max_upload_size_mb": 25, "allowed_evidence_types": ["image/jpeg", "image/png", "video/mp4", "application/pdf"]}'::jsonb,
        1, TRUE, u.user_id, 'Initial system baseline from Final SRS'
 FROM users u WHERE u.email = 'admin@drch.gov.in'
-ON CONFLICT DO NOTHING;
+ON CONFLICT (config_key, version) DO NOTHING;
 
 COMMIT;

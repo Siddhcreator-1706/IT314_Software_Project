@@ -111,21 +111,48 @@ jobs:
       - name: Validate Core Tables
         run: |
           EXPECTED_TABLES=(
-            "users"
             "roles"
             "permissions"
             "role_permissions"
-            "user_roles"
+            "agencies"
+            "users"
+            "user_auth"
+            "user_sessions"
+            "login_attempts"
             "incidents"
-            "incident_evidence"
+            "incident_status_history"
+            "evidence_files"
+            "incident_duplicate_links"
+            "verification_decisions"
+            "ai_models"
+            "ai_recommendations"
             "resources"
             "dispatch_orders"
-            "agencies"
-            "notifications"
+            "resource_assignments"
+            "dispatch_events"
+            "agency_messages"
+            "map_layers"
+            "safety_content"
+            "public_updates"
+            "donation_campaigns"
+            "donations"
+            "payment_callbacks"
+            "reconciliation_records"
+            "fund_utilisations"
+            "aid_needs"
+            "aid_contributions"
+            "aid_allocations"
+            "delivery_tasks"
             "notification_templates"
-            "ai_triage_results"
-            "ai_models"
+            "notification_routing_rules"
+            "notification_preferences"
+            "notifications"
+            "system_configs"
             "audit_logs"
+            "security_events"
+            "integration_health"
+            "backups"
+            "idempotency_keys"
           )
           MISSING=0
           for table in "${EXPECTED_TABLES[@]}"; do
@@ -152,8 +179,13 @@ jobs:
       - name: Validate Views
         run: |
           EXPECTED_VIEWS=(
+            "v_incident_summary"
             "v_incident_dashboard"
             "v_resource_availability"
+            "v_donation_summary"
+            "v_aid_summary"
+            "v_dispatch_summary"
+            "v_system_health_summary"
           )
           MISSING=0
           for view in "${EXPECTED_VIEWS[@]}"; do
@@ -180,9 +212,11 @@ jobs:
         run: |
           EXPECTED_TRIGGERS=(
             "trg_audit_hash_chain"
-            "trg_updated_at_users"
-            "trg_updated_at_incidents"
-            "trg_updated_at_resources"
+            "trg_users_upd"
+            "trg_user_auth_upd"
+            "trg_incidents_upd"
+            "trg_resources_upd"
+            "trg_incidents_sync_geom"
           )
           MISSING=0
           for trigger in "${EXPECTED_TRIGGERS[@]}"; do
