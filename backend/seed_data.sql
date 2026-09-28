@@ -55,4 +55,13 @@ SELECT 'SCENARIOS_SUPPORTED',
 FROM users u WHERE u.email = 'admin@drch.gov.in'
 ON CONFLICT (config_key) DO NOTHING;
 
+-- ---------------------------------------------------------------------
+-- 5. BASELINE SAFETY GUIDANCE CONTENT (NU-FR-08)
+-- ---------------------------------------------------------------------
+INSERT INTO safety_content (scenario, title, body, status, version, published_at) VALUES
+ ('CYCLONE', 'Cyclone Safety & Evacuation Advisory', 'Stay indoors away from windows. Disconnect electrical appliances. Move to designated storm shelters if in low-lying coastal zones.', 'PUBLISHED', 1, now()),
+ ('INDUSTRIAL_FIRE', 'Industrial Chemical & Fire Emergency SOP', 'Evacuate upwind of smoke plumes. Cover nose and mouth with a damp cloth. Do not use elevators. Await hazardous material fire response.', 'PUBLISHED', 1, now()),
+ ('URBAN_FLOODING', 'Urban Flash Flood Response Protocol', 'Move to higher floors immediately. Do not attempt to walk or drive through moving water. Avoid contact with downed power lines.', 'PUBLISHED', 1, now())
+ON CONFLICT (scenario, title, version) DO NOTHING;
+
 COMMIT;

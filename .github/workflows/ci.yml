@@ -123,6 +123,7 @@ jobs:
             "dispatch_orders"
             "resource_assignments"
             "agency_messages"
+            "safety_content"
             "public_updates"
             "donation_campaigns"
             "donations"
@@ -147,7 +148,7 @@ jobs:
             echo "::error::$MISSING core table(s) are missing from the schema!"
             exit 1
           fi
-          echo "All 20 core tables validated successfully."
+          echo "All 21 core tables validated successfully."
         env:
           PGPASSWORD: postgres
 

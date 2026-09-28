@@ -285,10 +285,24 @@ CREATE TABLE agency_messages (                        -- DM-FR-10: Inter-agency 
 CREATE INDEX idx_agency_msgs_agency ON agency_messages(recipient_agency_id, status);
 
 -- ---------------------------------------------------------------------
--- 6. PUBLIC BROADCAST UPDATES (NU-FR-08, DM-FR-11)
+-- 6. PUBLIC CONTENT & VERIFIED UPDATES (NU-FR-08, DM-FR-11)
 -- ---------------------------------------------------------------------
+-- BCNF: Candidate Keys = {content_id}, {(scenario, title, version)}. All determinants are candidate keys.
+CREATE TABLE safety_content (                         -- NU-FR-08: Approved scenario-specific safety guidance
+    content_id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    scenario     scenario_type NOT NULL,
+    title        VARCHAR(200) NOT NULL,
+    body         TEXT NOT NULL,
+    status       content_status NOT NULL DEFAULT 'DRAFT',
+    version      INT NOT NULL DEFAULT 1,
+    published_at TIMESTAMPTZ,
+    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
+    UNIQUE (scenario, title, version)
+);
+
 -- BCNF: Candidate Key = {update_id}. All determinants are candidate keys.
-CREATE TABLE public_updates (
+CREATE TABLE public_updates (                         -- DM-FR-11: Verified emergency broadcast updates
     update_id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     incident_id       UUID REFERENCES incidents(incident_id) ON DELETE SET NULL,
     scenario          scenario_type NOT NULL,
@@ -533,6 +547,7 @@ CREATE TRIGGER trg_incidents_upd      BEFORE UPDATE ON incidents          FOR EA
 CREATE TRIGGER trg_resources_upd      BEFORE UPDATE ON resources          FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_dispatch_upd       BEFORE UPDATE ON dispatch_orders    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_agency_msgs_upd    BEFORE UPDATE ON agency_messages    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+CREATE TRIGGER trg_safety_content_upd BEFORE UPDATE ON safety_content     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_public_updates_upd BEFORE UPDATE ON public_updates     FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_campaigns_upd      BEFORE UPDATE ON donation_campaigns FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_donations_upd      BEFORE UPDATE ON donations          FOR EACH ROW EXECUTE FUNCTION set_updated_at();
