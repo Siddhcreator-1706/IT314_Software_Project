@@ -27,7 +27,7 @@ jobs:
           node-version: '18'
           cache: 'npm'
           cache-dependency-path: './frontend/package-lock.json'
-      
+
       - name: Setup Python (Backend/AI)
         uses: actions/setup-python@v5
         with:
@@ -50,7 +50,322 @@ jobs:
         run: bandit -r backend/ ai-workers/ -ll -ii
 
   # ============================================================================
-  # 2. Build Verification (Frontend)
+  # 2. Database Schema & Seed Data Validation
+  #    Spins up a real PostGIS container, applies drch_schema.sql + seed_data.sql,
+  #    and verifies all tables, views, triggers, indexes, and seed rows exist.
+  # ============================================================================
+  database-validation:
+    name: Database Schema & Seed Validation
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: drch_test_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Wait for PostgreSQL
+        run: |
+          until pg_isready -h localhost -p 5432 -U postgres; do
+            echo "Waiting for postgres..."
+            sleep 2
+          done
+
+      # -----------------------------------------------------------
+      # Apply Schema (DDL)
+      # -----------------------------------------------------------
+      - name: Apply Schema (drch_schema.sql)
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d drch_test_db \
+            -f backend/drch_schema.sql \
+            -v ON_ERROR_STOP=1
+        env:
+          PGPASSWORD: postgres
+
+      # -----------------------------------------------------------
+      # Apply Seed Data
+      # -----------------------------------------------------------
+      - name: Apply Seed Data (seed_data.sql)
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d drch_test_db \
+            -f backend/seed_data.sql \
+            -v ON_ERROR_STOP=1
+        env:
+          PGPASSWORD: postgres
+
+      # -----------------------------------------------------------
+      # Validate: Core Tables Exist
+      # -----------------------------------------------------------
+      - name: Validate Core Tables
+        run: |
+          EXPECTED_TABLES=(
+            "users"
+            "roles"
+            "permissions"
+            "role_permissions"
+            "user_roles"
+            "incidents"
+            "incident_evidence"
+            "resources"
+            "dispatch_orders"
+            "agencies"
+            "notifications"
+            "notification_templates"
+            "ai_triage_results"
+            "ai_models"
+            "audit_logs"
+          )
+          MISSING=0
+          for table in "${EXPECTED_TABLES[@]}"; do
+            EXISTS=$(PGPASSWORD=postgres psql -h localhost -U postgres -d drch_test_db -tAc \
+              "SELECT EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='$table');")
+            if [ "$EXISTS" != "t" ]; then
+              echo "❌ MISSING TABLE: $table"
+              MISSING=$((MISSING + 1))
+            else
+              echo "✅ Table exists: $table"
+            fi
+          done
+          if [ $MISSING -gt 0 ]; then
+            echo "::error::$MISSING core table(s) are missing from the schema!"
+            exit 1
+          fi
+          echo "All core tables validated successfully."
+        env:
+          PGPASSWORD: postgres
+
+      # -----------------------------------------------------------
+      # Validate: Views Exist
+      # -----------------------------------------------------------
+      - name: Validate Views
+        run: |
+          EXPECTED_VIEWS=(
+            "v_incident_dashboard"
+            "v_resource_availability"
+          )
+          MISSING=0
+          for view in "${EXPECTED_VIEWS[@]}"; do
+            EXISTS=$(PGPASSWORD=postgres psql -h localhost -U postgres -d drch_test_db -tAc \
+              "SELECT EXISTS (SELECT 1 FROM information_schema.views WHERE table_schema='public' AND table_name='$view');")
+            if [ "$EXISTS" != "t" ]; then
+              echo "❌ MISSING VIEW: $view"
+              MISSING=$((MISSING + 1))
+            else
+              echo "✅ View exists: $view"
+            fi
+          done
+          if [ $MISSING -gt 0 ]; then
+            echo "::error::$MISSING view(s) are missing from the schema!"
+            exit 1
+          fi
+        env:
+          PGPASSWORD: postgres
+
+      # -----------------------------------------------------------
+      # Validate: Critical Triggers Exist
+      # -----------------------------------------------------------
+      - name: Validate Triggers
+        run: |
+          EXPECTED_TRIGGERS=(
+            "trg_audit_hash_chain"
+            "trg_updated_at_users"
+            "trg_updated_at_incidents"
+            "trg_updated_at_resources"
+          )
+          MISSING=0
+          for trigger in "${EXPECTED_TRIGGERS[@]}"; do
+            EXISTS=$(PGPASSWORD=postgres psql -h localhost -U postgres -d drch_test_db -tAc \
+              "SELECT EXISTS (SELECT 1 FROM information_schema.triggers WHERE trigger_schema='public' AND trigger_name='$trigger');")
+            if [ "$EXISTS" != "t" ]; then
+              echo "❌ MISSING TRIGGER: $trigger"
+              MISSING=$((MISSING + 1))
+            else
+              echo "✅ Trigger exists: $trigger"
+            fi
+          done
+          if [ $MISSING -gt 0 ]; then
+            echo "::error::$MISSING trigger(s) are missing!"
+            exit 1
+          fi
+        env:
+          PGPASSWORD: postgres
+
+      # -----------------------------------------------------------
+      # Validate: Extensions Loaded
+      # -----------------------------------------------------------
+      - name: Validate Extensions (PostGIS, pgcrypto, citext)
+        run: |
+          for ext in pgcrypto postgis citext; do
+            EXISTS=$(PGPASSWORD=postgres psql -h localhost -U postgres -d drch_test_db -tAc \
+              "SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname='$ext');")
+            if [ "$EXISTS" != "t" ]; then
+              echo "::error::Extension $ext is not installed!"
+              exit 1
+            fi
+            echo "✅ Extension loaded: $ext"
+          done
+        env:
+          PGPASSWORD: postgres
+
+      # -----------------------------------------------------------
+      # Validate: Seed Data Rows
+      # -----------------------------------------------------------
+      - name: Validate Seed Data
+        run: |
+          echo "--- Checking roles ---"
+          ROLE_COUNT=$(PGPASSWORD=postgres psql -h localhost -U postgres -d drch_test_db -tAc \
+            "SELECT COUNT(*) FROM roles;")
+          echo "  Roles seeded: $ROLE_COUNT"
+          if [ "$ROLE_COUNT" -lt 3 ]; then
+            echo "::error::Expected at least 3 roles (NORMAL_USER, DISASTER_MGMT, APP_MGMT), found $ROLE_COUNT"
+            exit 1
+          fi
+
+          echo "--- Checking permissions ---"
+          PERM_COUNT=$(PGPASSWORD=postgres psql -h localhost -U postgres -d drch_test_db -tAc \
+            "SELECT COUNT(*) FROM permissions;")
+          echo "  Permissions seeded: $PERM_COUNT"
+          if [ "$PERM_COUNT" -lt 1 ]; then
+            echo "::error::No permissions were seeded!"
+            exit 1
+          fi
+
+          echo "--- Checking agencies ---"
+          AGENCY_COUNT=$(PGPASSWORD=postgres psql -h localhost -U postgres -d drch_test_db -tAc \
+            "SELECT COUNT(*) FROM agencies;")
+          echo "  Agencies seeded: $AGENCY_COUNT"
+          if [ "$AGENCY_COUNT" -lt 1 ]; then
+            echo "::error::No agencies were seeded!"
+            exit 1
+          fi
+
+          echo "--- Checking notification_templates ---"
+          TMPL_COUNT=$(PGPASSWORD=postgres psql -h localhost -U postgres -d drch_test_db -tAc \
+            "SELECT COUNT(*) FROM notification_templates;")
+          echo "  Notification templates seeded: $TMPL_COUNT"
+          if [ "$TMPL_COUNT" -lt 1 ]; then
+            echo "::error::No notification templates were seeded!"
+            exit 1
+          fi
+
+          echo "--- Checking bootstrap admin user ---"
+          ADMIN_EXISTS=$(PGPASSWORD=postgres psql -h localhost -U postgres -d drch_test_db -tAc \
+            "SELECT EXISTS (SELECT 1 FROM users WHERE email='admin@drch.gov.in');")
+          if [ "$ADMIN_EXISTS" != "t" ]; then
+            echo "::error::Bootstrap admin user (admin@drch.gov.in) was not seeded!"
+            exit 1
+          fi
+          echo "  ✅ Bootstrap admin exists"
+
+          echo ""
+          echo "✅ All seed data validated successfully."
+        env:
+          PGPASSWORD: postgres
+
+      # -----------------------------------------------------------
+      # Validate: Audit Hash Chain Trigger (NFR: Tamper-evident log)
+      # -----------------------------------------------------------
+      - name: Validate Audit Hash Chain Integrity
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d drch_test_db -v ON_ERROR_STOP=1 <<'SQL'
+          -- Insert a test audit log entry and verify hash chain fires
+          INSERT INTO audit_logs (actor_id, action, entity_type, entity_id, result, rationale)
+          VALUES (
+            (SELECT user_id FROM users WHERE email='admin@drch.gov.in'),
+            'CI_TEST_ACTION',
+            'system',
+            NULL,
+            'SUCCESS',
+            'CI pipeline hash chain verification'
+          );
+
+          -- Verify the row_hash was computed (not NULL or empty)
+          DO $$
+          DECLARE
+            v_hash TEXT;
+            v_prev TEXT;
+          BEGIN
+            SELECT row_hash, prev_hash INTO v_hash, v_prev
+            FROM audit_logs
+            WHERE action = 'CI_TEST_ACTION'
+            ORDER BY audit_id DESC LIMIT 1;
+
+            IF v_hash IS NULL OR v_hash = '' THEN
+              RAISE EXCEPTION 'Audit hash chain FAILED: row_hash is NULL or empty';
+            END IF;
+
+            IF v_prev IS NULL OR v_prev = '' THEN
+              RAISE EXCEPTION 'Audit hash chain FAILED: prev_hash is NULL or empty';
+            END IF;
+
+            RAISE NOTICE 'Audit hash chain OK — row_hash=% prev_hash=%', v_hash, v_prev;
+          END;
+          $$;
+
+          -- Cleanup
+          DELETE FROM audit_logs WHERE action = 'CI_TEST_ACTION';
+          SQL
+          echo "✅ Audit hash chain trigger is functional."
+        env:
+          PGPASSWORD: postgres
+
+      # -----------------------------------------------------------
+      # Validate: Idempotency (re-run seed_data.sql without errors)
+      # -----------------------------------------------------------
+      - name: Validate Seed Idempotency (re-run seed_data.sql)
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d drch_test_db \
+            -f backend/seed_data.sql \
+            -v ON_ERROR_STOP=1
+          echo "✅ Seed data is idempotent (second run succeeded without errors)."
+        env:
+          PGPASSWORD: postgres
+
+  # ============================================================================
+  # 3. Backend Unit Tests
+  # ============================================================================
+  backend-tests:
+    name: Backend Unit Tests
+    runs-on: ubuntu-latest
+    needs: code-security-and-lint
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r backend/requirements.txt
+          pip install pytest httpx
+
+      - name: Run Backend Tests
+        run: |
+          cd backend
+          if [ -d "tests" ] && [ "$(find tests -name 'test_*.py' | head -1)" ]; then
+            python -m pytest tests/ -v --tb=short
+          else
+            echo "⚠️  No test suite found in backend/tests/ — running smoke test"
+            python -c "from main import app; print('✅ FastAPI app imports successfully')"
+          fi
+
+  # ============================================================================
+  # 4. Build Verification (Frontend)
   # ============================================================================
   frontend-build:
     name: Next.js Production Build
@@ -63,41 +378,50 @@ jobs:
           node-version: '18'
           cache: 'npm'
           cache-dependency-path: './frontend/package-lock.json'
-      
+
       - name: Install Dependencies
         run: cd frontend && npm ci
-      
+
       - name: Build Next.js
         run: cd frontend && npm run build
         env:
           NEXT_TELEMETRY_DISABLED: 1
 
   # ============================================================================
-  # 3. Docker Container Build & Image Vulnerability Scan
+  # 5. Docker Container Build & Image Vulnerability Scan
   # ============================================================================
   docker-infrastructure:
     name: Container Build & Trivy Scan
     runs-on: ubuntu-latest
-    needs: code-security-and-lint
+    needs: [code-security-and-lint, database-validation]
     steps:
       - uses: actions/checkout@v4
-      
+
       # Build all images using Docker Compose
       - name: Build Docker Compose Stack
         run: docker compose build --parallel
 
       # Install Trivy for Container Security Scanning
       - name: Install Trivy
-        run: |
-          wget https://github.com/aquasecurity/trivy/releases/download/v0.45.0/trivy_0.45.0_Linux-64bit.deb
-          sudo dpkg -i trivy_0.45.0_Linux-64bit.deb
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'image'
+          image-ref: 'drch_backend:latest'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
 
-      # Scan images (Fails build on CRITICAL vulnerabilities)
       - name: Scan Frontend Image
-        run: trivy image --severity CRITICAL,HIGH --exit-code 0 drch_frontend:latest || true
-        
-      - name: Scan Backend Image
-        run: trivy image --severity CRITICAL,HIGH --exit-code 0 drch_backend:latest || true
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'image'
+          image-ref: 'drch_frontend:latest'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
 
       - name: Scan AI Workers Image
-        run: trivy image --severity CRITICAL,HIGH --exit-code 0 drch_ai_workers:latest || true
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'image'
+          image-ref: 'drch_ai_workers:latest'
+          severity: 'CRITICAL,HIGH'
+          exit-code: '0'
