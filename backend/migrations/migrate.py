@@ -21,8 +21,8 @@ def main():
     for file_path in sql_files:
         print(f"  -> {os.path.basename(file_path)}")
 
-    print("\n[*] To execute via psql:")
-    print(f"    psql \"{get_db_url()}\" -f drch_schema.sql")
+    print(f"    psql \"{get_db_url()}\" -f backend/drch_schema.sql")
+    print(f"    psql \"{get_db_url()}\" -f backend/seed_data.sql")
 
 if __name__ == "__main__":
     main()

@@ -1,6 +1,6 @@
 -- =====================================================================
 -- Disaster Response Coordination Hub (DRCH) - IT314 Software Engineering
--- PostgreSQL 15+ / PostGIS Database Schema
+-- PostgreSQL 15+ / PostGIS Database Schema (DDL)
 --
 -- Direct traceability to Final SRS:
 --   * Scenarios strictly limited to: Cyclone, Industrial Fire, Urban Flooding
@@ -10,7 +10,10 @@
 --   * NFRs: Usability, Accessibility, Performance, Availability, Privacy,
 --     Security, Transaction Reliability, Explainability, Data Integrity
 --   * Error Handling: EH-01..14 with explicit failure states and idempotency
+--   * Note: Seed data is maintained separately in seed_data.sql
 -- =====================================================================
+
+BEGIN;
 
 CREATE EXTENSION IF NOT EXISTS pgcrypto;   -- gen_random_uuid(), digest()
 CREATE EXTENSION IF NOT EXISTS postgis;    -- spatial geography types and indexes
@@ -59,7 +62,7 @@ CREATE TABLE roles (
 
 CREATE TABLE permissions (
     permission_id SERIAL PRIMARY KEY,
-    code          VARCHAR(80) UNIQUE NOT NULL,      -- e.g. INCIDENT_VERIFY, DISPATCH_CREATE
+    code          VARCHAR(80) UNIQUE NOT NULL,
     description   TEXT
 );
 
@@ -74,51 +77,50 @@ CREATE TABLE users (
     role_id        SMALLINT NOT NULL REFERENCES roles(role_id) ON DELETE RESTRICT,
     email          CITEXT UNIQUE NOT NULL,
     phone          VARCHAR(20),
-    password_hash  TEXT NOT NULL,                   -- argon2id / bcrypt hash only
+    password_hash  TEXT NOT NULL,
     status         account_status NOT NULL DEFAULT 'PENDING_VERIFICATION',
-    mfa_enabled    BOOLEAN NOT NULL DEFAULT FALSE,  -- mandatory for staff & admin roles
+    mfa_enabled    BOOLEAN NOT NULL DEFAULT FALSE,
     consent_given_at TIMESTAMPTZ,
     failed_login_count INT NOT NULL DEFAULT 0,
     locked_until   TIMESTAMPTZ,
     last_login_at  TIMESTAMPTZ,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
-    deleted_at     TIMESTAMPTZ                      -- soft deletion for audit integrity
+    deleted_at     TIMESTAMPTZ
 );
 CREATE INDEX idx_users_role ON users(role_id);
 CREATE INDEX idx_users_status ON users(status);
 
--- Agencies defined before user_profiles to allow clean foreign key referencing
 CREATE TABLE agencies (
-    agency_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    name         VARCHAR(200) NOT NULL,
-    agency_type  VARCHAR(50) NOT NULL,               -- FIRE, POLICE, NDRF, MEDICAL, MUNICIPAL, NGO
+    agency_id     UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name          VARCHAR(200) NOT NULL,
+    agency_type   VARCHAR(50) NOT NULL,               -- FIRE, POLICE, NDRF, MEDICAL, MUNICIPAL, NGO
     contact_email CITEXT,
     contact_phone VARCHAR(20),
-    api_endpoint TEXT,                               -- trusted integration endpoint
-    is_active    BOOLEAN NOT NULL DEFAULT TRUE,
-    created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    api_endpoint  TEXT,
+    is_active     BOOLEAN NOT NULL DEFAULT TRUE,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE user_profiles (
-    user_id      UUID PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
-    full_name    VARCHAR(150) NOT NULL,
-    address_line TEXT,
-    city         VARCHAR(100),
-    state        VARCHAR(100),
-    postal_code  VARCHAR(12),
+    user_id       UUID PRIMARY KEY REFERENCES users(user_id) ON DELETE CASCADE,
+    full_name     VARCHAR(150) NOT NULL,
+    address_line  TEXT,
+    city          VARCHAR(100),
+    state         VARCHAR(100),
+    postal_code   VARCHAR(12),
     preferred_language VARCHAR(10) DEFAULT 'en',
     staff_agency_id UUID REFERENCES agencies(agency_id) ON DELETE SET NULL,
     staff_designation VARCHAR(100),
-    updated_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+    updated_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE mfa_factors (
     mfa_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     UUID NOT NULL REFERENCES users(user_id) ON DELETE CASCADE,
     factor_type VARCHAR(20) NOT NULL,                -- TOTP, SMS, HARDWARE
-    secret_enc  BYTEA NOT NULL,                      -- encrypted at rest
+    secret_enc  BYTEA NOT NULL,
     is_active   BOOLEAN NOT NULL DEFAULT TRUE,
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -160,7 +162,7 @@ CREATE TABLE incidents (
     status           incident_status NOT NULL DEFAULT 'SUBMITTED',
     verified_priority priority_level,                 -- operational priority set by authorized staff (DM-FR-06)
     priority_rationale TEXT,
-    canonical_incident_id UUID REFERENCES incidents(incident_id) ON DELETE SET NULL, -- duplicate cluster root
+    canonical_incident_id UUID REFERENCES incidents(incident_id) ON DELETE SET NULL,
     idempotency_key  VARCHAR(100),                    -- EH-12: safe retry without creating duplicate incident
     submitted_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -185,7 +187,7 @@ CREATE TABLE incident_locations (
     address_text  TEXT,
     landmark      TEXT,
     normalised_address TEXT,
-    is_current    BOOLEAN NOT NULL DEFAULT TRUE,      -- supports location refinement while preserving history
+    is_current    BOOLEAN NOT NULL DEFAULT TRUE,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (geom IS NOT NULL OR address_text IS NOT NULL),
     CHECK ((latitude IS NULL AND longitude IS NULL) OR (latitude IS NOT NULL AND longitude IS NOT NULL))
@@ -193,12 +195,8 @@ CREATE TABLE incident_locations (
 CREATE INDEX idx_incident_loc_geom ON incident_locations USING GIST (geom);
 CREATE INDEX idx_incident_loc_inc  ON incident_locations(incident_id) WHERE is_current;
 
--- Scenario-specific captured details (Cyclone / Fire / Flooding) stored with schema versioning
 CREATE TABLE incident_details (
     incident_id   UUID PRIMARY KEY REFERENCES incidents(incident_id) ON DELETE CASCADE,
-    -- Cyclone: {"severity": "...", "shelter_needed": true, "affected_area_sqkm": ...}
-    -- Industrial Fire: {"site_type": "...", "smoke_color": "...", "chemical_involved": false, "injuries": 0, "access_blocked": false}
-    -- Urban Flooding: {"water_level_feet": ..., "stranded_count": ..., "road_passable": false}
     details       JSONB NOT NULL DEFAULT '{}'::jsonb,
     schema_version INT NOT NULL DEFAULT 1
 );
@@ -208,7 +206,7 @@ CREATE TABLE incident_status_history (               -- NU-FR-06: state transpar
     incident_id  UUID NOT NULL REFERENCES incidents(incident_id) ON DELETE CASCADE,
     from_status  incident_status,
     to_status    incident_status NOT NULL,
-    changed_by   UUID REFERENCES users(user_id) ON DELETE SET NULL,  -- NULL = system
+    changed_by   UUID REFERENCES users(user_id) ON DELETE SET NULL,
     reason       TEXT,
     changed_at   TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -221,7 +219,7 @@ CREATE TABLE evidence_files (                        -- NU-FR-05, EH-03
     file_name     VARCHAR(255) NOT NULL,
     mime_type     VARCHAR(100) NOT NULL,
     size_bytes    BIGINT NOT NULL CHECK (size_bytes > 0),
-    storage_key   TEXT NOT NULL,                      -- object store S3/GCS URI
+    storage_key   TEXT NOT NULL,
     sha256        CHAR(64) NOT NULL,
     scan_state    scan_status NOT NULL DEFAULT 'PENDING',
     scan_detail   TEXT,
@@ -240,7 +238,7 @@ CREATE TABLE verification_decisions (                -- auditable verification d
     decided_by    UUID NOT NULL REFERENCES users(user_id) ON DELETE RESTRICT,
     decision      verification_decision NOT NULL,
     rationale     TEXT NOT NULL,
-    info_requested TEXT,                              -- populated when NEEDS_INFORMATION
+    info_requested TEXT,
     decided_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX idx_verif_incident ON verification_decisions(incident_id, decided_at DESC);
@@ -274,7 +272,7 @@ CREATE TABLE ai_human_decisions (                    -- human final call on advi
     ai_decision_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     recommendation_id UUID NOT NULL REFERENCES ai_recommendations(recommendation_id) ON DELETE CASCADE,
     incident_id     UUID NOT NULL REFERENCES incidents(incident_id) ON DELETE CASCADE,
-    decided_by      UUID NOT NULL REFERENCES users(user_id) ON DELETE RESTRICT, -- human operator
+    decided_by      UUID NOT NULL REFERENCES users(user_id) ON DELETE RESTRICT,
     action          ai_decision_action NOT NULL,
     final_scenario  scenario_type,
     final_priority  priority_level,
@@ -298,13 +296,13 @@ CREATE TABLE incident_duplicate_links (              -- DM-FR-04, EH-04: candida
     incident_a   UUID NOT NULL REFERENCES incidents(incident_id) ON DELETE CASCADE,
     incident_b   UUID NOT NULL REFERENCES incidents(incident_id) ON DELETE CASCADE,
     similarity   NUMERIC(4,3),
-    match_basis  JSONB,                               -- text, spatial, temporal, evidence similarity scores
+    match_basis  JSONB,
     detected_by  VARCHAR(20) NOT NULL,                -- RULES | AI
     relation     duplicate_relation NOT NULL DEFAULT 'CANDIDATE',
     reviewed_by  UUID REFERENCES users(user_id) ON DELETE SET NULL,
     reviewed_at  TIMESTAMPTZ,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
-    CHECK (incident_a < incident_b),                 -- canonical ordering prevents inverse duplicates (A,B)/(B,A)
+    CHECK (incident_a < incident_b),                 -- prevents duplicate inverse pairs
     UNIQUE (incident_a, incident_b)
 );
 
@@ -316,14 +314,14 @@ CREATE TABLE resources (
     agency_id     UUID REFERENCES agencies(agency_id) ON DELETE RESTRICT,
     type          resource_type NOT NULL,
     name          VARCHAR(150) NOT NULL,
-    capability    JSONB,                               -- e.g. {"boat": true, "capacity": 12, "high_clearance": true}
+    capability    JSONB,                               -- e.g. {"boat": true, "capacity": 12}
     status        resource_status NOT NULL DEFAULT 'AVAILABLE',
     home_geom     GEOGRAPHY(Point,4326),
     current_geom  GEOGRAPHY(Point,4326),
     location_updated_at TIMESTAMPTZ,
-    quantity_total NUMERIC(12,2),                       -- pool quantity for SUPPLY types
+    quantity_total NUMERIC(12,2),
     quantity_available NUMERIC(12,2),
-    version       INT NOT NULL DEFAULT 1,               -- optimistic locking to prevent double-booking (DM-NFR-11)
+    version       INT NOT NULL DEFAULT 1,               -- optimistic locking (DM-NFR-11)
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     CHECK (quantity_available IS NULL OR quantity_available >= 0),
     CHECK (quantity_total IS NULL OR quantity_available <= quantity_total)
@@ -340,13 +338,12 @@ CREATE TABLE dispatch_orders (
     status        dispatch_status NOT NULL DEFAULT 'REQUESTED',
     instructions  TEXT,
     priority      priority_level NOT NULL,
-    acknowledged_by TEXT,                              -- operational receiver endpoint / contact
+    acknowledged_by TEXT,
     acknowledged_at TIMESTAMPTZ,
     failure_reason TEXT,
     idempotency_key VARCHAR(100) UNIQUE,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
-    -- Core Principle: State advances only on confirmation (No false success)
     CHECK (status NOT IN ('ACKNOWLEDGED', 'DISPATCHED', 'COMPLETED') OR (acknowledged_at IS NOT NULL AND acknowledged_by IS NOT NULL)),
     CHECK (status NOT IN ('FAILED', 'REJECTED') OR failure_reason IS NOT NULL)
 );
@@ -468,7 +465,7 @@ CREATE TABLE donation_campaigns (
 CREATE TABLE donations (
     donation_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     campaign_id  UUID NOT NULL REFERENCES donation_campaigns(campaign_id) ON DELETE RESTRICT,
-    donor_id     UUID REFERENCES users(user_id) ON DELETE SET NULL, -- independent entry point; guest donor allowed
+    donor_id     UUID REFERENCES users(user_id) ON DELETE SET NULL,
     amount       NUMERIC(14,2) NOT NULL CHECK (amount > 0),
     currency     CHAR(3) NOT NULL DEFAULT 'INR',
     status       txn_status NOT NULL DEFAULT 'PENDING',
@@ -477,12 +474,12 @@ CREATE TABLE donations (
     donor_email  CITEXT,
     gateway_name VARCHAR(50),
     gateway_order_id VARCHAR(100),
-    gateway_txn_ref  VARCHAR(100),                         -- populated ONLY after gateway confirmation
-    payment_method_type VARCHAR(30),                       -- UPI/CARD/NETBANKING (Never store card credentials - NU-NFR-07)
+    gateway_txn_ref  VARCHAR(100),
+    payment_method_type VARCHAR(30),
     failure_code VARCHAR(50),
     failure_message TEXT,
     recon_state  recon_status NOT NULL DEFAULT 'UNRECONCILED',
-    idempotency_key VARCHAR(100) NOT NULL UNIQUE,          -- prevents duplicate charges on network retry
+    idempotency_key VARCHAR(100) NOT NULL UNIQUE,
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     confirmed_at TIMESTAMPTZ,
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -493,7 +490,7 @@ CREATE INDEX idx_donations_status ON donations(status, created_at DESC);
 CREATE INDEX idx_donations_campaign ON donations(campaign_id, status);
 CREATE INDEX idx_donations_donor ON donations(donor_id);
 
-CREATE TABLE payment_callbacks (                          -- immutable raw signed callbacks for reconciliation
+CREATE TABLE payment_callbacks (                          -- immutable raw signed callbacks
     callback_id  BIGSERIAL PRIMARY KEY,
     donation_id  UUID REFERENCES donations(donation_id) ON DELETE CASCADE,
     gateway_name VARCHAR(50) NOT NULL,
@@ -502,7 +499,7 @@ CREATE TABLE payment_callbacks (                          -- immutable raw signe
     payload      JSONB NOT NULL,
     received_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     processed_at TIMESTAMPTZ,
-    process_result VARCHAR(30)                             -- APPLIED | IGNORED_DUPLICATE | REJECTED
+    process_result VARCHAR(30)
 );
 CREATE INDEX idx_callbacks_donation ON payment_callbacks(donation_id);
 
@@ -573,7 +570,7 @@ CREATE TABLE aid_contributions (                          -- citizen contributio
     description     TEXT,
     quantity        NUMERIC(12,2) NOT NULL CHECK (quantity > 0),
     unit            VARCHAR(30) NOT NULL,
-    condition_desc  VARCHAR(100),                          -- e.g. sealed, new, undamaged
+    condition_desc  VARCHAR(100),
     expiry_date     DATE,
     pickup_address  TEXT,
     pickup_geom     GEOGRAPHY(Point,4326),
@@ -608,8 +605,8 @@ CREATE TABLE delivery_tasks (                             -- tracking delivery w
     scheduled_pickup TIMESTAMPTZ,
     picked_up_at   TIMESTAMPTZ,
     delivered_at   TIMESTAMPTZ,
-    received_by    VARCHAR(150),                            -- recipient acknowledgment name
-    confirmed_by   UUID REFERENCES users(user_id) ON DELETE SET NULL, -- authorised operator confirmation
+    received_by    VARCHAR(150),
+    confirmed_by   UUID REFERENCES users(user_id) ON DELETE SET NULL,
     failure_reason TEXT,
     attempt_no     INT NOT NULL DEFAULT 1 CHECK (attempt_no >= 1),
     CHECK (status <> 'DELIVERED' OR (delivered_at IS NOT NULL AND confirmed_by IS NOT NULL))
@@ -629,7 +626,7 @@ CREATE TABLE delivery_events (
 -- ---------------------------------------------------------------------
 CREATE TABLE notification_templates (
     template_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    code         VARCHAR(80) NOT NULL,                       -- INCIDENT_SUBMITTED, DONATION_CONFIRMED, etc.
+    code         VARCHAR(80) NOT NULL,
     channel      notif_channel NOT NULL,
     language     VARCHAR(10) NOT NULL DEFAULT 'en',
     subject      VARCHAR(200),
@@ -666,16 +663,16 @@ CREATE TABLE notifications (
     channel      notif_channel NOT NULL,
     title        VARCHAR(200),
     body         TEXT NOT NULL,
-    related_type VARCHAR(40),                                -- INCIDENT | DONATION | AID | UPDATE
+    related_type VARCHAR(40),
     related_id   UUID,
     status       notif_status NOT NULL DEFAULT 'QUEUED',
     provider_ref VARCHAR(100),
     attempt_count INT NOT NULL DEFAULT 0,
     last_error   TEXT,
-    dedupe_key   VARCHAR(150),                               -- AM-NFR-08: prevents duplicate spam
+    dedupe_key   VARCHAR(150),
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     sent_at      TIMESTAMPTZ,
-    read_at      TIMESTAMPTZ,                                -- in-app source of truth
+    read_at      TIMESTAMPTZ,
     UNIQUE (user_id, channel, dedupe_key),
     CHECK (status NOT IN ('SENT', 'DELIVERED') OR sent_at IS NOT NULL)
 );
@@ -687,7 +684,7 @@ CREATE INDEX idx_notif_retry ON notifications(status) WHERE status IN ('QUEUED',
 -- ---------------------------------------------------------------------
 CREATE TABLE system_configs (
     config_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    config_key   VARCHAR(100) NOT NULL,                       -- e.g. SCENARIO_SETTINGS, DUPLICATE_DETECTION
+    config_key   VARCHAR(100) NOT NULL,
     value        JSONB NOT NULL,
     version      INT NOT NULL,
     is_active    BOOLEAN NOT NULL DEFAULT FALSE,
@@ -704,7 +701,7 @@ CREATE TABLE audit_logs (                                     -- AM-FR-05, DM-NF
     occurred_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     actor_id     UUID REFERENCES users(user_id) ON DELETE SET NULL,
     actor_role   role_code,
-    action       VARCHAR(80) NOT NULL,                         -- e.g. VERIFY_INCIDENT, DISPATCH_SEND, DONATION_CONFIRM
+    action       VARCHAR(80) NOT NULL,
     entity_type  VARCHAR(60) NOT NULL,
     entity_id    UUID,
     result       audit_result NOT NULL,
@@ -712,7 +709,7 @@ CREATE TABLE audit_logs (                                     -- AM-FR-05, DM-NF
     before_state JSONB,
     after_state  JSONB,
     ip_address   INET,
-    prev_hash    CHAR(64),                                     -- cryptographic hash chaining (AM-NFR-09)
+    prev_hash    CHAR(64),
     row_hash     CHAR(64)
 );
 CREATE INDEX idx_audit_entity ON audit_logs(entity_type, entity_id, occurred_at DESC);
@@ -732,7 +729,7 @@ CREATE TABLE security_events (                                -- AM-FR-07: Secur
 
 CREATE TABLE secret_rotations (
     rotation_id  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    secret_name  VARCHAR(100) NOT NULL,                        -- credential name only, never the value
+    secret_name  VARCHAR(100) NOT NULL,
     rotated_by   UUID NOT NULL REFERENCES users(user_id) ON DELETE RESTRICT,
     rotated_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     next_due_at  TIMESTAMPTZ
@@ -761,7 +758,7 @@ CREATE TABLE alert_rules (
 
 CREATE TABLE backups (                                        -- AM-FR-08: Backup & Recovery tracking
     backup_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    backup_type  VARCHAR(20) NOT NULL,                         -- FULL, INCREMENTAL
+    backup_type  VARCHAR(20) NOT NULL,
     storage_location TEXT NOT NULL,
     size_bytes   BIGINT,
     checksum     CHAR(64),
@@ -776,7 +773,7 @@ CREATE TABLE restore_operations (
     restore_id   UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     backup_id    UUID NOT NULL REFERENCES backups(backup_id) ON DELETE RESTRICT,
     requested_by UUID NOT NULL REFERENCES users(user_id) ON DELETE RESTRICT,
-    status       VARCHAR(20) NOT NULL,                         -- REQUESTED, RUNNING, VERIFIED, FAILED
+    status       VARCHAR(20) NOT NULL,
     verification_note TEXT,
     started_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     finished_at  TIMESTAMPTZ
@@ -784,12 +781,12 @@ CREATE TABLE restore_operations (
 
 CREATE TABLE data_correction_tasks (                          -- AM-FR-06: Controlled data modifications
     task_id      UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    task_type    VARCHAR(40) NOT NULL,                         -- CORRECTION, RETENTION_PURGE, BULK_UPDATE
+    task_type    VARCHAR(40) NOT NULL,
     target_entity VARCHAR(60) NOT NULL,
     affected_count INT,
     justification TEXT NOT NULL,
     requested_by UUID NOT NULL REFERENCES users(user_id) ON DELETE RESTRICT,
-    approved_by  UUID REFERENCES users(user_id) ON DELETE RESTRICT, -- Dual-operator authorization for bulk actions
+    approved_by  UUID REFERENCES users(user_id) ON DELETE RESTRICT,
     status       VARCHAR(20) NOT NULL DEFAULT 'REQUESTED',
     created_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     completed_at TIMESTAMPTZ
@@ -799,7 +796,7 @@ CREATE TABLE retention_policies (
     policy_id    SERIAL PRIMARY KEY,
     entity_type  VARCHAR(60) UNIQUE NOT NULL,
     retain_days  INT NOT NULL,
-    action_after VARCHAR(20) NOT NULL DEFAULT 'ARCHIVE'         -- ARCHIVE | ANONYMISE | DELETE
+    action_after VARCHAR(20) NOT NULL DEFAULT 'ARCHIVE'
 );
 
 -- ---------------------------------------------------------------------
@@ -807,7 +804,7 @@ CREATE TABLE retention_policies (
 -- ---------------------------------------------------------------------
 CREATE TABLE idempotency_keys (
     key          VARCHAR(100) NOT NULL,
-    scope        VARCHAR(50) NOT NULL,                          -- INCIDENT_SUBMIT, DONATION_CREATE, DISPATCH_SEND
+    scope        VARCHAR(50) NOT NULL,
     user_id      UUID REFERENCES users(user_id) ON DELETE CASCADE,
     request_hash CHAR(64) NOT NULL,
     response_ref UUID,
@@ -872,7 +869,6 @@ ORDER BY checked_at DESC;
 -- ---------------------------------------------------------------------
 -- 12. STORED PROCEDURES & TRIGGERS
 -- ---------------------------------------------------------------------
--- 12.1 Automatic updated_at timestamp maintenance
 CREATE OR REPLACE FUNCTION set_updated_at() RETURNS trigger AS $$
 BEGIN
     NEW.updated_at = now();
@@ -895,7 +891,6 @@ CREATE TRIGGER trg_aid_upd            BEFORE UPDATE ON aid_contributions      FO
 CREATE TRIGGER trg_system_configs_upd BEFORE UPDATE ON system_configs         FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 CREATE TRIGGER trg_agency_recip_upd   BEFORE UPDATE ON agency_message_recipients FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
--- 12.2 Incident Location Point Geolocation Synchronization
 CREATE OR REPLACE FUNCTION fn_sync_incident_location_geom() RETURNS trigger AS $$
 BEGIN
     IF NEW.latitude IS NOT NULL AND NEW.longitude IS NOT NULL AND NEW.geom IS NULL THEN
@@ -912,7 +907,6 @@ CREATE TRIGGER trg_incident_locations_sync_geom
     BEFORE INSERT OR UPDATE ON incident_locations
     FOR EACH ROW EXECUTE FUNCTION fn_sync_incident_location_geom();
 
--- 12.3 Enforce No False Success: Receipt creation ONLY for confirmed donations (7.3, NU-FR-09)
 CREATE OR REPLACE FUNCTION fn_enforce_receipt_on_confirmed_donation() RETURNS trigger AS $$
 DECLARE
     v_status txn_status;
@@ -930,7 +924,6 @@ CREATE TRIGGER trg_receipt_confirmed_only
     BEFORE INSERT OR UPDATE ON receipts
     FOR EACH ROW EXECUTE FUNCTION fn_enforce_receipt_on_confirmed_donation();
 
--- 12.4 Audit Log Immutability Protection (AM-FR-05, DM-NFR-06)
 CREATE OR REPLACE FUNCTION fn_prevent_audit_tampering() RETURNS trigger AS $$
 BEGIN
     RAISE EXCEPTION 'Audit log entries are immutable and cannot be updated or deleted.';
@@ -941,7 +934,6 @@ CREATE TRIGGER trg_audit_immutable
     BEFORE UPDATE OR DELETE ON audit_logs
     FOR EACH ROW EXECUTE FUNCTION fn_prevent_audit_tampering();
 
--- 12.5 Audit Log Cryptographic Hash-Chaining (AM-NFR-09)
 CREATE OR REPLACE FUNCTION fn_audit_log_hash_chain() RETURNS trigger AS $$
 DECLARE
     v_prev_hash CHAR(64);
@@ -970,95 +962,4 @@ CREATE TRIGGER trg_audit_hash_chain
     BEFORE INSERT ON audit_logs
     FOR EACH ROW EXECUTE FUNCTION fn_audit_log_hash_chain();
 
--- ---------------------------------------------------------------------
--- 13. SEED DATA (Roles, Core Permissions, Configuration, Notification Templates)
--- ---------------------------------------------------------------------
-INSERT INTO roles (code, description) VALUES
- ('NORMAL_USER',  'Citizen: report incidents, track timeline, donate money, contribute physical aid'),
- ('DISASTER_MGMT','Operational staff: review, verify, triage, dispatch resources, coordinate agencies, publish verified updates'),
- ('APP_MGMT',     'Platform administrator: accounts, RBAC, system config, monitoring, audit, backups, security')
-ON CONFLICT (code) DO NOTHING;
-
--- Populate Granular Permissions mapped to FRs
-INSERT INTO permissions (code, description) VALUES
- ('INCIDENT_REPORT',        'Submit emergency incident reports (NU-FR-03)'),
- ('INCIDENT_VIEW_OWN',      'View own submitted incident history and status (NU-FR-06)'),
- ('EVIDENCE_UPLOAD',        'Upload supporting images and evidence files (NU-FR-05)'),
- ('DONATION_CREATE',        'Make monetary relief donations via payment gateway (NU-FR-09)'),
- ('AID_CONTRIBUTE',         'Register physical aid relief supplies (NU-FR-10)'),
- ('INCIDENT_VIEW_ALL',      'View all incoming incidents across scenarios on dashboard (DM-FR-02)'),
- ('INCIDENT_VERIFY',        'Review evidence and make authoritative verification decisions (DM-FR-03)'),
- ('INCIDENT_PRIORITIZE',    'Assign authoritative operational priority and rationale (DM-FR-06)'),
- ('DUPLICATE_REVIEW',       'Review and link or merge duplicate incident candidates (DM-FR-04)'),
- ('AI_TRIAGE_VIEW',         'Inspect AI advisory triage, factors and uncertainty notes (DM-FR-05)'),
- ('AI_DECISION_SUBMIT',     'Record human acceptance, modification, or rejection of AI recommendation (DM-FR-05)'),
- ('RESOURCE_MANAGE',        'Manage and coordinate teams, vehicles, supplies, and equipment (DM-FR-08)'),
- ('DISPATCH_CREATE',        'Authorize and transmit emergency dispatch orders (DM-FR-09)'),
- ('AGENCY_COMMUNICATE',     'Send secure inter-agency coordination messages (DM-FR-10)'),
- ('PUBLIC_UPDATE_PUBLISH',  'Draft and publish verified emergency updates to citizens (DM-FR-11)'),
- ('AID_ALLOCATE',           'Verify and allocate physical aid to approved disaster needs (DM-FR-13)'),
- ('ANALYTICS_VIEW',         'Access operational, donation, and dispatch analytics (DM-FR-14)'),
- ('ACCOUNT_MANAGE',         'Create, update, lock, or assign roles to platform accounts (AM-FR-02)'),
- ('CONFIG_MANAGE',          'Modify and version system configuration settings (AM-FR-03)'),
- ('MONITORING_VIEW',        'Inspect service health, queue depths, and integration telemetry (AM-FR-04)'),
- ('AUDIT_LOG_VIEW',         'Query immutable security and operational audit logs (AM-FR-05)'),
- ('DATA_QUALITY_MANAGE',    'Manage data retention, cleanup, and controlled corrections (AM-FR-06)'),
- ('SECURITY_MANAGE',        'Manage secrets, MFA requirements, and security events (AM-FR-07)'),
- ('BACKUP_MANAGE',          'Trigger, verify, and restore system backups (AM-FR-08)'),
- ('NOTIFICATION_CONFIG',    'Configure notification channels, routing rules, and templates (AM-FR-09)'),
- ('PAYMENT_MONITOR',        'Monitor payment gateway health and reconcile transactions (AM-FR-10)')
-ON CONFLICT (code) DO NOTHING;
-
--- Map Permissions to Roles
--- 1) NORMAL_USER
-INSERT INTO role_permissions (role_id, permission_id)
-SELECT r.role_id, p.permission_id
-FROM roles r, permissions p
-WHERE r.code = 'NORMAL_USER'
-  AND p.code IN (
-    'INCIDENT_REPORT', 'INCIDENT_VIEW_OWN', 'EVIDENCE_UPLOAD',
-    'DONATION_CREATE', 'AID_CONTRIBUTE'
-  )
-ON CONFLICT DO NOTHING;
-
--- 2) DISASTER_MGMT
-INSERT INTO role_permissions (role_id, permission_id)
-SELECT r.role_id, p.permission_id
-FROM roles r, permissions p
-WHERE r.code = 'DISASTER_MGMT'
-  AND p.code IN (
-    'INCIDENT_VIEW_ALL', 'INCIDENT_VERIFY', 'INCIDENT_PRIORITIZE',
-    'DUPLICATE_REVIEW', 'AI_TRIAGE_VIEW', 'AI_DECISION_SUBMIT',
-    'RESOURCE_MANAGE', 'DISPATCH_CREATE', 'AGENCY_COMMUNICATE',
-    'PUBLIC_UPDATE_PUBLISH', 'AID_ALLOCATE', 'ANALYTICS_VIEW'
-  )
-ON CONFLICT DO NOTHING;
-
--- 3) APP_MGMT
-INSERT INTO role_permissions (role_id, permission_id)
-SELECT r.role_id, p.permission_id
-FROM roles r, permissions p
-WHERE r.code = 'APP_MGMT'
-  AND p.code IN (
-    'ACCOUNT_MANAGE', 'CONFIG_MANAGE', 'MONITORING_VIEW',
-    'AUDIT_LOG_VIEW', 'DATA_QUALITY_MANAGE', 'SECURITY_MANAGE',
-    'BACKUP_MANAGE', 'NOTIFICATION_CONFIG', 'PAYMENT_MONITOR', 'ANALYTICS_VIEW'
-  )
-ON CONFLICT DO NOTHING;
-
--- Default System Configurations (AM-FR-03)
-INSERT INTO system_configs (config_key, value, version, is_active, changed_by, change_note)
-SELECT 'SCENARIOS_SUPPORTED',
-       '{"scenarios": ["CYCLONE", "INDUSTRIAL_FIRE", "URBAN_FLOODING"], "max_upload_size_mb": 25, "allowed_evidence_types": ["image/jpeg", "image/png", "video/mp4", "application/pdf"]}'::jsonb,
-       1, TRUE, u.user_id, 'Initial system baseline from Final SRS'
-FROM (SELECT user_id FROM users LIMIT 1) u
-WHERE EXISTS (SELECT 1 FROM users)
-ON CONFLICT DO NOTHING;
-
--- Default Notification Templates (NU-FR-07, AM-FR-09)
-INSERT INTO notification_templates (code, channel, language, subject, body, version, is_active) VALUES
- ('INCIDENT_SUBMITTED', 'IN_APP', 'en', 'Incident Received', 'Your incident report {incident_ref} has been received and queued for review. Submission is not confirmation of verification or dispatch.', 1, TRUE),
- ('INCIDENT_VERIFIED',  'IN_APP', 'en', 'Incident Verified', 'Your incident report {incident_ref} has been reviewed and verified by disaster response staff.', 1, TRUE),
- ('DONATION_CONFIRMED', 'EMAIL',  'en', 'Donation Receipt - DRCH Relief Fund', 'Thank you for your generous contribution of INR {amount}. Transaction reference: {gateway_txn_ref}. Receipt No: {receipt_no}.', 1, TRUE),
- ('DISPATCH_ALERT',     'PUSH',   'en', 'Emergency Dispatch', 'Dispatch order {dispatch_ref} assigned for scenario {scenario}. Priority: {priority}. Immediate response requested.', 1, TRUE)
-ON CONFLICT DO NOTHING;
+COMMIT;

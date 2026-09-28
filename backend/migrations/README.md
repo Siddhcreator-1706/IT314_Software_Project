@@ -38,8 +38,9 @@ for file in migrations/*.sql; do
 done
 ```
 
-### Option 3: Full Schema File
-For a single combined execution, use the root [drch_schema.sql](../drch_schema.sql):
+### Option 3: Full Schema & Seed Files
+For a single combined execution, use [backend/drch_schema.sql](../drch_schema.sql) followed by [backend/seed_data.sql](../seed_data.sql):
 ```bash
-psql -h localhost -U postgres -d drch_db -f drch_schema.sql
+psql -h localhost -U postgres -d drch_db -f backend/drch_schema.sql
+psql -h localhost -U postgres -d drch_db -f backend/seed_data.sql
 ```
