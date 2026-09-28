@@ -180,7 +180,10 @@ jobs:
 
       # Build all images using Docker Compose
       - name: Build Docker Compose Stack
-        run: docker compose build --parallel
+        run: |
+          docker compose build --parallel
+          echo "Built Docker Images:"
+          docker images
 
       # Install Trivy for Container Security Scanning
       - name: Install Trivy
