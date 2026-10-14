@@ -140,7 +140,6 @@ export const AuthModal: React.FC<AuthModalProps> = ({
       name: fullName.trim(),
       email: signupEmail.trim(),
       phone: signupPhone.trim(),
-      roleCategory: selectedCategory,
       role: specificRole,
       agency: agency.trim() || (selectedCategory === "user" ? "Public Resident" : "Emergency Services"),
       badgeNumber: badgeNumber.trim() || undefined,
