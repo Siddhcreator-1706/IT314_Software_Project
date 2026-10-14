@@ -131,7 +131,6 @@ function ResQGeoPortalInner() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [authModalMode, setAuthModalMode] = useState<"login" | "signup">("login");
   const [authModalCategory] = useState<PortalRoleCategory>("user");
-  const [showRoleMenu, setShowRoleMenu] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   // Modals & Panels visibility

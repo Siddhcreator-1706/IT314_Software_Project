@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -36,10 +37,10 @@ export default function RootLayout({
           rel="stylesheet"
           href="https://unpkg.com/leaflet-minimap@3.6.1/dist/Control.MiniMap.min.css"
         />
-        <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" />
-        <script src="https://unpkg.com/leaflet-minimap@3.6.1/dist/Control.MiniMap.min.js" />
       </head>
       <body className="h-full w-full overflow-hidden m-0 p-0 bg-slate-900 font-sans">
+        <Script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" strategy="beforeInteractive" />
+        <Script src="https://unpkg.com/leaflet-minimap@3.6.1/dist/Control.MiniMap.min.js" strategy="beforeInteractive" />
         {children}
       </body>
     </html>
