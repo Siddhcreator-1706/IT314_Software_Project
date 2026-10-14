@@ -6,7 +6,7 @@ services:
     dockerContext: ./backend
     plan: free
     region: ohio
-    autoDeploy: true
+    autoDeploy: false
     rootDir: backend
     healthCheckPath: /health
     envVars:
