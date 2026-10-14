@@ -103,31 +103,36 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-      <div className="bg-[#0f172a] border border-[#1e293b] text-slate-100 rounded-lg shadow-2xl max-w-2xl w-full flex flex-col max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/70 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+      <div className="bg-[#0B111E] border border-slate-800 text-slate-100 rounded-xl shadow-2xl max-w-2xl w-full flex flex-col max-h-[90vh] overflow-hidden">
         {/* Header */}
-        <div className="px-5 py-4 bg-linear-to-r from-red-950/70 via-slate-900 to-slate-900 border-b border-red-900/30 flex items-center justify-between">
+        <div className="px-5 py-4 bg-[#070b14] border-b border-red-900/30 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-md bg-red-600/20 border border-red-500/40 flex items-center justify-center text-red-400 font-bold text-lg">
-              🚨
+            <div className="w-8 h-8 rounded-lg bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
             </div>
             <div>
-              <h2 className="text-base font-bold text-white tracking-wide flex items-center gap-2">
-                EMERGENCY DISPATCH CENTER
-                <span className="text-[10px] bg-red-500/20 text-red-300 border border-red-500/30 px-2 py-0.5 rounded font-mono">
+              <h2 className="text-xs font-bold text-slate-200 tracking-wider flex items-center gap-2 uppercase font-mono">
+                TACTICAL DISPATCH COMMAND
+                <span className="text-[10px] bg-red-950/80 text-red-400 border border-red-800/80 px-2 py-0.5 rounded font-mono">
                   {incident.id}
                 </span>
               </h2>
-              <p className="text-xs text-slate-400">
-                Incident: {incident.title} ({incident.locationName})
+              <p className="text-[11px] text-slate-400 font-mono">
+                INCIDENT: {incident.title} ({incident.locationName})
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white hover:bg-slate-800 p-1.5 rounded transition text-sm"
+            className="text-slate-400 hover:text-white hover:bg-slate-800 p-1.5 rounded transition"
+            aria-label="Close"
           >
-            ✕
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
           </button>
         </div>
 
@@ -135,14 +140,18 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
         <div className="p-5 overflow-y-auto space-y-4 flex-1">
           {feedbackMsg && (
             <div
-              className={`p-3 rounded-md text-xs font-medium border flex items-center justify-between ${
+              className={`p-3 rounded-md text-xs font-mono font-medium border flex items-center justify-between ${
                 feedbackMsg.type === "success"
                   ? "bg-emerald-950/40 border-emerald-500/40 text-emerald-300"
                   : "bg-red-950/40 border-red-500/40 text-red-300"
               }`}
             >
               <span>{feedbackMsg.text}</span>
-              <button onClick={() => setFeedbackMsg(null)} className="ml-2 hover:opacity-75">✕</button>
+              <button onClick={() => setFeedbackMsg(null)} className="ml-2 hover:opacity-75">
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
           )}
 
@@ -171,19 +180,25 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
           </div>
 
           {/* Urgent Needs & AI Suggestion */}
-          <div className="bg-blue-950/20 border border-blue-900/40 rounded-md p-3 text-xs">
-            <div className="flex items-center gap-1.5 font-semibold text-blue-400 mb-1.5">
-              <span>🤖 NDMA AI Capability Recommendation:</span>
+          <div className="bg-sky-950/20 border border-sky-900/40 rounded-md p-3 text-xs">
+            <div className="flex items-center gap-2 font-mono text-sky-400 mb-1.5 font-bold text-[11px] uppercase tracking-wider">
+              <svg className="w-3.5 h-3.5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+              <span>AI TACTICAL RECOMMENDATION:</span>
             </div>
             <div className="flex flex-wrap gap-1 mb-2">
               {incident.aiRecommendation?.suggestedCapabilities?.map((cap, i) => (
-                <span key={i} className="bg-blue-900/50 text-blue-200 border border-blue-700/50 px-2 py-0.5 rounded text-[11px]">
-                  ✓ {cap}
+                <span key={i} className="bg-sky-900/40 text-sky-200 border border-sky-700/50 px-2 py-0.5 rounded text-[10px] font-mono flex items-center gap-1">
+                  <svg className="w-2.5 h-2.5 text-sky-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                  {cap}
                 </span>
               ))}
             </div>
-            <p className="text-[11px] text-slate-400">
-              Needs: {incident.urgentNeeds.join(", ") || "Standard field assistance"}
+            <p className="text-[11px] text-slate-400 font-mono">
+              NEEDS: {incident.urgentNeeds.join(", ") || "Standard field assistance"}
             </p>
           </div>
 
@@ -244,11 +259,20 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
                     </div>
 
                     <div className="text-right shrink-0">
-                      <div className="text-xs font-bold text-blue-400">
-                        {score > 50 ? "⭐️ High Match" : "Standard"}
+                      <div className="text-xs font-bold text-sky-400 font-mono flex items-center justify-end gap-1">
+                        {score > 50 ? (
+                          <>
+                            <svg className="w-3 h-3 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
+                              <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                            </svg>
+                            <span>OPTIMAL FIT</span>
+                          </>
+                        ) : (
+                          <span>STANDARD</span>
+                        )}
                       </div>
                       <div className="text-[10px] text-slate-400 font-mono">
-                        ~{10 + (unit.callsign.length % 7)} min ETA
+                        ~{10 + (unit.callsign.length % 7)} MIN ETA
                       </div>
                     </div>
                   </div>
@@ -327,23 +351,26 @@ export const DispatchModal: React.FC<DispatchModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 bg-slate-900 border-t border-slate-800 flex items-center justify-between">
+        <div className="px-5 py-3 bg-[#070b14] border-t border-slate-800 flex items-center justify-between">
           <div className="text-[11px] text-slate-400 font-mono">
-            Dispatcher: <span className="text-slate-300 font-bold">{activeRole}</span>
+            DISPATCHER: <span className="text-slate-200 font-bold">{activeRole}</span>
           </div>
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="px-3.5 py-1.5 rounded text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 transition"
+              className="px-3.5 py-1.5 rounded text-xs font-mono font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 transition"
             >
-              Cancel
+              CANCEL
             </button>
             <button
               onClick={handleConfirmDispatch}
               disabled={!selectedUnitId}
-              className="px-4 py-1.5 rounded text-xs font-bold text-white bg-red-600 hover:bg-red-500 disabled:opacity-50 disabled:cursor-not-allowed shadow transition flex items-center gap-1.5"
+              className="px-4 py-1.5 rounded text-xs font-mono font-bold text-white bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed shadow transition flex items-center gap-1.5"
             >
-              <span>🚀</span> Confirm & Transmit Dispatch
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+              </svg>
+              <span>TRANSMIT DISPATCH ORDER</span>
             </button>
           </div>
         </div>

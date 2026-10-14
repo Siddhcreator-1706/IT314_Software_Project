@@ -423,7 +423,7 @@ export function ResQProvider({ children }: { children: React.ReactNode }) {
       timestamp: new Date().toISOString(),
       actorName: currentUser.name,
       actorRole: currentUser.role,
-      action: `Severity manually updated: ${prev} ➔ ${severity}.`,
+      action: `Severity manually updated: ${prev} -> ${severity}.`,
       details: reason,
     });
 

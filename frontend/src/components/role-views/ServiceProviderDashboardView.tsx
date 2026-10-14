@@ -78,21 +78,25 @@ export const ServiceProviderDashboardView: React.FC<ServiceProviderDashboardView
   });
 
   return (
-    <div className="fixed bottom-4 left-4 z-[900] max-w-lg w-full animate-fadeIn font-sans">
-      <div className="bg-[#0b1222]/95 backdrop-blur-md border border-amber-500/40 rounded-2xl shadow-2xl overflow-hidden text-white transition-all duration-300 ring-1 ring-amber-500/30">
+    <div className="fixed bottom-4 left-4 z-[900] max-w-lg w-full animate-in fade-in duration-200">
+      <div className="bg-[#0B111E]/95 backdrop-blur-md border border-amber-500/30 rounded-xl shadow-2xl overflow-hidden text-white transition-all duration-300 ring-1 ring-amber-500/20">
         {/* Banner Top Bar */}
-        <div className="px-4 py-2.5 bg-gradient-to-r from-amber-950 via-[#78350f] to-slate-900 border-b border-amber-600/40 flex items-center justify-between">
+        <div className="px-4 py-2.5 bg-[#070b14] border-b border-amber-900/40 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <span className="text-base">🚑</span>
+            <div className="w-7 h-7 rounded bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400">
+              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
+              </svg>
+            </div>
             <div>
-              <div className="text-xs font-bold tracking-wide text-white flex items-center gap-1.5">
-                <span>Field Responder Unit Console</span>
-                <span className="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.2 rounded font-mono font-bold">
+              <div className="text-xs font-bold tracking-wider text-slate-200 flex items-center gap-1.5 uppercase font-mono">
+                <span>RESPONDER UNIT CONSOLE</span>
+                <span className="text-[9px] bg-amber-950/80 text-amber-300 border border-amber-800 px-1.5 py-0.2 rounded font-mono font-bold">
                   {myUnit ? myUnit.callsign : "UNIT"}
                 </span>
               </div>
-              <div className="text-[10px] text-amber-200">
-                Personnel: <span className="font-semibold text-white">{currentUser.name}</span> • {currentUser.agency}
+              <div className="text-[10px] text-slate-400 font-mono">
+                CALLSIGN: <span className="font-semibold text-white">{currentUser.name}</span> • {currentUser.agency}
               </div>
             </div>
           </div>
@@ -100,57 +104,75 @@ export const ServiceProviderDashboardView: React.FC<ServiceProviderDashboardView
           <div className="flex items-center gap-1.5">
             <button
               onClick={onOpenWorkspace}
-              className="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-bold px-2.5 py-1 rounded-lg transition cursor-pointer shadow"
+              className="bg-amber-600 hover:bg-amber-500 text-white text-[10px] font-mono font-bold px-2.5 py-1 rounded transition cursor-pointer shadow uppercase"
               title="Open Responder Workspace"
             >
-              Full HUD
+              FULL HUD
             </button>
             <button
               onClick={() => setIsMinimized(!isMinimized)}
-              className="text-slate-400 hover:text-white text-xs px-1.5 py-0.5 rounded hover:bg-white/10 cursor-pointer"
+              className="text-slate-400 hover:text-white text-xs p-1 rounded hover:bg-slate-800 transition cursor-pointer"
             >
-              {isMinimized ? "▲" : "▼"}
+              {isMinimized ? (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              )}
             </button>
             {onClose && (
               <button
                 onClick={onClose}
-                className="text-slate-400 hover:text-white text-xs px-1.5 py-0.5 rounded hover:bg-white/10 cursor-pointer font-bold"
+                className="text-slate-400 hover:text-white text-xs p-1 rounded hover:bg-slate-800 transition cursor-pointer font-bold"
                 title="Close Dashboard Panel"
               >
-                ✕
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
               </button>
             )}
           </div>
         </div>
 
         {!isMinimized && (
-          <div className="p-3.5 space-y-3">
+          <div className="p-3.5 space-y-3 font-mono">
             {/* Live Operational Status Switcher */}
             <div>
-              <div className="flex items-center justify-between text-[11px] font-semibold text-slate-300 mb-1.5">
-                <span>Current Unit Status:</span>
-                <span className="text-amber-400 font-mono font-bold">{myUnit?.status || "AVAILABLE"}</span>
+              <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400 mb-1.5 uppercase">
+                <span>UNIT OPERATIONAL STATUS:</span>
+                <span className="text-amber-400 font-bold">{myUnit?.status || "AVAILABLE"}</span>
               </div>
               <div className="grid grid-cols-4 gap-1.5">
                 {(["AVAILABLE", "EN ROUTE", "ON SCENE", "BUSY"] as UnitStatus[]).map((st) => (
                   <button
                     key={st}
                     onClick={() => handleStatusChange(st)}
-                    className={`py-1.5 px-1 rounded-xl text-[10px] font-bold transition cursor-pointer border flex flex-col items-center justify-center ${
+                    className={`py-1.5 px-1 rounded-lg text-[10px] font-bold transition cursor-pointer border flex items-center justify-center gap-1.5 ${
                       myUnit?.status === st
                         ? st === "AVAILABLE"
-                          ? "bg-emerald-600 border-emerald-400 text-white shadow-md shadow-emerald-600/30"
+                          ? "bg-emerald-950/80 border-emerald-500 text-emerald-300 shadow-xs"
                           : st === "EN ROUTE"
-                          ? "bg-amber-600 border-amber-400 text-white shadow-md shadow-amber-600/30"
+                          ? "bg-amber-950/80 border-amber-500 text-amber-300 shadow-xs"
                           : st === "ON SCENE"
-                          ? "bg-blue-600 border-blue-400 text-white shadow-md shadow-blue-600/30"
-                          : "bg-red-600 border-red-400 text-white shadow-md shadow-red-600/30"
-                        : "bg-slate-900/80 border-slate-800 text-slate-400 hover:text-slate-200"
+                          ? "bg-sky-950/80 border-sky-500 text-sky-300 shadow-xs"
+                          : "bg-red-950/80 border-red-500 text-red-300 shadow-xs"
+                        : "bg-[#070b14] border-slate-800 text-slate-400 hover:text-slate-200"
                     }`}
                   >
-                    <span>
-                      {st === "AVAILABLE" ? "🟢" : st === "EN ROUTE" ? "🟡" : st === "ON SCENE" ? "🔵" : "🔴"}
-                    </span>
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full ${
+                        st === "AVAILABLE"
+                          ? "bg-emerald-400 shadow-[0_0_6px_#10b981]"
+                          : st === "EN ROUTE"
+                          ? "bg-amber-400 shadow-[0_0_6px_#f59e0b]"
+                          : st === "ON SCENE"
+                          ? "bg-sky-400 shadow-[0_0_6px_#38bdf8]"
+                          : "bg-red-400 shadow-[0_0_6px_#ef4444]"
+                      }`}
+                    />
                     <span>{st}</span>
                   </button>
                 ))}
@@ -158,13 +180,17 @@ export const ServiceProviderDashboardView: React.FC<ServiceProviderDashboardView
             </div>
 
             {/* Active Mission HUD */}
-            <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-2">
+            <div className="bg-[#070b14] border border-slate-800 rounded-lg p-3 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1">
-                  <span>🎯</span> Active Mission Assignment
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                  <svg className="w-3 h-3 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <circle cx="12" cy="12" r="10" strokeWidth="2"/>
+                    <circle cx="12" cy="12" r="4" fill="currentColor"/>
+                  </svg>
+                  <span>ACTIVE MISSION ASSIGNMENT</span>
                 </span>
                 {assignedIncident && (
-                  <span className="text-[10px] bg-red-500/20 text-red-300 border border-red-500/40 px-2 py-0.5 rounded-full font-bold">
+                  <span className="text-[9px] bg-red-950/80 text-red-400 border border-red-800 px-2 py-0.5 rounded font-mono font-bold">
                     PRIORITY 1
                   </span>
                 )}
@@ -172,20 +198,25 @@ export const ServiceProviderDashboardView: React.FC<ServiceProviderDashboardView
 
               {assignedIncident ? (
                 <div className="space-y-1.5">
-                  <div className="text-xs font-bold text-white">
+                  <div className="text-xs font-bold text-white font-mono">
                     {assignedIncident.id}: {assignedIncident.title}
                   </div>
-                  <div className="text-[11px] text-slate-300 flex items-center gap-2">
-                    <span>📍 {assignedIncident.locationName}</span>
-                    <span className="text-sky-400 font-mono font-bold">
-                      ~{activeDispatch?.etaMinutes || 12} mins ETA
+                  <div className="text-[10.5px] text-slate-300 flex items-center gap-2">
+                    <span className="flex items-center gap-1">
+                      <svg className="w-3 h-3 text-sky-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                      </svg>
+                      {assignedIncident.locationName}
+                    </span>
+                    <span className="text-sky-400 font-bold">
+                      ~{activeDispatch?.etaMinutes || 12} MINS ETA
                     </span>
                   </div>
-                  <div className="text-[10px] text-slate-400 line-clamp-2">
+                  <div className="text-[10px] text-slate-400 line-clamp-2 font-sans">
                     {assignedIncident.description}
                   </div>
                   <div className="text-[10px] text-amber-300 bg-amber-950/40 p-1.5 rounded border border-amber-900/40">
-                    <b>Urgent Needs:</b> {assignedIncident.urgentNeeds.join(", ")}
+                    <b>URGENT NEEDS:</b> {assignedIncident.urgentNeeds.join(", ")}
                   </div>
 
                   <div className="flex items-center justify-between pt-1">
@@ -198,17 +229,17 @@ export const ServiceProviderDashboardView: React.FC<ServiceProviderDashboardView
                           title: assignedIncident.title,
                         })
                       }
-                      className="text-xs text-sky-400 hover:text-sky-300 underline font-semibold cursor-pointer flex items-center gap-1"
+                      className="text-[10px] text-sky-400 hover:text-sky-300 underline font-semibold cursor-pointer flex items-center gap-1"
                     >
-                      <span>🧭</span> Trace Mission Route on Map
+                      <span>TRACE ROUTE ON MAP &rarr;</span>
                     </button>
-                    <span className="text-[10px] text-slate-400">
-                      Dispatched by: ERSS 112 Command
+                    <span className="text-[9px] text-slate-500">
+                      DISPATCHED BY: ERSS 112
                     </span>
                   </div>
                 </div>
               ) : (
-                <div className="py-3 text-center text-xs text-slate-400">
+                <div className="py-3 text-center text-xs text-slate-500 font-mono">
                   <span>No active incident assigned to your callsign. Unit is currently on stand-by.</span>
                 </div>
               )}
@@ -216,45 +247,45 @@ export const ServiceProviderDashboardView: React.FC<ServiceProviderDashboardView
 
             {/* SITREP Fast Buttons */}
             <div>
-              <div className="text-[11px] font-bold text-slate-300 mb-1.5 flex items-center justify-between">
-                <span>Transmit Field SITREP to Command HQ:</span>
+              <div className="text-[10px] font-bold text-slate-400 mb-1.5 flex items-center justify-between uppercase">
+                <span>TRANSMIT FIELD SITREP TO COMMAND HQ:</span>
                 {sitrepFeedback && (
-                  <span className="text-[10px] text-emerald-400 font-semibold">{sitrepFeedback}</span>
+                  <span className="text-[9px] text-emerald-400 font-semibold">{sitrepFeedback}</span>
                 )}
               </div>
               <div className="grid grid-cols-2 gap-1.5">
                 <button
                   onClick={() => handleSendSITREP("Arrived on scene, assessing perimeter safety")}
-                  className="text-[10.5px] bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 p-1.5 rounded-lg text-left transition cursor-pointer"
+                  className="text-[10px] bg-[#070b14] hover:bg-slate-900 text-slate-300 border border-slate-800 p-1.5 rounded text-left transition cursor-pointer truncate"
                 >
-                  📍 Arrived on scene
+                  &rarr; Arrived on scene
                 </button>
                 <button
                   onClick={() => handleSendSITREP("Extricating casualties, medical triage in progress")}
-                  className="text-[10.5px] bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 p-1.5 rounded-lg text-left transition cursor-pointer"
+                  className="text-[10px] bg-[#070b14] hover:bg-slate-900 text-slate-300 border border-slate-800 p-1.5 rounded text-left transition cursor-pointer truncate"
                 >
-                  🚑 Casualties extricated
+                  &rarr; Casualties extricated
                 </button>
                 <button
                   onClick={() => handleSendSITREP("Road inundated, requesting backup boat unit")}
-                  className="text-[10.5px] bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 p-1.5 rounded-lg text-left transition cursor-pointer"
+                  className="text-[10px] bg-[#070b14] hover:bg-slate-900 text-slate-300 border border-slate-800 p-1.5 rounded text-left transition cursor-pointer truncate"
                 >
-                  ⚠️ Requesting backup boat
+                  &rarr; Request backup boat
                 </button>
                 <button
                   onClick={() => handleSendSITREP("Casualties transported to hospital. Mission complete.")}
-                  className="text-[10.5px] bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700/80 p-1.5 rounded-lg text-left transition cursor-pointer"
+                  className="text-[10px] bg-[#070b14] hover:bg-slate-900 text-slate-300 border border-slate-800 p-1.5 rounded text-left transition cursor-pointer truncate"
                 >
-                  ✅ Delivered to ER
+                  &rarr; Delivered to ER
                 </button>
               </div>
             </div>
 
             {/* Nearest Critical Infrastructure */}
             <div className="pt-1 border-t border-slate-800">
-              <div className="flex items-center justify-between text-[11px] text-slate-400 mb-1.5">
-                <span>Nearest ER Trauma Centers / Hydrants:</span>
-                <span className="text-amber-400">Click to locate</span>
+              <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1.5 uppercase">
+                <span>NEAREST ER TRAUMA CENTERS / HYDRANTS:</span>
+                <span className="text-amber-400">LOCATE ON MAP &rarr;</span>
               </div>
               <div className="flex flex-wrap gap-1.5">
                 {relevantInfra.slice(0, 3).map((inf) => (
@@ -268,9 +299,9 @@ export const ServiceProviderDashboardView: React.FC<ServiceProviderDashboardView
                         title: inf.name,
                       })
                     }
-                    className="text-[10.5px] bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-2 py-1 rounded-lg transition cursor-pointer flex items-center gap-1"
+                    className="text-[10px] bg-[#070b14] hover:bg-slate-900 text-slate-200 border border-slate-800 px-2 py-1 rounded transition cursor-pointer flex items-center gap-1.5 font-mono"
                   >
-                    <span>🏥</span>
+                    <span className={`w-1.5 h-1.5 rounded-full ${inf.type === "HOSPITAL" ? "bg-red-400" : "bg-orange-400"}`} />
                     <span className="truncate max-w-[130px]">{inf.name.split(" ")[0]} {inf.name.split(" ")[1]}</span>
                   </button>
                 ))}
