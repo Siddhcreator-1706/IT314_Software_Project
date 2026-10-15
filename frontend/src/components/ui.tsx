@@ -22,8 +22,8 @@ export function cx(...parts: (string | false | null | undefined)[]) {
 // ---------------------------------------------------------------- buttons
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "secondary" | "danger" | "ghost";
-  size?: "sm" | "md";
+  variant?: "primary" | "secondary" | "danger" | "ghost" | "outline";
+  size?: "xs" | "sm" | "md" | "lg";
   busy?: boolean;
 };
 
@@ -34,12 +34,16 @@ export function Button({ variant = "secondary", size = "md", busy, className, ch
       disabled={disabled || busy}
       aria-busy={busy || undefined}
       className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-        size === "sm" ? "h-8 px-3 text-xs" : "h-10 px-4 text-sm",
-        variant === "primary" && "bg-sky-600 text-white shadow-lg shadow-sky-600/20 hover:bg-sky-500",
-        variant === "secondary" && "border border-border bg-surface hover:bg-surface-muted",
-        variant === "danger" && "bg-red-600 text-white hover:bg-red-500",
-        variant === "ghost" && "text-muted hover:bg-surface-muted hover:text-foreground",
+        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 select-none",
+        size === "xs" && "h-7 px-2.5 text-xs rounded-md",
+        size === "sm" && "h-8 px-3 text-xs",
+        size === "md" && "h-10 px-4 text-sm",
+        size === "lg" && "h-11 px-5 text-base font-semibold",
+        variant === "primary" && "bg-sky-600 text-white shadow-sm shadow-sky-900/30 hover:bg-sky-500 active:bg-sky-700 focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#070d18]",
+        variant === "secondary" && "border border-border bg-surface text-foreground hover:bg-surface-muted hover:border-slate-700 active:bg-surface-elevated",
+        variant === "danger" && "bg-red-600 text-white shadow-sm shadow-red-950/40 hover:bg-red-500 active:bg-red-700",
+        variant === "ghost" && "text-muted hover:bg-surface-muted hover:text-foreground active:bg-surface-elevated",
+        variant === "outline" && "border border-border-muted text-muted hover:border-sky-500 hover:text-sky-300 hover:bg-sky-950/30",
         className,
       )}
     >
@@ -54,18 +58,18 @@ export function Button({ variant = "secondary", size = "md", busy, className, ch
 export type Tone = "critical" | "high" | "medium" | "low" | "info" | "ai" | "neutral";
 
 const toneClass: Record<Tone, string> = {
-  critical: "bg-critical-soft text-critical",
-  high: "bg-high-soft text-high",
-  medium: "bg-medium-soft text-medium",
-  low: "bg-low-soft text-low",
-  info: "bg-info-soft text-info",
-  ai: "bg-ai-soft text-ai",
-  neutral: "bg-neutral-soft text-muted",
+  critical: "bg-critical-soft text-critical border border-critical/30",
+  high: "bg-high-soft text-high border border-high/30",
+  medium: "bg-medium-soft text-medium border border-medium/30",
+  low: "bg-low-soft text-low border border-low/30",
+  info: "bg-info-soft text-info border border-info/30",
+  ai: "bg-ai-soft text-ai border border-ai/30",
+  neutral: "bg-neutral-soft text-muted border border-border",
 };
 
 export function Badge({ tone = "neutral", children, className }: { tone?: Tone; children: ReactNode; className?: string }) {
   return (
-    <span className={cx("inline-flex items-center gap-1 whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-semibold", toneClass[tone], className)}>
+    <span className={cx("inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-0.5 text-xs font-semibold tracking-wide", toneClass[tone], className)}>
       {children}
     </span>
   );
@@ -82,11 +86,11 @@ export function Card({ title, subtitle, actions, children, className, bodyClassN
   bodyClassName?: string;
 }) {
   return (
-    <section className={cx("min-w-0 rounded-xl border border-border bg-surface", className)}>
+    <section className={cx("min-w-0 rounded-xl border border-border bg-surface shadow-sm overflow-hidden", className)}>
       {(title || actions) && (
-        <header className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-3 sm:px-5">
+        <header className="flex flex-wrap items-center justify-between gap-3 border-b border-border bg-surface-muted/50 px-4 py-3 sm:px-5">
           <div className="min-w-0">
-            {title && <h2 className="font-semibold">{title}</h2>}
+            {title && <h2 className="font-semibold text-sm sm:text-base text-foreground tracking-tight">{title}</h2>}
             {subtitle && <p className="mt-0.5 text-xs text-muted">{subtitle}</p>}
           </div>
           {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -99,23 +103,23 @@ export function Card({ title, subtitle, actions, children, className, bodyClassN
 
 export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
   return (
-    <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+    <div className="mb-6 flex flex-wrap items-end justify-between gap-4 border-b border-border/60 pb-5">
       <div className="min-w-0">
-        <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h1>
+        <h1 className="text-xl font-bold tracking-tight text-white sm:text-2xl">{title}</h1>
         {description && <p className="mt-1 max-w-3xl text-sm text-muted">{description}</p>}
       </div>
-      {actions && <div className="flex flex-wrap gap-2">{actions}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2.5">{actions}</div>}
     </div>
   );
 }
 
 export function KeyValue({ items }: { items: [string, ReactNode][] }) {
   return (
-    <dl className="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+    <dl className="grid grid-cols-1 gap-x-6 gap-y-3.5 text-sm sm:grid-cols-2">
       {items.map(([k, v]) => (
-        <div key={k} className="min-w-0">
-          <dt className="text-xs text-muted">{k}</dt>
-          <dd className="mt-0.5 break-words">{v ?? <span className="text-muted">—</span>}</dd>
+        <div key={k} className="min-w-0 rounded-lg border border-border/40 bg-surface-muted/30 p-2.5">
+          <dt className="text-xs font-medium text-muted uppercase tracking-wider">{k}</dt>
+          <dd className="mt-1 text-sm font-semibold text-foreground break-words">{v ?? <span className="text-muted/60">—</span>}</dd>
         </div>
       ))}
     </dl>
@@ -140,19 +144,22 @@ export function LoadingRows({ rows = 5 }: { rows?: number }) {
 
 export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {
   return (
-    <div className="rounded-lg border border-dashed border-border px-4 py-10 text-center">
-      <p className="text-sm font-medium">{title}</p>
-      {children && <div className="mx-auto mt-1 max-w-md text-sm text-muted">{children}</div>}
+    <div className="rounded-xl border border-dashed border-border bg-surface-muted/20 px-4 py-12 text-center">
+      <p className="text-sm font-semibold text-foreground">{title}</p>
+      {children && <div className="mx-auto mt-1.5 max-w-md text-xs text-muted leading-relaxed">{children}</div>}
     </div>
   );
 }
 
 export function ErrorState({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-critical/30 bg-critical-soft px-4 py-3 text-sm text-critical">
-      <span>{message}</span>
+    <div role="alert" className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-critical/40 bg-critical-soft px-4 py-3 text-sm text-critical shadow-sm">
+      <div className="flex items-center gap-2">
+        <span aria-hidden className="text-base">⚠️</span>
+        <span className="font-medium">{message}</span>
+      </div>
       {onRetry && (
-        <Button size="sm" onClick={onRetry}>
+        <Button size="sm" variant="danger" onClick={onRetry}>
           Retry
         </Button>
       )}
@@ -161,25 +168,25 @@ export function ErrorState({ message, onRetry }: { message: string; onRetry?: ()
 }
 
 export function Notice({ tone = "info", children }: { tone?: Tone; children: ReactNode }) {
-  return <div className={cx("rounded-lg px-3 py-2 text-sm", toneClass[tone])}>{children}</div>;
+  return <div className={cx("rounded-xl px-4 py-3 text-xs sm:text-sm font-medium", toneClass[tone])}>{children}</div>;
 }
 
 // ------------------------------------------------------------------- forms
 
 const fieldBase =
-  "w-full rounded-lg border border-border bg-surface px-3 text-sm placeholder:text-muted focus:border-info focus:outline-none disabled:opacity-60";
+  "w-full rounded-lg border border-border bg-surface px-3 text-sm text-foreground placeholder:text-muted/70 transition focus:border-info focus:ring-1 focus:ring-info focus:outline-none disabled:opacity-60 disabled:cursor-not-allowed";
 
 export function Field({ label, hint, error, children, id }: { label: string; hint?: string; error?: string; children: (id: string) => ReactNode; id?: string }) {
   const auto = useId();
   const fieldId = id ?? auto;
   return (
     <div className="space-y-1.5">
-      <label htmlFor={fieldId} className="block text-xs font-medium text-muted">
+      <label htmlFor={fieldId} className="block text-xs font-semibold uppercase tracking-wider text-muted">
         {label}
       </label>
       {children(fieldId)}
-      {hint && !error && <p className="text-xs text-muted">{hint}</p>}
-      {error && <p className="text-xs text-critical">{error}</p>}
+      {hint && !error && <p className="text-[11px] text-muted">{hint}</p>}
+      {error && <p className="text-[11px] font-medium text-critical">{error}</p>}
     </div>
   );
 }
@@ -189,11 +196,11 @@ export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
 }
 
 export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
-  return <select {...props} className={cx(fieldBase, "h-10", props.className)} />;
+  return <select {...props} className={cx(fieldBase, "h-10 cursor-pointer", props.className)} />;
 }
 
 export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea rows={3} {...props} className={cx(fieldBase, "py-2", props.className)} />;
+  return <textarea rows={3} {...props} className={cx(fieldBase, "py-2.5", props.className)} />;
 }
 
 // ------------------------------------------------------------------ dialog
@@ -213,6 +220,7 @@ export function Dialog({ open, onClose, title, children, footer, wide }: {
     if (open && !el.open) el.showModal();
     if (!open && el.open) el.close();
   }, [open]);
+
   return (
     <dialog
       ref={ref}
@@ -220,22 +228,22 @@ export function Dialog({ open, onClose, title, children, footer, wide }: {
       onCancel={onClose}
       aria-labelledby="dialog-title"
       className={cx(
-        "m-auto w-[calc(100%-2rem)] rounded-xl border border-border bg-surface p-0 text-foreground shadow-xl",
+        "m-auto w-[calc(100%-2rem)] rounded-2xl border border-border bg-surface p-0 text-foreground shadow-2xl backdrop:backdrop-blur-sm",
         wide ? "max-w-2xl" : "max-w-lg",
       )}
     >
       {open && (
         <div className="flex max-h-[85vh] flex-col">
-          <header className="flex items-center justify-between gap-4 border-b border-border px-5 py-3">
-            <h2 id="dialog-title" className="font-semibold">
+          <header className="flex items-center justify-between gap-4 border-b border-border bg-surface-muted/60 px-5 py-3.5">
+            <h2 id="dialog-title" className="font-bold text-sm sm:text-base text-white tracking-tight">
               {title}
             </h2>
-            <button type="button" onClick={onClose} className="rounded-md p-1 text-muted hover:bg-surface-muted" aria-label="Close">
+            <button type="button" onClick={onClose} className="rounded-lg p-1.5 text-muted hover:bg-surface-elevated hover:text-white transition" aria-label="Close">
               ✕
             </button>
           </header>
           <div className="overflow-y-auto px-5 py-4">{children}</div>
-          {footer && <footer className="flex flex-wrap justify-end gap-2 border-t border-border px-5 py-3">{footer}</footer>}
+          {footer && <footer className="flex flex-wrap justify-end gap-2.5 border-t border-border bg-surface-muted/40 px-5 py-3.5">{footer}</footer>}
         </div>
       )}
     </dialog>
@@ -257,14 +265,14 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   return (
     <ToastContext.Provider value={push}>
       {children}
-      <div className="pointer-events-none fixed inset-x-4 bottom-4 z-50 flex flex-col items-end gap-2 sm:left-auto" aria-live="polite">
+      <div className="pointer-events-none fixed inset-x-4 bottom-4 z-[9999] flex flex-col items-end gap-2.5 sm:left-auto" aria-live="polite">
         {toasts.map((t) => (
           <div
             key={t.id}
             role={t.tone === "error" ? "alert" : "status"}
             className={cx(
-              "pointer-events-auto max-w-sm rounded-lg border px-4 py-3 text-sm shadow-lg",
-              t.tone === "success" ? "border-low/30 bg-low-soft text-low" : "border-critical/30 bg-critical-soft text-critical",
+              "pointer-events-auto max-w-sm rounded-xl border px-4 py-3 text-xs sm:text-sm shadow-xl font-medium",
+              t.tone === "success" ? "border-low/40 bg-low-soft text-low" : "border-critical/40 bg-critical-soft text-critical",
             )}
           >
             {t.message}
@@ -281,11 +289,11 @@ export const useToast = () => useContext(ToastContext);
 
 export function Pagination({ page, pages = 1, total, onPage }: { page: number; pages?: number; total: number; onPage: (p: number) => void }) {
   const pageCount = pages ?? 1;
-  if (pageCount <= 1) return <p className="text-xs text-muted">{total} total</p>;
+  if (pageCount <= 1) return <p className="text-xs text-muted font-medium">{total} total items</p>;
   return (
-    <nav className="flex items-center justify-between gap-3" aria-label="Pagination">
-      <p className="text-xs text-muted">
-        Page {page} of {pages} · {total} total
+    <nav className="flex items-center justify-between gap-3 text-xs" aria-label="Pagination">
+      <p className="text-muted font-medium">
+        Page <span className="text-foreground font-semibold">{page}</span> of <span className="text-foreground font-semibold">{pages}</span> · {total} total
       </p>
       <div className="flex gap-2">
         <Button size="sm" disabled={page <= 1} onClick={() => onPage(page - 1)}>

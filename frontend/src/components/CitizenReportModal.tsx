@@ -71,16 +71,19 @@ export default function CitizenReportModal({ isOpen, onClose, pickedCoords }: Pr
 
   const trackedReport = reports.find((r) => r.id.toLowerCase() === trackSearchId.trim().toLowerCase());
 
+  const inputClass =
+    "w-full bg-[#0b1324] border border-border rounded-lg px-3 py-2 text-xs sm:text-sm text-foreground placeholder:text-muted/60 transition focus:outline-none focus:border-info focus:ring-1 focus:ring-info";
+
   return (
-    <div className="fixed inset-0 z-[2500] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-2xl max-w-xl w-full shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-[2500] bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn font-sans">
+      <div className="bg-[#0b1324] text-foreground rounded-2xl max-w-xl w-full shadow-2xl border border-border overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="bg-[#0c4a75] px-5 py-3.5 text-white flex items-center justify-between">
+        <div className="bg-[#093452] px-5 py-4 border-b border-[#062338] text-white flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <span className="text-2xl">🚨</span>
             <div>
-              <h3 className="font-bold text-base leading-tight">Public Emergency Dispatch & Report</h3>
-              <p className="text-[11px] text-sky-200">NDMA / ERSS 112 Rapid Triage Channel</p>
+              <h3 className="font-bold text-sm sm:text-base leading-tight">Emergency Incident &amp; SOS Reporting</h3>
+              <p className="text-[11px] text-sky-200/80">NDMA / ERSS 112 Rapid Dispatch Intake</p>
             </div>
           </div>
           <button
@@ -88,276 +91,229 @@ export default function CitizenReportModal({ isOpen, onClose, pickedCoords }: Pr
               setSubmittedReportId(null);
               onClose();
             }}
-            className="text-white/80 hover:text-white text-lg font-bold cursor-pointer"
+            className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer"
+            aria-label="Close dialog"
           >
             ✕
           </button>
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex border-b border-slate-200 bg-slate-50 text-xs font-semibold">
+        <div className="flex border-b border-border bg-[#0b1324] text-xs font-semibold">
           <button
-            onClick={() => {
-              setActiveTab("new");
-              setSubmittedReportId(null);
-            }}
-            className={`flex-1 py-2.5 text-center transition-colors cursor-pointer ${
+            onClick={() => setActiveTab("new")}
+            className={`flex-1 py-3 text-center transition cursor-pointer border-b-2 flex items-center justify-center gap-1.5 ${
               activeTab === "new"
-                ? "border-b-2 border-sky-600 text-sky-800 bg-white"
-                : "text-slate-500 hover:text-slate-800"
+                ? "border-sky-400 text-sky-300 bg-surface-muted/30"
+                : "border-transparent text-muted hover:text-foreground hover:bg-surface-muted/10"
             }`}
           >
-            ➕ Submit Emergency Report
+            <span>📝</span> Submit Situation Report
           </button>
           <button
             onClick={() => setActiveTab("track")}
-            className={`flex-1 py-2.5 text-center transition-colors cursor-pointer ${
+            className={`flex-1 py-3 text-center transition cursor-pointer border-b-2 flex items-center justify-center gap-1.5 ${
               activeTab === "track"
-                ? "border-b-2 border-sky-600 text-sky-800 bg-white"
-                : "text-slate-500 hover:text-slate-800"
+                ? "border-sky-400 text-sky-300 bg-surface-muted/30"
+                : "border-transparent text-muted hover:text-foreground hover:bg-surface-muted/10"
             }`}
           >
-            🔍 Track Submission Status
+            <span>🔍</span> Track Active Report Status
           </button>
         </div>
 
-        {/* Body */}
-        <div className="p-5 overflow-y-auto space-y-4 text-xs text-slate-700">
-          {activeTab === "new" ? (
-            submittedReportId ? (
-              <div className="text-center py-6 space-y-3">
-                <div className="w-14 h-14 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center text-3xl mx-auto shadow-inner">
-                  ✓
-                </div>
-                <h4 className="text-base font-bold text-slate-900">Emergency Report Dispatched</h4>
-                <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                  Your distress report has been queued in the ResQ Operations Center. Response units and AI triage have been notified.
-                </p>
-                <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 max-w-xs mx-auto text-sky-900 font-mono text-sm font-bold">
-                  Reference ID: {submittedReportId}
-                </div>
-                <p className="text-[11px] text-slate-400">Save this Reference ID to track real-time verification and ambulance/rescue progress.</p>
-                <div className="pt-2 flex justify-center gap-2">
-                  <button
-                    onClick={() => {
-                      setTrackSearchId(submittedReportId);
-                      setActiveTab("track");
-                    }}
-                    className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-lg font-semibold cursor-pointer"
-                  >
-                    Track Status Now
-                  </button>
-                  <button
-                    onClick={() => {
-                      setSubmittedReportId(null);
-                      onClose();
-                    }}
-                    className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-4 py-2 rounded-lg font-semibold cursor-pointer"
-                  >
-                    Close
-                  </button>
-                </div>
+        {/* Content Body */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {submittedReportId ? (
+            <div className="text-center py-6 space-y-3">
+              <div className="size-14 mx-auto rounded-full bg-emerald-950/80 border border-emerald-600/50 flex items-center justify-center text-2xl text-emerald-300 shadow-lg">
+                ✓
               </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-3.5">
-                {/* Disaster Category */}
-                <div>
-                  <label className="block font-bold text-slate-800 mb-1">
-                    Select Disaster Type <span className="text-red-500">*</span>
-                  </label>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[
-                      { type: "Flood / Urban Flood", icon: "🌊" },
-                      { type: "Cyclone / Coastal Flooding", icon: "🌀" },
-                      { type: "Major Urban / Building Fire", icon: "🔥" },
-                    ].map((item) => (
-                      <button
-                        type="button"
-                        key={item.type}
-                        onClick={() => setCategory(item.type as DisasterCategory)}
-                        className={`p-2.5 rounded-lg border text-left flex flex-col items-center justify-center text-center gap-1 transition-all cursor-pointer ${
-                          category === item.type
-                            ? "bg-sky-50 border-sky-600 text-sky-900 ring-2 ring-sky-500/20 font-bold"
-                            : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"
-                        }`}
-                      >
-                        <span className="text-xl">{item.icon}</span>
-                        <span className="text-[11px] leading-tight">{item.type}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
+              <h4 className="text-lg font-bold text-white">Emergency Report Registered</h4>
+              <p className="text-xs text-muted max-w-sm mx-auto leading-relaxed">
+                Your report has been forwarded to the NDMA Integrated Command Hub and active responder units in your sector.
+              </p>
+              <div className="bg-surface-muted border border-border p-3 rounded-xl max-w-xs mx-auto">
+                <span className="text-[10px] text-muted uppercase tracking-wider block">Your Tracking Reference ID</span>
+                <span className="font-mono text-base font-bold text-sky-400 select-all">{submittedReportId}</span>
+              </div>
+              <div className="pt-2 flex justify-center gap-2">
+                <button
+                  onClick={() => setSubmittedReportId(null)}
+                  className="rounded-lg border border-border bg-surface px-4 py-2 text-xs font-semibold text-muted hover:text-white"
+                >
+                  Submit Another Report
+                </button>
+                <button
+                  onClick={() => {
+                    setSubmittedReportId(null);
+                    onClose();
+                  }}
+                  className="rounded-lg bg-sky-600 hover:bg-sky-500 px-4 py-2 text-xs font-semibold text-white shadow-sm"
+                >
+                  Return to Map
+                </button>
+              </div>
+            </div>
+          ) : activeTab === "new" ? (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
+                  Disaster / Emergency Type <span className="text-sky-400">*</span>
+                </label>
+                <select
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value as DisasterCategory)}
+                  className={inputClass}
+                >
+                  <option value="Flood / Urban Flood">🌊 Flood / Urban Inundation</option>
+                  <option value="Cyclone / Coastal Flooding">🌀 Cyclone / Coastal Storm</option>
+                  <option value="Major Urban / Building Fire">🔥 Major Urban / Structural Fire</option>
+                </select>
+              </div>
 
-                {/* Description */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
+                  Location Description &amp; Landmark <span className="text-sky-400">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={locationName}
+                  onChange={(e) => setLocationName(e.target.value)}
+                  placeholder="e.g. Near Old Bridge, Sector 4, Wayanad"
+                  className={inputClass}
+                />
+                <p className="text-[10px] text-muted mt-1 font-mono">
+                  Coordinates: {lat.toFixed(4)}° N, {lon.toFixed(4)}° E (Auto-tagged)
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
+                  Emergency Situation Details <span className="text-sky-400">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  placeholder="Describe trapped people, water level, structural damage, fire spread..."
+                  className={inputClass}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-bold text-slate-800 mb-1">
-                    Situation Description <span className="text-red-500">*</span>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
+                    Estimated People in Danger
                   </label>
-                  <textarea
-                    rows={3}
-                    value={description}
-                    onChange={(e) => setDescription(e.target.value)}
-                    placeholder="Describe trapped people, water height, fire intensity, floor level, landmarks..."
-                    required
-                    className="w-full border border-slate-300 rounded-lg p-2.5 text-xs text-slate-800 focus:outline-sky-600 bg-slate-50/50"
+                  <input
+                    type="number"
+                    min={1}
+                    value={affectedCount}
+                    onChange={(e) => setAffectedCount(Number(e.target.value))}
+                    className={inputClass}
                   />
                 </div>
 
-                {/* Location and Coords */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block font-bold text-slate-800 mb-1">Location Name / Landmark</label>
-                    <input
-                      type="text"
-                      value={locationName}
-                      onChange={(e) => setLocationName(e.target.value)}
-                      placeholder="e.g. Ward 4, Meppadi"
-                      className="w-full border border-slate-300 rounded-lg p-2 text-xs text-slate-800"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-bold text-slate-800 mb-1">Approx. Affected People</label>
-                    <input
-                      type="number"
-                      min={1}
-                      max={1000}
-                      value={affectedCount}
-                      onChange={(e) => setAffectedCount(Number(e.target.value))}
-                      className="w-full border border-slate-300 rounded-lg p-2 text-xs text-slate-800"
-                    />
-                  </div>
-                </div>
-
-                {/* Urgent Needs Pills */}
                 <div>
-                  <label className="block font-bold text-slate-800 mb-1">Immediate Urgent Needs</label>
-                  <div className="flex flex-wrap gap-1.5">
-                    {urgentNeedsOptions.map((need) => (
-                      <button
-                        type="button"
-                        key={need}
-                        onClick={() => handleNeedToggle(need)}
-                        className={`px-2.5 py-1 rounded-full text-[11px] font-medium border transition-colors cursor-pointer ${
-                          selectedNeeds.includes(need)
-                            ? "bg-red-600 text-white border-red-700"
-                            : "bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200"
-                        }`}
-                      >
-                        {selectedNeeds.includes(need) ? "✓ " : "+ "}
-                        {need}
-                      </button>
-                    ))}
-                  </div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
+                    Contact Phone (Optional)
+                  </label>
+                  <input
+                    type="tel"
+                    value={reporterPhone}
+                    onChange={(e) => setReporterPhone(e.target.value)}
+                    placeholder="+91 98765 43210"
+                    className={inputClass}
+                  />
                 </div>
+              </div>
 
-                {/* Contact Information */}
-                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
-                  <div>
-                    <label className="block font-medium text-slate-600 mb-0.5">Your Name (Optional)</label>
-                    <input
-                      type="text"
-                      value={reporterName}
-                      onChange={(e) => setReporterName(e.target.value)}
-                      placeholder="Ananya Verma"
-                      className="w-full border border-slate-200 rounded p-1.5 text-xs text-slate-700"
-                    />
-                  </div>
-                  <div>
-                    <label className="block font-medium text-slate-600 mb-0.5">Contact Phone (For First Responders)</label>
-                    <input
-                      type="tel"
-                      value={reporterPhone}
-                      onChange={(e) => setReporterPhone(e.target.value)}
-                      placeholder="+91 98765 00000"
-                      className="w-full border border-slate-200 rounded p-1.5 text-xs text-slate-700"
-                    />
-                  </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-2">
+                  Immediate Rescue Needs (Select All Applicable)
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {urgentNeedsOptions.map((need) => (
+                    <button
+                      key={need}
+                      type="button"
+                      onClick={() => handleNeedToggle(need)}
+                      className={`p-2 rounded-lg border text-left text-xs font-medium transition cursor-pointer flex items-center justify-between ${
+                        selectedNeeds.includes(need)
+                          ? "bg-sky-950/80 border-sky-500 text-sky-200 ring-1 ring-sky-500/50"
+                          : "bg-surface-muted/50 border-border text-muted hover:border-slate-700 hover:text-white"
+                      }`}
+                    >
+                      <span className="truncate">{need}</span>
+                      <span>{selectedNeeds.includes(need) ? "✓" : "+"}</span>
+                    </button>
+                  ))}
                 </div>
+              </div>
 
-                <div className="pt-2 flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={onClose}
-                    className="px-4 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white font-bold shadow-md cursor-pointer flex items-center gap-1.5"
-                  >
-                    <span>🚨</span> Submit Emergency Report
-                  </button>
-                </div>
-              </form>
-            )
-          ) : (
-            /* Track Submission Tab */
-            <div className="space-y-4">
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={trackSearchId}
-                  onChange={(e) => setTrackSearchId(e.target.value)}
-                  placeholder="Enter Reference ID (e.g. REP-2026-101)"
-                  className="flex-1 border border-slate-300 rounded-lg p-2 text-xs font-mono uppercase"
-                />
+              <div className="pt-2 border-t border-border flex justify-end gap-2.5">
                 <button
                   type="button"
-                  onClick={() => {}}
-                  className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-lg font-semibold cursor-pointer"
+                  onClick={onClose}
+                  className="rounded-xl border border-border bg-surface px-4 py-2.5 text-xs font-semibold text-muted hover:text-white transition cursor-pointer"
                 >
-                  Search
+                  Cancel
                 </button>
+                <button
+                  type="submit"
+                  className="rounded-xl bg-red-600 hover:bg-red-500 active:bg-red-700 px-5 py-2.5 text-xs font-bold text-white shadow-md shadow-red-950/50 transition cursor-pointer flex items-center gap-1.5"
+                >
+                  <span>🚨</span> Transmit Emergency SOS
+                </button>
+              </div>
+            </form>
+          ) : (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-muted mb-1.5">
+                  Enter Incident Reference or SOS ID
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={trackSearchId}
+                    onChange={(e) => setTrackSearchId(e.target.value)}
+                    placeholder="e.g. REP-8041 or INC-..."
+                    className={inputClass}
+                  />
+                </div>
               </div>
 
               {trackedReport ? (
-                <div className="border border-slate-200 rounded-xl p-4 bg-slate-50 space-y-2.5">
-                  <div className="flex items-center justify-between border-b border-slate-200 pb-2">
-                    <div>
-                      <span className="font-mono font-bold text-sky-900 text-sm">{trackedReport.id}</span>
-                      <span className="text-[11px] text-slate-500 ml-2">{trackedReport.category}</span>
-                    </div>
-                    <span
-                      className={`px-2 py-0.5 rounded text-[11px] font-bold ${
-                        trackedReport.verificationStatus === "VERIFIED"
-                          ? "bg-emerald-100 text-emerald-800 border border-emerald-300"
-                          : trackedReport.verificationStatus === "PENDING"
-                          ? "bg-amber-100 text-amber-800 border border-amber-300"
-                          : "bg-slate-200 text-slate-700"
-                      }`}
-                    >
+                <div className="bg-surface-muted border border-border rounded-xl p-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-mono text-xs font-bold text-sky-400">{trackedReport.id}</span>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-sky-950 text-sky-300 border border-sky-800">
                       {trackedReport.verificationStatus}
                     </span>
                   </div>
-
-                  <p className="text-xs text-slate-700">{trackedReport.description}</p>
-                  <div className="text-[11px] text-slate-500">
-                    <b>Location:</b> {trackedReport.locationName} • <b>Affected:</b> ~{trackedReport.affectedPeopleCount} people
+                  <div>
+                    <h5 className="font-bold text-white text-sm">{trackedReport.category}</h5>
+                    <p className="text-xs text-muted mt-0.5">{trackedReport.locationName}</p>
                   </div>
-
-                  {trackedReport.linkedIncidentId && (
-                    <div className="bg-sky-100/70 border border-sky-300 rounded p-2 text-[11px] text-sky-900">
-                      <b>Active Mission:</b> Linked to unified operational incident <b>{trackedReport.linkedIncidentId}</b>. First responders assigned.
-                    </div>
-                  )}
+                  <p className="text-xs text-foreground bg-surface p-2.5 rounded-lg border border-border">
+                    {trackedReport.description}
+                  </p>
+                  <div className="flex items-center justify-between text-[11px] text-muted pt-2 border-t border-border">
+                    <span>Submitted: {trackedReport.submittedAt}</span>
+                    <span>People in danger: {trackedReport.affectedPeopleCount}</span>
+                  </div>
+                </div>
+              ) : trackSearchId.trim() ? (
+                <div className="text-center py-8 text-muted text-xs bg-surface-muted/30 border border-dashed border-border rounded-xl">
+                  No matching emergency report found for &ldquo;{trackSearchId}&rdquo;.
                 </div>
               ) : (
-                <div className="text-center py-6 text-slate-400">
-                  <p>Enter your Reference ID above or select from recent reports:</p>
-                  <div className="mt-3 space-y-1.5 text-left max-w-sm mx-auto">
-                    {reports.slice(0, 3).map((r) => (
-                      <button
-                        key={r.id}
-                        onClick={() => setTrackSearchId(r.id)}
-                        className="w-full text-left p-2 rounded bg-white hover:bg-slate-100 border border-slate-200 text-xs flex justify-between cursor-pointer"
-                      >
-                        <span className="font-mono font-bold text-sky-800">{r.id}</span>
-                        <span className="text-slate-500 truncate max-w-[150px]">{r.locationName}</span>
-                        <span className="text-slate-400">({r.verificationStatus})</span>
-                      </button>
-                    ))}
-                  </div>
+                <div className="text-center py-8 text-muted text-xs bg-surface-muted/30 border border-dashed border-border rounded-xl">
+                  Enter an SOS Reference ID above to check dispatch progress.
                 </div>
               )}
             </div>

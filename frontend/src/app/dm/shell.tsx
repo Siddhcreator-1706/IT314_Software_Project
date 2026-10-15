@@ -45,7 +45,10 @@ export function DmShell({ user, signOut, children }: { user: StaffUser; signOut:
   const items = NAV.filter((n) => !n.permission || user.permissions.includes(n.permission));
 
   const nav = (
-    <nav aria-label="Workspace" className="space-y-0.5">
+    <nav aria-label="Workspace Navigation" className="space-y-1">
+      <div className="px-3 py-2 text-[11px] font-bold uppercase tracking-wider text-muted">
+        Operations Management
+      </div>
       {items.map((item) => (
         <Link
           key={item.href}
@@ -53,14 +56,16 @@ export function DmShell({ user, signOut, children }: { user: StaffUser; signOut:
           onClick={() => setOpen(false)}
           aria-current={isActive(item.href) ? "page" : undefined}
           className={cx(
-            "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
-            isActive(item.href) ? "bg-sky-500/15 font-semibold text-sky-300 ring-1 ring-sky-500/40" : "text-muted hover:bg-surface-muted hover:text-foreground",
+            "flex items-center gap-3 rounded-lg px-3 py-2.5 text-xs sm:text-sm font-medium transition-all",
+            isActive(item.href)
+              ? "bg-sky-500/15 font-semibold text-sky-300 ring-1 ring-sky-500/40 shadow-xs"
+              : "text-muted hover:bg-surface-muted hover:text-foreground",
           )}
         >
-          <span aria-hidden className="w-4 text-center">
+          <span aria-hidden className="w-5 text-center text-sm">
             {item.icon}
           </span>
-          {item.label}
+          <span>{item.label}</span>
         </Link>
       ))}
     </nav>
@@ -69,43 +74,76 @@ export function DmShell({ user, signOut, children }: { user: StaffUser; signOut:
   return (
     <UserContext.Provider value={user}>
       <ToastProvider>
-        <div className="dm-theme flex h-screen w-full flex-col font-sans">
-          {/* Same top banner as the ResQ login page */}
-          <header className="z-30 flex h-14 shrink-0 items-center gap-3 border-b border-[#093554] bg-[#0c4a75] px-4 text-white shadow-md sm:px-6">
-            <button className="rounded-md p-2 text-sky-100 hover:bg-white/10 lg:hidden" onClick={() => setOpen(true)} aria-label="Open navigation">
-              ☰
-            </button>
-            <Brand />
-            <span className="hidden rounded-full border border-sky-300/40 bg-sky-400/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-sky-100 md:inline">
-              Disaster Management
-            </span>
-            <div className="ml-auto flex items-center gap-3">
-              <Link href="/" className="hidden items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs transition hover:bg-white/20 md:flex">
-                <span aria-hidden>←</span> General Dashboard
+        <div className="dm-theme flex h-screen w-full flex-col font-sans bg-[#070d18] text-[#f8fafc]">
+          {/* Top Brand Banner */}
+          <header className="z-30 flex h-14 shrink-0 items-center justify-between border-b border-[#062338] bg-[#093452] px-4 text-white shadow-md sm:px-6">
+            <div className="flex items-center gap-3">
+              <button
+                className="rounded-lg p-1.5 text-sky-200 hover:bg-white/10 lg:hidden cursor-pointer"
+                onClick={() => setOpen(true)}
+                aria-label="Open navigation"
+              >
+                ☰
+              </button>
+              <Brand />
+              <span className="hidden rounded-full border border-sky-400/30 bg-sky-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-200 md:inline">
+                Command Workspace
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3">
+              <Link
+                href="/"
+                className="hidden items-center gap-1.5 rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/20 md:flex"
+              >
+                <span aria-hidden>←</span> Interactive Map
               </Link>
               <div className="hidden text-right sm:block">
-                <p className="text-sm font-semibold leading-tight">{user.name}</p>
+                <p className="text-xs font-semibold leading-tight text-white">{user.name}</p>
                 <p className="text-[10px] text-sky-200/80">
                   {user.permissions.length ? user.permissions.map((p) => PERMISSION_LABEL[p] ?? p).join(" · ") : "Disaster Management"}
                 </p>
               </div>
               <form action={signOut}>
-                <button className="rounded-full bg-white/10 px-3 py-1.5 text-xs transition hover:bg-white/20">Sign out</button>
+                <button
+                  type="submit"
+                  className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/20 cursor-pointer"
+                >
+                  Sign out
+                </button>
               </form>
             </div>
           </header>
 
           <div className="flex min-h-0 flex-1">
-            <aside className="hidden w-56 shrink-0 overflow-y-auto border-r border-border bg-surface p-3 lg:block">{nav}</aside>
+            <aside className="hidden w-60 shrink-0 overflow-y-auto border-r border-border bg-surface p-3 lg:block">
+              {nav}
+            </aside>
 
             {open && (
               <div className="fixed inset-0 z-40 lg:hidden" role="dialog" aria-modal="true" aria-label="Navigation">
-                <button className="absolute inset-0 bg-black/60" aria-label="Close navigation" onClick={() => setOpen(false)} />
-                <div className="absolute inset-y-0 left-0 w-64 overflow-y-auto border-r border-border bg-surface p-3 shadow-xl">{nav}</div>
+                <button
+                  className="absolute inset-0 bg-black/70 backdrop-blur-xs cursor-pointer"
+                  aria-label="Close navigation"
+                  onClick={() => setOpen(false)}
+                />
+                <div className="absolute inset-y-0 left-0 w-64 overflow-y-auto border-r border-border bg-surface p-3 shadow-2xl">
+                  <div className="mb-3 flex items-center justify-between border-b border-border pb-2 px-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-sky-300">ResQ Menu</span>
+                    <button
+                      onClick={() => setOpen(false)}
+                      className="rounded p-1 text-muted hover:text-white"
+                      aria-label="Close menu"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  {nav}
+                </div>
               </div>
             )}
 
-            {/* The ResQ body is fixed-height, so the workspace scrolls inside this pane. */}
+            {/* Scrollable content pane */}
             <div className="min-w-0 flex-1 overflow-y-auto">
               <main className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 sm:py-8">{children}</main>
             </div>
@@ -118,16 +156,16 @@ export function DmShell({ user, signOut, children }: { user: StaffUser; signOut:
 
 function Brand() {
   return (
-    <Link href="/dm" className="flex items-center gap-2.5">
-      <span className="flex size-8 items-center justify-center rounded-full border border-white bg-sky-400/20 text-lg" aria-hidden>
+    <Link href="/dm" className="flex items-center gap-2.5 group">
+      <span className="flex size-8 items-center justify-center rounded-full border border-white/30 bg-sky-400/20 text-base shadow-sm group-hover:scale-105 transition" aria-hidden>
         🛡️
       </span>
       <span className="leading-tight">
         <span className="flex items-baseline gap-1.5">
-          <span className="text-xl font-extrabold">ResQ</span>
-          <span className="text-xs font-light text-sky-200">GeoPlatform</span>
+          <span className="text-xl font-extrabold tracking-tight">ResQ</span>
+          <span className="text-xs font-light text-sky-200">Command</span>
         </span>
-        <span className="block text-[9px] text-sky-200/80">NDMA Disaster Response Coordination Hub</span>
+        <span className="block text-[9px] text-sky-200/80">NDMA Response Coordination Hub</span>
       </span>
     </Link>
   );

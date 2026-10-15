@@ -9,12 +9,11 @@ interface AnalyticsModalProps {
 }
 
 export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({ isOpen, onClose }) => {
-  const { incidents, dispatches, responders, resources, reports } = useResQ();
+  const { incidents, responders, resources, reports } = useResQ();
   const [exportSuccess, setExportSuccess] = useState(false);
 
   if (!isOpen) return null;
 
-  // Real aggregations computed from live shared records
   const activeIncidents = incidents.filter(
     (i) => i.lifecycleStatus !== "RESOLVED" && i.lifecycleStatus !== "CLOSED"
   );
@@ -24,7 +23,6 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({ isOpen, onClose 
   ).length;
   const pendingReports = reports.filter((r) => r.verificationStatus === "PENDING").length;
 
-  // Breakdown by disaster category
   const categoryCounts: Record<string, number> = {
     "Flood / Urban Flood": 0,
     "Cyclone / Coastal Flooding": 0,
@@ -36,7 +34,6 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({ isOpen, onClose 
     }
   });
 
-  // Severity counts
   const severityCounts = {
     CRITICAL: incidents.filter((i) => i.severity === "CRITICAL").length,
     HIGH: incidents.filter((i) => i.severity === "HIGH").length,
@@ -44,17 +41,14 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({ isOpen, onClose 
     LOW: incidents.filter((i) => i.severity === "LOW").length,
   };
 
-  // Resource total vs allocated
   const totalResourceUnits = resources.reduce((acc, r) => acc + r.totalStock, 0);
   const allocatedResourceUnits = resources.reduce((acc, r) => acc + r.allocatedStock, 0);
   const resourceUtilizationPct = totalResourceUnits > 0
     ? Math.round((allocatedResourceUnits / totalResourceUnits) * 100)
     : 0;
 
-  // Units deployed
   const deployedResponders = responders.filter((r) => r.status !== "AVAILABLE").length;
 
-  // CSV Export Generator
   const handleExportCSV = () => {
     const headers = [
       "ID",
@@ -103,170 +97,139 @@ export const AnalyticsModal: React.FC<AnalyticsModalProps> = ({ isOpen, onClose 
   };
 
   return (
-    <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/65 backdrop-blur-xs p-4 animate-in fade-in duration-200">
-      <div className="bg-[#0b1120] border border-[#1e293b] text-slate-100 rounded-xl shadow-2xl max-w-3xl w-full flex flex-col max-h-[90vh] overflow-hidden">
+    <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fadeIn font-sans">
+      <div className="bg-[#0b1324] border border-border text-foreground rounded-2xl shadow-2xl max-w-4xl w-full flex flex-col max-h-[90vh] overflow-hidden">
         {/* Header */}
-        <div className="px-5 py-3.5 bg-slate-900 border-b border-slate-800 flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <span className="text-xl">📊</span>
+        <div className="px-6 py-4 bg-[#093452] border-b border-[#062338] text-white flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="size-9 rounded-xl bg-sky-500/20 border border-sky-400/40 flex items-center justify-center text-sky-300 font-bold text-base">
+              📊
+            </div>
             <div>
-              <h2 className="text-sm font-bold text-white tracking-wide">
-                DISASTER RESPONSE ANALYTICS & SITUATION REPORT
+              <h2 className="text-base font-bold text-white tracking-wide">
+                Operational Analytics &amp; Situation Metrics
               </h2>
-              <p className="text-[11px] text-slate-400">
-                Aggregated metrics derived in real-time from active incident logs
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-white hover:bg-slate-800 p-1.5 rounded transition text-sm"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Body */}
-        <div className="p-5 overflow-y-auto space-y-5 flex-1">
-          {/* Top KPI Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
-            <div className="bg-slate-900/90 border border-slate-800 p-3 rounded-lg">
-              <span className="text-[10px] text-slate-400 uppercase font-semibold block">Active Incidents</span>
-              <span className="text-2xl font-bold font-mono text-white">{activeIncidents.length}</span>
-              <span className="text-[10px] text-slate-400 block mt-1">Total: {incidents.length} logged</span>
-            </div>
-            <div className="bg-red-950/20 border border-red-900/40 p-3 rounded-lg">
-              <span className="text-[10px] text-red-400 uppercase font-semibold block">Critical Severity</span>
-              <span className="text-2xl font-bold font-mono text-red-400">{criticalCount}</span>
-              <span className="text-[10px] text-slate-400 block mt-1">Immediate action required</span>
-            </div>
-            <div className="bg-blue-950/20 border border-blue-900/40 p-3 rounded-lg">
-              <span className="text-[10px] text-blue-400 uppercase font-semibold block">Deployed Responders</span>
-              <span className="text-2xl font-bold font-mono text-cyan-400">{deployedResponders} / {responders.length}</span>
-              <span className="text-[10px] text-slate-400 block mt-1">{dispatches.length} missions executed</span>
-            </div>
-            <div className="bg-emerald-950/20 border border-emerald-900/40 p-3 rounded-lg">
-              <span className="text-[10px] text-emerald-400 uppercase font-semibold block">Resolved / Closed</span>
-              <span className="text-2xl font-bold font-mono text-emerald-400">{resolvedCount}</span>
-              <span className="text-[10px] text-slate-400 block mt-1">Operations completed</span>
+              <p className="text-[11px] text-sky-200/80">Real-time emergency incident aggregations and logistics utilization</p>
             </div>
           </div>
 
-          {/* Disaster Type Distribution */}
-          <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-4">
-            <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider mb-3">
-              Distribution by Disaster Category (Exclusive to 3 Supported Types)
-            </h3>
-            <div className="space-y-3 text-xs">
-              {Object.entries(categoryCounts).map(([cat, count]) => {
-                const total = incidents.length || 1;
-                const pct = Math.round((count / total) * 100);
-                return (
-                  <div key={cat} className="space-y-1">
-                    <div className="flex justify-between text-[11px]">
-                      <span className="text-slate-300 font-medium">{cat}</span>
-                      <span className="font-mono text-slate-400 font-bold">{count} incidents ({pct}%)</span>
-                    </div>
-                    <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden">
-                      <div
-                        className="h-full bg-blue-500 rounded-full transition-all duration-500"
-                        style={{ width: `${pct}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Severity & Logistics Split */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {/* Severity Matrix */}
-            <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-4 text-xs">
-              <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider mb-3">
-                Severity Classification
-              </h3>
-              <div className="space-y-2">
-                <div className="flex justify-between items-center p-2 rounded bg-red-950/30 border border-red-900/30">
-                  <span className="text-red-300 font-semibold">CRITICAL</span>
-                  <span className="font-mono font-bold text-red-400">{severityCounts.CRITICAL}</span>
-                </div>
-                <div className="flex justify-between items-center p-2 rounded bg-orange-950/30 border border-orange-900/30">
-                  <span className="text-orange-300 font-semibold">HIGH</span>
-                  <span className="font-mono font-bold text-orange-400">{severityCounts.HIGH}</span>
-                </div>
-                <div className="flex justify-between items-center p-2 rounded bg-amber-950/30 border border-amber-900/30">
-                  <span className="text-amber-300 font-semibold">MODERATE</span>
-                  <span className="font-mono font-bold text-amber-400">{severityCounts.MODERATE}</span>
-                </div>
-                <div className="flex justify-between items-center p-2 rounded bg-emerald-950/30 border border-emerald-900/30">
-                  <span className="text-emerald-300 font-semibold">LOW</span>
-                  <span className="font-mono font-bold text-emerald-400">{severityCounts.LOW}</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Logistics & Relief Utilization */}
-            <div className="bg-slate-900/60 border border-slate-800 rounded-lg p-4 text-xs">
-              <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider mb-3">
-                Relief Supplies Utilization
-              </h3>
-              <div className="space-y-3">
-                <div>
-                  <div className="flex justify-between text-[11px] mb-1">
-                    <span className="text-slate-400">Total Warehouse Stock Allocated</span>
-                    <span className="font-mono font-bold text-emerald-400">{resourceUtilizationPct}%</span>
-                  </div>
-                  <div className="w-full h-2 bg-slate-950 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-emerald-500 rounded-full"
-                      style={{ width: `${resourceUtilizationPct}%` }}
-                    />
-                  </div>
-                </div>
-
-                <div className="pt-2 border-t border-slate-800 space-y-1.5 text-[11px] text-slate-300">
-                  <div className="flex justify-between">
-                    <span>Pending Intake Reports:</span>
-                    <span className="font-mono font-bold text-amber-400">{pendingReports}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Est. Affected Population:</span>
-                    <span className="font-mono font-bold text-white">
-                      {incidents.reduce((acc, i) => acc + i.affectedPeopleEstimate, 0).toLocaleString()} citizens
-                    </span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Avg. Response Time (Simulated):</span>
-                    <span className="font-mono font-bold text-cyan-400">14.2 mins</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Footer with CSV Export */}
-        <div className="px-5 py-3.5 bg-slate-900 border-t border-slate-800 flex items-center justify-between">
-          <div>
-            {exportSuccess && (
-              <span className="text-xs text-emerald-400 font-medium">✓ CSV Report Downloaded Successfully</span>
-            )}
-          </div>
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
             <button
               onClick={handleExportCSV}
-              className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded text-xs font-bold shadow flex items-center gap-1.5 transition"
+              className="bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white text-xs font-semibold px-3.5 py-1.5 rounded-lg transition shadow-xs cursor-pointer flex items-center gap-1.5"
             >
-              <span>📥</span> Export Situation Report (CSV)
+              <span>📥</span> Export CSV Report
             </button>
             <button
               onClick={onClose}
-              className="px-3.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-medium transition"
+              className="text-white/70 hover:text-white p-1 rounded-lg hover:bg-white/10 transition cursor-pointer text-base font-bold"
+              aria-label="Close dialog"
             >
-              Close
+              ✕
             </button>
           </div>
+        </div>
+
+        {/* Content Body */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {exportSuccess && (
+            <div role="status" className="p-3 bg-emerald-950/80 border border-emerald-700/60 rounded-xl text-emerald-200 text-xs flex items-center gap-2">
+              <span>✓</span> CSV export generated and downloaded successfully.
+            </div>
+          )}
+
+          {/* Top KPI Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
+            <div className="bg-surface-muted/60 border border-border p-4 rounded-xl">
+              <span className="text-[10px] uppercase tracking-wider text-muted font-semibold block">Active Emergencies</span>
+              <span className="text-2xl sm:text-3xl font-extrabold text-white mt-1 block tabular-nums">{activeIncidents.length}</span>
+              <span className="text-[11px] text-critical font-medium mt-1 block">{criticalCount} Critical Priority</span>
+            </div>
+
+            <div className="bg-surface-muted/60 border border-border p-4 rounded-xl">
+              <span className="text-[10px] uppercase tracking-wider text-muted font-semibold block">Resolved Incidents</span>
+              <span className="text-2xl sm:text-3xl font-extrabold text-low mt-1 block tabular-nums">{resolvedCount}</span>
+              <span className="text-[11px] text-muted font-medium mt-1 block">Successfully Closed</span>
+            </div>
+
+            <div className="bg-surface-muted/60 border border-border p-4 rounded-xl">
+              <span className="text-[10px] uppercase tracking-wider text-muted font-semibold block">Units Committed</span>
+              <span className="text-2xl sm:text-3xl font-extrabold text-info mt-1 block tabular-nums">{deployedResponders}</span>
+              <span className="text-[11px] text-muted font-medium mt-1 block">of {responders.length} Tracked</span>
+            </div>
+
+            <div className="bg-surface-muted/60 border border-border p-4 rounded-xl">
+              <span className="text-[10px] uppercase tracking-wider text-muted font-semibold block">Logistics Load</span>
+              <span className="text-2xl sm:text-3xl font-extrabold text-amber-400 mt-1 block tabular-nums">{resourceUtilizationPct}%</span>
+              <span className="text-[11px] text-muted font-medium mt-1 block">{allocatedResourceUnits} Units Allocated</span>
+            </div>
+          </div>
+
+          {/* Chart Breakdowns */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {/* Category Breakdown */}
+            <div className="bg-surface-muted/40 border border-border p-4 rounded-xl space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted">Emergencies by Disaster Category</h3>
+              <div className="space-y-2.5 pt-1">
+                {Object.entries(categoryCounts).map(([cat, count]) => {
+                  const pct = incidents.length > 0 ? Math.round((count / incidents.length) * 100) : 0;
+                  return (
+                    <div key={cat} className="space-y-1">
+                      <div className="flex justify-between text-xs font-medium">
+                        <span className="text-foreground">{cat}</span>
+                        <span className="font-mono text-muted">{count} ({pct}%)</span>
+                      </div>
+                      <div className="h-2 bg-surface rounded-full overflow-hidden border border-border/60">
+                        <div
+                          className="h-full bg-sky-500 rounded-full transition-all duration-500"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Severity Breakdown */}
+            <div className="bg-surface-muted/40 border border-border p-4 rounded-xl space-y-3">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted">Severity Classification Breakdown</h3>
+              <div className="space-y-2.5 pt-1">
+                {(
+                  [
+                    ["CRITICAL", severityCounts.CRITICAL, "bg-critical"],
+                    ["HIGH", severityCounts.HIGH, "bg-high"],
+                    ["MODERATE", severityCounts.MODERATE, "bg-medium"],
+                    ["LOW", severityCounts.LOW, "bg-low"],
+                  ] as const
+                ).map(([sev, count, color]) => {
+                  const pct = incidents.length > 0 ? Math.round((count / incidents.length) * 100) : 0;
+                  return (
+                    <div key={sev} className="space-y-1">
+                      <div className="flex justify-between text-xs font-medium">
+                        <span className="text-foreground">{sev}</span>
+                        <span className="font-mono text-muted">{count} ({pct}%)</span>
+                      </div>
+                      <div className="h-2 bg-surface rounded-full overflow-hidden border border-border/60">
+                        <div
+                          className={`h-full ${color} rounded-full transition-all duration-500`}
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Pending Triage Notice */}
+          {pendingReports > 0 && (
+            <div className="bg-high-soft/60 border border-high/30 rounded-xl p-3.5 flex items-center justify-between text-xs text-high">
+              <span>Notice: {pendingReports} citizen SOS emergency report(s) awaiting command verification.</span>
+              <span className="font-semibold underline underline-offset-2">Queue Active →</span>
+            </div>
+          )}
         </div>
       </div>
     </div>

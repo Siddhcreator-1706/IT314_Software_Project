@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import Link from "next/link";
 import { ResQProvider, useResQ } from "../context/ResQContext";
 import CitizenReportModal from "../components/CitizenReportModal";
 import IncidentDetailPanel from "../components/IncidentDetailPanel";
@@ -118,64 +119,216 @@ function CommandDashboard({
   const active = incidents.filter((incident) => !["RESOLVED", "CLOSED"].includes(incident.lifecycleStatus)).length;
   const critical = incidents.filter((incident) => incident.severity === "CRITICAL").length;
   const cards = [
-    ["Active incidents", String(active), critical ? `${critical} critical` : "Live feed", "#eaf3ff", "#075cab"],
-    ["Units deployed", String(responders.length), `${dispatches.length} dispatches`, "#e9f9f0", "#078753"],
-    ["Response status", "Live", "Operations monitored", "#fff4e5", "#b45d00"],
-    ["Alerts", String(unreadAlertCount), unreadAlertCount ? "Needs review" : "All clear", "#fff0f0", "#ca3131"],
+    { label: "Active Incidents", value: String(active), detail: critical ? `${critical} critical threats` : "Normal monitoring", tone: "bg-sky-500/10 text-sky-400 border-sky-500/20" },
+    { label: "Units Deployed", value: String(responders.length), detail: `${dispatches.length} active dispatches`, tone: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20" },
+    { label: "Operational Status", value: "Ready", detail: "Real-time sync online", tone: "bg-amber-500/10 text-amber-400 border-amber-500/20" },
+    { label: "Critical Alerts", value: String(unreadAlertCount), detail: unreadAlertCount ? "Requires review" : "No pending warnings", tone: unreadAlertCount ? "bg-red-500/10 text-red-400 border-red-500/20" : "bg-slate-500/10 text-slate-400 border-slate-500/20" },
   ];
 
   return (
-    <main className="h-screen overflow-y-auto bg-[#f4f7fa] text-[#13263d]">
-      <div className="flex h-9 items-center justify-between bg-[#07569c] px-4 text-[11px] text-white sm:px-7">
-        <span>Emergency Response &amp; Coordination Platform</span>
-        <span className="flex items-center gap-2 sm:gap-5"><span className="text-emerald-300">●</span> All systems operational <span className="hidden sm:inline">◎ English⌄</span></span>
+    <main className="h-screen overflow-y-auto bg-[#070d18] text-[#f8fafc] font-sans">
+      {/* Top Banner */}
+      <div className="flex h-8 items-center justify-between border-b border-[#062338] bg-[#093452] px-4 text-[11px] text-sky-100 sm:px-6">
+        <span className="font-medium">NDMA Emergency Response &amp; Tactical Coordination Hub</span>
+        <span className="flex items-center gap-3 sm:gap-5">
+          <span className="flex items-center gap-1.5 text-emerald-400 font-semibold"><span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" /> All systems nominal</span>
+          <span className="hidden sm:inline text-sky-200/80">Region: India (National Ops)</span>
+        </span>
       </div>
-      <header className="flex h-20 items-center justify-between border-b border-slate-200 bg-white px-4 sm:px-7">
+
+      {/* Main Header */}
+      <header className="flex h-16 items-center justify-between border-b border-border bg-[#0b1324] px-4 sm:px-6 shadow-sm">
         <div className="flex items-center gap-3">
-          <div className="grid h-12 w-12 place-items-center rounded-lg border border-sky-200 bg-sky-50 text-2xl text-[#07569c]" aria-hidden>🛡</div>
-          <div><h1 className="text-[27px] leading-none font-bold tracking-tight text-[#07569c]">ResQ <span className="font-light text-slate-700">AI</span></h1><p className="mt-1.5 text-[11px] text-slate-500">Integrated Emergency Management</p></div>
+          <div className="grid h-10 w-10 place-items-center rounded-xl border border-sky-500/30 bg-sky-500/10 text-xl text-sky-400 shadow-xs" aria-hidden>
+            🛡️
+          </div>
+          <div>
+            <div className="flex items-baseline gap-1.5 leading-tight">
+              <h1 className="text-xl font-extrabold tracking-tight text-white">ResQ</h1>
+              <span className="text-xs font-semibold text-sky-400 uppercase tracking-wider">Command</span>
+            </div>
+            <p className="text-[11px] text-muted">Integrated Emergency Management System</p>
+          </div>
         </div>
-        <div className="text-right"><p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Regional command</p><p className="mt-1.5 text-sm font-semibold">National Operations Center</p></div>
+
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={onAnalytics}
+            className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-semibold text-muted hover:text-white hover:bg-surface-muted transition cursor-pointer"
+          >
+            Analytics
+          </button>
+          <button
+            onClick={onReport}
+            className="rounded-lg bg-sky-600 hover:bg-sky-500 active:bg-sky-700 px-3.5 py-1.5 text-xs font-semibold text-white shadow-sm transition cursor-pointer flex items-center gap-1.5"
+          >
+            <span>+</span> Situation Report
+          </button>
+        </div>
       </header>
-      <div className="flex min-h-[calc(100vh-116px)]">
-        <aside className="hidden w-60 shrink-0 border-r border-slate-200 bg-white px-3 py-5 lg:block">
-          <p className="mb-3 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-500">Operations</p>
+
+      {/* Body Layout */}
+      <div className="flex min-h-[calc(100vh-96px)]">
+        {/* Sidebar Nav */}
+        <aside className="hidden w-60 shrink-0 border-r border-border bg-[#0b1324] px-3 py-5 lg:block">
+          <p className="mb-2.5 px-3 text-[10px] font-bold uppercase tracking-wider text-muted">Tactical Deck</p>
           <nav className="space-y-1 text-sm">
-            <button aria-current="page" className="w-full rounded-lg border-l-4 border-[#075cab] bg-[#e2f0ff] px-3 py-3 text-left font-semibold text-[#075cab]">▦ &nbsp; Dashboard</button>
-            <button onClick={onWorkspace} className="w-full rounded-lg px-3 py-3 text-left text-slate-600 transition hover:bg-slate-50">◉ &nbsp; Live incidents <span className="float-right rounded bg-slate-100 px-2 text-xs">{active}</span></button>
-            <button onClick={onMap} className="w-full rounded-lg px-3 py-3 text-left text-slate-600 transition hover:bg-slate-50">⌖ &nbsp; Incident map</button>
-            <button onClick={onWorkspace} className="w-full rounded-lg px-3 py-3 text-left text-slate-600 transition hover:bg-slate-50">➤ &nbsp; Dispatch center</button>
-            <button onClick={onAlerts} className="w-full rounded-lg px-3 py-3 text-left text-slate-600 transition hover:bg-slate-50">♧ &nbsp; Alerts {unreadAlertCount > 0 && <span className="float-right rounded bg-red-50 px-2 text-xs text-red-600">{unreadAlertCount}</span>}</button>
-            <button onClick={onWorkspace} className="w-full rounded-lg px-3 py-3 text-left text-slate-600 transition hover:bg-slate-50">♙ &nbsp; Responders</button>
-            <div className="my-3 border-t border-slate-200" />
-            <button onClick={onWorkspace} className="w-full rounded-lg px-3 py-3 text-left text-slate-600 transition hover:bg-slate-50">♙ &nbsp; Resources</button>
-            <button onClick={onAnalytics} className="w-full rounded-lg px-3 py-3 text-left text-slate-600 transition hover:bg-slate-50">▥ &nbsp; Analytics &amp; reports</button>
+            <button aria-current="page" className="w-full rounded-lg bg-sky-500/15 border border-sky-500/30 px-3 py-2 text-left font-semibold text-sky-300 flex items-center justify-between">
+              <span>▦ &nbsp; Overview</span>
+              <span className="text-[10px] bg-sky-400/20 text-sky-300 px-1.5 py-0.2 rounded font-mono">LIVE</span>
+            </button>
+            <button onClick={onWorkspace} className="w-full rounded-lg px-3 py-2 text-left text-muted transition hover:bg-surface-muted hover:text-foreground flex items-center justify-between">
+              <span>◉ &nbsp; Incidents</span>
+              <span className="rounded bg-surface-muted border border-border px-1.5 text-xs text-muted font-mono">{active}</span>
+            </button>
+            <button onClick={onMap} className="w-full rounded-lg px-3 py-2 text-left text-muted transition hover:bg-surface-muted hover:text-foreground">
+              ⌖ &nbsp; Incident Map
+            </button>
+            <button onClick={onWorkspace} className="w-full rounded-lg px-3 py-2 text-left text-muted transition hover:bg-surface-muted hover:text-foreground">
+              ➤ &nbsp; Dispatch Center
+            </button>
+            <button onClick={onAlerts} className="w-full rounded-lg px-3 py-2 text-left text-muted transition hover:bg-surface-muted hover:text-foreground flex items-center justify-between">
+              <span>♧ &nbsp; Emergency Alerts</span>
+              {unreadAlertCount > 0 && <span className="rounded bg-red-950 text-red-400 border border-red-800/80 px-1.5 text-xs font-bold">{unreadAlertCount}</span>}
+            </button>
+            <button onClick={onWorkspace} className="w-full rounded-lg px-3 py-2 text-left text-muted transition hover:bg-surface-muted hover:text-foreground">
+              ♙ &nbsp; Active Responders
+            </button>
+            <div className="my-2.5 border-t border-border" />
+            <p className="mb-2 px-3 text-[10px] font-bold uppercase tracking-wider text-muted">Operations &amp; Admin</p>
+            <button onClick={onWorkspace} className="w-full rounded-lg px-3 py-2 text-left text-muted transition hover:bg-surface-muted hover:text-foreground">
+              ▣ &nbsp; Logistics &amp; Resources
+            </button>
+            <button onClick={onAnalytics} className="w-full rounded-lg px-3 py-2 text-left text-muted transition hover:bg-surface-muted hover:text-foreground">
+              ▥ &nbsp; Analytics &amp; Reports
+            </button>
           </nav>
         </aside>
+
+        {/* Main Content Area */}
         <section className="min-w-0 flex-1 p-4 sm:p-6 lg:p-7">
-          <nav aria-label="Dashboard navigation" className="mb-4 flex gap-1 overflow-x-auto lg:hidden">
-            <span aria-current="page" className="shrink-0 rounded-lg bg-[#e2f0ff] px-3 py-2 text-xs font-semibold text-[#075cab]">▦ Dashboard</span>
-            <button onClick={onWorkspace} className="shrink-0 rounded-lg px-3 py-2 text-xs text-slate-600 hover:bg-white">◉ Live incidents</button>
-            <button onClick={onMap} className="shrink-0 rounded-lg px-3 py-2 text-xs text-slate-600 hover:bg-white">⌖ Incident map</button>
-            <button onClick={onAlerts} className="shrink-0 rounded-lg px-3 py-2 text-xs text-slate-600 hover:bg-white">♧ Alerts</button>
+          <nav aria-label="Dashboard mobile navigation" className="mb-4 flex gap-1.5 overflow-x-auto lg:hidden pb-1">
+            <span aria-current="page" className="shrink-0 rounded-lg bg-sky-500/15 border border-sky-500/40 px-3 py-1.5 text-xs font-semibold text-sky-300">▦ Overview</span>
+            <button onClick={onWorkspace} className="shrink-0 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-muted hover:text-foreground">◉ Incidents ({active})</button>
+            <button onClick={onMap} className="shrink-0 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-muted hover:text-foreground">⌖ Map</button>
+            <button onClick={onAlerts} className="shrink-0 rounded-lg border border-border bg-surface px-3 py-1.5 text-xs text-muted hover:text-foreground">♧ Alerts</button>
           </nav>
-          <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Situational awareness</p><h2 className="mt-1.5 text-2xl font-bold sm:text-3xl">Command Dashboard</h2><p className="mt-1.5 text-sm text-slate-500">Real-time incident monitoring and coordinated emergency response.</p></div><div className="flex gap-2"><button onClick={onAnalytics} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold shadow-sm transition hover:bg-slate-50">Analytics</button><button onClick={onReport} className="rounded-lg bg-[#075cab] px-3 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#064a85]">+ Situation report</button></div></div>
-          {critical > 0 && <button onClick={onWorkspace} className="mb-6 flex w-full items-center justify-between rounded-lg border border-red-200 border-l-4 border-l-red-500 bg-red-50 px-5 py-4 text-left text-sm text-red-700"><span><b>Priority attention required</b> &nbsp; {critical} critical incident{critical === 1 ? "" : "s"} active.</span><span>Review →</span></button>}
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">{cards.map(([label, value, detail, tone, color]) => <article key={label} className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-5"><div className="flex items-start justify-between"><p className="text-[11px] font-bold uppercase tracking-wide text-slate-500">{label}</p><span className="rounded-lg px-2 py-1" style={{ backgroundColor: tone, color }}>●</span></div><p className="mt-4 text-3xl font-bold sm:text-4xl">{value}</p><p className="mt-2 text-xs text-slate-500">{detail}</p></article>)}</div>
-          <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_minmax(300px,0.75fr)]"><article className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"><div className="flex items-center justify-between border-b border-slate-200 px-4 py-3.5 sm:px-5"><div><h3 className="font-semibold">⌖ &nbsp; Live incident map</h3><p className="mt-0.5 text-xs text-slate-500">Operational overview · India</p></div><button onClick={onMap} className="text-sm font-semibold text-[#075cab] hover:underline">Open map →</button></div><button onClick={onMap} aria-label="Open interactive incident map" className="relative grid h-56 w-full place-items-center overflow-hidden bg-[#eaf2f3] text-center sm:h-64">
-            <svg aria-hidden="true" viewBox="0 0 900 360" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 h-full w-full">
-              <rect width="900" height="360" fill="#eaf2f3" />
-              <path d="M0 55 150 20 270 65 390 20 520 70 650 25 900 60M0 160 130 115 260 175 390 120 510 170 660 115 900 165M0 285 150 240 280 300 420 245 570 310 720 245 900 300" fill="none" stroke="#d3e4df" strokeWidth="34" />
-              <path d="M70-20 160 380M280-20 355 380M520-20 440 380M700-20 620 380M0 95 900 255M0 230 900 100" fill="none" stroke="#fff" strokeWidth="11" />
-              <path d="M70-20 160 380M280-20 355 380M520-20 440 380M700-20 620 380M0 95 900 255M0 230 900 100" fill="none" stroke="#cbd5d7" strokeWidth="2" />
-              <path d="M0 340Q160 250 300 330T600 320T900 345" fill="none" stroke="#89c7e0" strokeWidth="20" />
-            </svg>
-            {incidents.slice(0, 4).map((incident, index) => <span key={incident.id} className="absolute z-10 grid size-8 place-items-center rounded-full border-2 border-white bg-[#e9842a] text-xs font-bold text-white shadow-md" style={{ left: `${24 + index * 17}%`, top: `${25 + (index % 2) * 35}%` }} aria-hidden>!</span>)}
-            <span className="absolute bottom-3 left-3 z-10 rounded-md border border-slate-200 bg-white/95 px-3 py-1.5 text-[11px] font-semibold text-slate-700 shadow"><span className="mr-2 text-emerald-600">●</span>India · Operational area</span>
-            <span className="relative z-10 rounded-full border border-sky-200 bg-white/95 px-4 py-2 text-sm font-semibold text-[#07569c] shadow">Open interactive map</span>
-          </button></article><article className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"><div className="flex items-center justify-between border-b border-sky-200 bg-[#e5f2ff] px-4 py-3.5 sm:px-5"><h3 className="font-semibold text-[#07569c]">✦ AI incident triage</h3><span className="rounded border border-sky-200 bg-white/70 px-2 py-1 text-[10px] font-bold text-[#07569c]">AI ASSIST</span></div><div className="p-5"><p className="text-xs text-slate-500">{incidents[0]?.id || "LATEST ASSESSMENT"}</p><h4 className="mt-3 text-lg font-bold">{incidents[0]?.title || "No active incident selected"}</h4><p className="mt-2 text-sm leading-6 text-slate-600">AI-assisted prioritization is available to support the command team.</p><div className="mt-4 flex items-center gap-2 text-xs"><span className="rounded bg-red-50 px-2 py-1 font-semibold text-red-700">{incidents[0]?.severity || "Monitoring"}</span><span className="text-emerald-700">✓ Verified report</span></div><button onClick={onWorkspace} className="mt-5 text-sm font-semibold text-[#075cab] hover:underline">Open workspace →</button></div></article></div>
+
+          <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted">Situational Awareness</p>
+              <h2 className="mt-1 text-2xl font-bold tracking-tight text-white sm:text-3xl">Command Overview</h2>
+              <p className="mt-1 text-xs text-muted">Real-time emergency monitoring and coordinated response deployment.</p>
+            </div>
+            <div className="flex gap-2">
+              <button onClick={onMap} className="rounded-lg bg-sky-600 hover:bg-sky-500 active:bg-sky-700 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition cursor-pointer flex items-center gap-1.5">
+                <span>⌖</span> Launch Interactive GIS Map
+              </button>
+            </div>
+          </div>
+
+          {critical > 0 && (
+            <button
+              onClick={onWorkspace}
+              className="mb-6 flex w-full items-center justify-between rounded-xl border border-critical/40 bg-critical-soft px-4 py-3.5 text-left text-sm text-critical shadow-sm transition hover:bg-critical-soft/80 cursor-pointer"
+            >
+              <span className="flex items-center gap-2">
+                <span className="text-base">🚨</span>
+                <span><strong>Priority Attention Required:</strong> {critical} critical emergency incident{critical === 1 ? "" : "s"} currently active.</span>
+              </span>
+              <span className="font-semibold text-xs underline underline-offset-2">Review Tactical Queue →</span>
+            </button>
+          )}
+
+          {/* Stat Cards */}
+          <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-4">
+            {cards.map((c) => (
+              <article key={c.label} className="rounded-xl border border-border bg-surface p-4 shadow-sm transition hover:border-slate-700">
+                <div className="flex items-start justify-between">
+                  <p className="text-xs font-semibold uppercase tracking-wider text-muted">{c.label}</p>
+                  <span className={`rounded-md border px-2 py-0.5 text-[10px] font-bold ${c.tone}`}>STATUS</span>
+                </div>
+                <p className="mt-3 text-3xl font-bold tracking-tight text-white sm:text-4xl tabular-nums">{c.value}</p>
+                <p className="mt-1.5 text-xs text-muted">{c.detail}</p>
+              </article>
+            ))}
+          </div>
+
+          {/* Split View: Map Overview + AI Triage */}
+          <div className="mt-6 grid gap-5 xl:grid-cols-[minmax(0,1.55fr)_minmax(300px,0.75fr)]">
+            <article className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+              <div className="flex items-center justify-between border-b border-border bg-surface-muted/50 px-4 py-3 sm:px-5">
+                <div>
+                  <h3 className="font-semibold text-sm text-white">⌖ Live Incident Map Preview</h3>
+                  <p className="mt-0.5 text-xs text-muted">Geographical distribution across operational sectors</p>
+                </div>
+                <button onClick={onMap} className="text-xs font-semibold text-sky-400 hover:text-sky-300 hover:underline cursor-pointer">
+                  Full Interactive Map →
+                </button>
+              </div>
+              <button
+                onClick={onMap}
+                aria-label="Open interactive incident map"
+                className="relative grid h-60 w-full place-items-center overflow-hidden bg-[#071322] text-center cursor-pointer group"
+              >
+                <svg aria-hidden="true" viewBox="0 0 900 360" preserveAspectRatio="xMidYMid slice" className="absolute inset-0 h-full w-full opacity-40">
+                  <rect width="900" height="360" fill="#071322" />
+                  <path d="M0 55 150 20 270 65 390 20 520 70 650 25 900 60M0 160 130 115 260 175 390 120 510 170 660 115 900 165M0 285 150 240 280 300 420 245 570 310 720 245 900 300" fill="none" stroke="#0f2b48" strokeWidth="24" />
+                  <path d="M70-20 160 380M280-20 355 380M520-20 440 380M700-20 620 380M0 95 900 255M0 230 900 100" fill="none" stroke="#1e3a5f" strokeWidth="4" />
+                  <path d="M0 340Q160 250 300 330T600 320T900 345" fill="none" stroke="#0284c7" strokeWidth="12" />
+                </svg>
+                {incidents.slice(0, 4).map((incident, index) => (
+                  <span
+                    key={incident.id}
+                    className="absolute z-10 grid size-7 place-items-center rounded-full border-2 border-white bg-amber-500 text-xs font-bold text-white shadow-lg"
+                    style={{ left: `${24 + index * 18}%`, top: `${28 + (index % 2) * 32}%` }}
+                    aria-hidden
+                  >
+                    !
+                  </span>
+                ))}
+                <span className="absolute bottom-3 left-3 z-10 rounded-lg border border-border bg-surface/90 px-3 py-1.5 text-[11px] font-semibold text-slate-200 shadow-md">
+                  <span className="mr-2 text-emerald-400">●</span> India Regional Overview
+                </span>
+                <span className="relative z-10 rounded-full border border-sky-500/40 bg-sky-950/80 px-4 py-2 text-xs font-semibold text-sky-200 shadow-lg group-hover:scale-105 transition">
+                  Click to Open Interactive Map
+                </span>
+              </button>
+            </article>
+
+            <article className="overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+              <div className="flex items-center justify-between border-b border-border bg-surface-muted/50 px-4 py-3 sm:px-5">
+                <h3 className="font-semibold text-sm text-sky-300 flex items-center gap-1.5">
+                  <span>✦</span> AI Incident Triage
+                </h3>
+                <span className="rounded-md border border-ai/30 bg-ai-soft px-2 py-0.5 text-[10px] font-bold text-ai">
+                  ADVISORY
+                </span>
+              </div>
+              <div className="p-5 space-y-3">
+                <p className="text-[11px] font-mono text-muted">{incidents[0]?.id || "INC-PREVIEW"}</p>
+                <h4 className="text-base font-bold text-white leading-snug">{incidents[0]?.title || "Awaiting Incident Selection"}</h4>
+                <p className="text-xs text-muted leading-relaxed">
+                  Real-time algorithmic triage correlates severity indicators, casualty counts, and GIS terrain data to accelerate dispatcher decisions.
+                </p>
+                <div className="mt-3 flex items-center gap-2 text-xs">
+                  <span className="rounded-md border border-critical/30 bg-critical-soft px-2 py-0.5 font-semibold text-critical">
+                    {incidents[0]?.severity || "MONITORING"}
+                  </span>
+                  <span className="text-emerald-400 font-medium">✓ Verified Feed</span>
+                </div>
+                <button
+                  onClick={onWorkspace}
+                  className="mt-4 inline-flex items-center text-xs font-semibold text-sky-400 hover:text-sky-300 hover:underline cursor-pointer"
+                >
+                  Open Tactical Review Queue →
+                </button>
+              </div>
+            </article>
+          </div>
         </section>
       </div>
+
       <CitizenReportModal isOpen={showCitizenReport} onClose={onCloseReport} />
       <RoleWorkspaceModal
         isOpen={showRoleWorkspace}
@@ -1397,24 +1550,24 @@ function ResQGeoPortalInner() {
         onClick={() => setShowNavDrawer(true)}
         aria-label="Open navigation sidebar"
         title="Open navigation"
-        className="fixed left-0 top-1/2 z-[950] grid h-12 w-7 -translate-y-1/2 place-items-center rounded-r-lg border border-l-0 border-sky-200 bg-white/95 text-lg font-semibold text-[#07569c] shadow-lg transition hover:w-9 hover:bg-white"
+        className="fixed left-0 top-1/2 z-[950] grid h-12 w-7 -translate-y-1/2 place-items-center rounded-r-xl border border-l-0 border-border bg-[#0b1324]/95 text-lg font-semibold text-sky-400 shadow-xl transition hover:w-9 hover:bg-[#111c33] cursor-pointer"
       >
         ›
       </button>
-      <div className="fixed left-4 top-[72px] z-[900] flex items-center overflow-hidden rounded-xl border border-slate-200/80 bg-white/95 shadow-lg backdrop-blur-sm">
+      <div className="fixed left-4 top-[72px] z-[900] flex items-center overflow-hidden rounded-xl border border-border bg-[#0b1324]/95 shadow-2xl backdrop-blur-md">
         <form onSubmit={handleSearch} className="flex items-center">
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search city, district, village, or coordinates..."
-            className="w-52 sm:w-72 px-2 py-2.5 text-sm text-slate-800 placeholder-slate-400 outline-none bg-transparent"
+            className="w-52 sm:w-72 px-3 py-2 text-xs sm:text-sm text-foreground placeholder:text-muted/60 outline-none bg-transparent"
           />
           <button
             type="submit"
             disabled={isSearching}
             title="Search Real Location"
-            className="p-2.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors text-sm cursor-pointer"
+            className="p-2.5 text-muted hover:text-foreground hover:bg-surface-muted transition-colors text-xs sm:text-sm cursor-pointer"
           >
             {isSearching ? "⏳" : "🔍"}
           </button>
@@ -1424,8 +1577,8 @@ function ResQGeoPortalInner() {
           onClick={() => setShowLayerMenu(!showLayerMenu)}
           title="Choose map layer"
           aria-label="Choose map layer"
-          className={`p-2.5 px-3 transition-colors text-sm font-bold cursor-pointer ${
-            showLayerMenu ? "bg-sky-100 text-[#0c4a75]" : "text-[#0c4a75] hover:bg-slate-100"
+          className={`p-2.5 px-3 transition-colors text-sm font-bold cursor-pointer border-l border-border ${
+            showLayerMenu ? "bg-sky-500/20 text-sky-300" : "text-sky-400 hover:bg-surface-muted"
           }`}
         >
           ◆
@@ -1434,49 +1587,49 @@ function ResQGeoPortalInner() {
 
       {/* ============ BASEMAP SWITCHER ============ */}
       {showLayerMenu && (
-        <div className="fixed top-[110px] left-3 z-[950] w-84 bg-white rounded-xl shadow-2xl border border-slate-200 p-3.5 animate-fadeIn">
-          <div className="flex items-center justify-between pb-2 mb-2 border-b border-slate-100">
+        <div className="fixed top-[116px] left-4 z-[950] w-84 bg-[#0b1324] rounded-2xl shadow-2xl border border-border p-4 animate-fadeIn text-foreground">
+          <div className="flex items-center justify-between pb-2 mb-2 border-b border-border">
             <div>
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-700 block">Basemap Views</span>
-              <span className="text-[10px] text-sky-600 font-medium">Deep Zoom Supported (Up to 21x)</span>
+              <span className="text-xs font-bold uppercase tracking-wider text-white block">Basemap Views</span>
+              <span className="text-[10px] text-sky-400 font-medium">Deep Zoom Supported (Up to 21x)</span>
             </div>
             <button
               onClick={() => setShowLayerMenu(false)}
-              className="text-slate-400 hover:text-slate-600 text-sm font-bold cursor-pointer"
+              className="text-muted hover:text-white text-sm font-bold cursor-pointer rounded p-1 hover:bg-surface-muted"
             >
               ✕
             </button>
           </div>
 
-          <div className="text-xs font-semibold text-slate-500 mb-1.5">CHOOSE BASEMAP</div>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-muted mb-1.5">CHOOSE BASEMAP</div>
           <div className="space-y-1 mb-3">
             {Object.entries(TILE_LAYERS).map(([key, config]) => (
               <button
                 key={key}
                 onClick={() => switchBaseLayer(key as keyof typeof TILE_LAYERS)}
-                className={`w-full text-left px-2.5 py-2 rounded text-xs flex items-center justify-between transition-colors cursor-pointer ${
+                className={`w-full text-left px-3 py-2 rounded-lg text-xs flex items-center justify-between transition-colors cursor-pointer ${
                   currentBaseLayer === key
-                    ? "bg-sky-50 text-[#0c4a75] font-semibold border border-sky-200"
-                    : "hover:bg-slate-50 text-slate-700"
+                    ? "bg-sky-500/20 text-sky-300 font-semibold border border-sky-500/40"
+                    : "hover:bg-surface-muted text-muted hover:text-foreground"
                 }`}
               >
                 <span>{config.name}</span>
-                {currentBaseLayer === key && <span className="text-sky-600 font-bold">✓</span>}
+                {currentBaseLayer === key && <span className="text-sky-400 font-bold">✓</span>}
               </button>
             ))}
           </div>
 
-          <div className="text-xs font-semibold text-slate-500 mb-1.5">STREET DETAIL OVERLAYS</div>
+          <div className="text-[10px] font-bold uppercase tracking-wider text-muted mb-1.5">STREET DETAIL OVERLAYS</div>
           <div className="space-y-1">
-            <label className="flex items-center justify-between p-1.5 rounded hover:bg-slate-50 cursor-pointer text-xs">
-              <span className="flex items-center gap-1.5 font-medium text-slate-700">
-                <span>🏷️</span> Keep Street & Road Names Visible
+            <label className="flex items-center justify-between p-2 rounded-lg hover:bg-surface-muted cursor-pointer text-xs">
+              <span className="flex items-center gap-1.5 font-medium text-foreground">
+                <span>🏷️</span> Keep Street &amp; Road Names Visible
               </span>
               <input
                 type="checkbox"
                 checked={streetOverlayActive}
                 onChange={toggleStreetOverlay}
-                className="rounded text-sky-600 w-4 h-4 cursor-pointer"
+                className="rounded text-sky-500 w-4 h-4 cursor-pointer accent-sky-500"
               />
             </label>
           </div>
@@ -1484,15 +1637,15 @@ function ResQGeoPortalInner() {
       )}
 
       {/* ============ MAP CANVAS ============ */}
-      <div id="map" ref={mapContainerRef} className="fixed inset-0 bg-[#b6b6b6]" />
+      <div id="map" ref={mapContainerRef} className="fixed inset-0 bg-[#070d18]" />
 
       {/* Measurement Status */}
       {isMeasuring && (
-        <div className="fixed top-[60px] left-1/2 -translate-x-1/2 z-[900] bg-blue-900/90 text-white backdrop-blur px-4 py-1.5 rounded-full shadow-lg border border-blue-400/40 text-xs flex items-center gap-3">
+        <div className="fixed top-[68px] left-1/2 -translate-x-1/2 z-[900] bg-[#093452]/95 text-white backdrop-blur-md px-4 py-2 rounded-full shadow-2xl border border-sky-500/40 text-xs flex items-center gap-3">
           <span>📏 <b>Measuring:</b> {measureDistance}</span>
           <button
             onClick={toggleMeasurement}
-            className="bg-blue-600 hover:bg-blue-500 px-2.5 py-0.5 rounded text-[11px] font-semibold cursor-pointer"
+            className="bg-sky-600 hover:bg-sky-500 px-3 py-0.5 rounded-full text-[11px] font-semibold cursor-pointer transition shadow-xs"
           >
             Done
           </button>
@@ -1500,12 +1653,12 @@ function ResQGeoPortalInner() {
       )}
 
       {/* ============ MAP TOOLS ============ */}
-      <div className="fixed right-4 top-1/2 z-[900] flex -translate-y-1/2 flex-col gap-1 rounded-xl border border-slate-200/80 bg-white/95 p-1 shadow-lg backdrop-blur">
+      <div className="fixed right-4 top-1/2 z-[900] flex -translate-y-1/2 flex-col gap-1 rounded-2xl border border-border bg-[#0b1324]/95 p-1.5 shadow-2xl backdrop-blur-md">
         <button
           onClick={() => mapRef.current?.zoomIn(1, { animate: true })}
           title="Zoom In"
           aria-label="Zoom in"
-          className="grid size-9 place-items-center rounded-lg text-lg font-semibold text-slate-700 transition hover:bg-slate-100"
+          className="grid size-9 place-items-center rounded-xl text-lg font-semibold text-muted transition hover:bg-surface-muted hover:text-white cursor-pointer"
         >
           ＋
         </button>
@@ -1513,7 +1666,7 @@ function ResQGeoPortalInner() {
           onClick={() => mapRef.current?.zoomOut(1, { animate: true })}
           title="Zoom Out"
           aria-label="Zoom out"
-          className="grid size-9 place-items-center rounded-lg text-lg font-semibold text-slate-700 transition hover:bg-slate-100"
+          className="grid size-9 place-items-center rounded-xl text-lg font-semibold text-muted transition hover:bg-surface-muted hover:text-white cursor-pointer"
         >
           －
         </button>
@@ -1521,98 +1674,49 @@ function ResQGeoPortalInner() {
           onClick={handleLocateMe}
           title="My Location"
           aria-label="Show my location"
-          className="grid size-9 place-items-center rounded-lg text-base text-slate-700 transition hover:bg-slate-100"
+          className="grid size-9 place-items-center rounded-xl text-base text-muted transition hover:bg-surface-muted hover:text-white cursor-pointer"
         >
           📍
         </button>
       </div>
 
       {/* ============ BOTTOM STATUS & AREA ============ */}
-      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[900] hidden sm:flex items-center gap-2 bg-slate-950/85 backdrop-blur text-white text-[11px] px-3 py-1.5 rounded-full shadow-xl border border-white/10 pointer-events-none">
-        <div className="flex items-center gap-1.5 text-sky-300 font-semibold">
-          <span>📍 Viewing:</span>
+      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[900] hidden sm:flex items-center gap-2.5 bg-[#0b1324]/90 backdrop-blur-md text-white text-[11px] px-4 py-2 rounded-full shadow-2xl border border-border pointer-events-none">
+        <div className="flex items-center gap-2 text-sky-300 font-semibold">
+          <span>📍 Sector:</span>
           <span className="text-white font-normal truncate max-w-xs sm:max-w-md">{visibleAreaName}</span>
-          <span className="text-[10.5px] text-sky-400 font-mono">[{currentZoom}x Zoom]</span>
+          <span className="text-[10px] text-sky-400 font-mono bg-sky-950/60 px-1.5 py-0.5 rounded border border-sky-800/40">[{currentZoom}x Zoom]</span>
         </div>
-        <div className="hidden sm:block w-[1px] h-3.5 bg-slate-600 mx-1" />
-        <div className="font-mono text-slate-300 text-[11px]">{coordsText}</div>
+        <div className="hidden sm:block w-[1px] h-3.5 bg-border mx-1" />
+        <div className="font-mono text-muted text-[11px]">{coordsText}</div>
       </div>
-
-      {/* ============ ABOUT RESQ MODAL ============ */}
-      {showAboutModal && (
-        <div className="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-200 relative animate-scaleUp">
-            <button
-              onClick={() => setShowAboutModal(false)}
-              className="absolute top-4 right-4 text-slate-400 hover:text-slate-700 text-lg font-bold cursor-pointer"
-            >
-              ✕
-            </button>
-
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-12 h-12 rounded-full bg-linear-to-tr from-[#0284c7] to-[#38bdf8] flex items-center justify-center text-2xl border-2 border-white shadow">
-                🛡️
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-slate-900 leading-tight">
-                  ResQ GeoPlatform
-                </h2>
-                <p className="text-xs text-sky-700 font-medium">
-                  NDMA Incident Triage & GIS Coordination
-                </p>
-              </div>
-            </div>
-
-            <div className="space-y-3 text-sm text-slate-600 leading-relaxed border-t border-slate-100 pt-3">
-              <p>
-                <b>ResQ</b> provides operational emergency response across 8 operational agency roles, compliant with the National Disaster Management Authority (NDMA) Incident Response System (IRS).
-              </p>
-              <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 text-xs text-sky-950 space-y-1">
-                <p className="font-semibold text-sky-900 mb-1">🗺️ Supported Disasters:</p>
-                <div>• <b>Flood / Urban Flood:</b> Inundation modeling, boat rescue deployment.</div>
-                <div>• <b>Cyclone / Coastal Flooding:</b> Surge tracking, storm shelters, evacuation.</div>
-                <div>• <b>Major Urban / Building Fire:</b> Smoke plume assessment, hydrants, hazmat.</div>
-              </div>
-            </div>
-
-            <div className="mt-5 flex justify-end">
-              <button
-                onClick={() => setShowAboutModal(false)}
-                className="bg-[#0c4a75] hover:bg-[#083452] text-white px-4 py-2 rounded-lg text-xs font-semibold shadow transition-colors cursor-pointer"
-              >
-                Close Info
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* ============ NAVIGATION DRAWER ============ */}
       {showNavDrawer && (
-        <div className="fixed inset-0 z-[2000] bg-black/50 backdrop-blur-xs flex">
-          <div className="bg-white w-80 max-w-full h-full shadow-2xl p-5 flex flex-col justify-between overflow-y-auto">
+        <div className="fixed inset-0 z-[2000] bg-black/70 backdrop-blur-xs flex">
+          <div className="bg-[#0b1324] border-r border-border w-80 max-w-full h-full shadow-2xl p-5 flex flex-col justify-between overflow-y-auto text-foreground">
             <div>
-              <div className="flex items-center justify-between pb-4 border-b border-slate-200 mb-4">
-                <div className="flex items-center gap-2">
+              <div className="flex items-center justify-between pb-4 border-b border-border mb-4">
+                <div className="flex items-center gap-2.5">
                   <span className="text-2xl">🛡️</span>
                   <div>
-                    <h3 className="font-bold text-slate-900 text-base leading-none">ResQ Hub</h3>
-                    <span className="text-[11px] text-slate-500">Emergency Operations</span>
+                    <h3 className="font-bold text-white text-base leading-none">ResQ Command</h3>
+                    <span className="text-[11px] text-sky-300">NDMA Operations Deck</span>
                   </div>
                 </div>
                 <button
                   onClick={() => setShowNavDrawer(false)}
                   aria-label="Close navigation sidebar"
                   title="Close navigation"
-                  className="grid size-9 place-items-center rounded-lg bg-sky-50 text-lg font-bold text-[#07569c] transition hover:bg-sky-100"
+                  className="grid size-8 place-items-center rounded-lg bg-surface-muted text-base font-bold text-muted hover:text-white transition cursor-pointer"
                 >
-                  ‹
+                  ✕
                 </button>
               </div>
 
               <div className="space-y-4">
                 <div>
-                  <h4 className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">Navigate</h4>
+                  <h4 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted">Navigation</h4>
                   <div className="space-y-1 text-sm">
                     <button
                       onClick={() => {
@@ -1621,114 +1725,65 @@ function ResQGeoPortalInner() {
                         setMapReady(false);
                         setShowMapView(false);
                       }}
-                      className="w-full cursor-pointer rounded-lg px-3 py-2.5 text-left font-medium text-slate-700 transition-colors hover:bg-slate-100"
+                      className="w-full cursor-pointer rounded-lg px-3 py-2.5 text-left font-medium text-muted transition-colors hover:bg-surface-muted hover:text-white"
                     >
-                      <span aria-hidden className="mr-2 text-[#07569c]">⌂</span> Home dashboard
+                      <span aria-hidden className="mr-2 text-sky-400">⌂</span> Command Overview
                     </button>
-                    <div aria-current="page" className="w-full rounded-lg bg-sky-50 px-3 py-2.5 font-semibold text-[#07569c]">
-                      <span aria-hidden className="mr-2">⌖</span> Incident map
+                    <div aria-current="page" className="w-full rounded-lg bg-sky-500/15 border border-sky-500/30 px-3 py-2.5 font-semibold text-sky-300">
+                      <span aria-hidden className="mr-2">⌖</span> Interactive GIS Map
                     </div>
-                    <button onClick={() => { setShowNavDrawer(false); setShowRoleWorkspace(true); }} className="w-full rounded-lg px-3 py-2.5 text-left font-medium text-slate-700 transition-colors hover:bg-slate-100"><span aria-hidden className="mr-2">▤</span> Operations workspace</button>
-                    <button onClick={() => { setShowNavDrawer(false); setShowAnalytics(true); }} className="w-full rounded-lg px-3 py-2.5 text-left font-medium text-slate-700 transition-colors hover:bg-slate-100"><span aria-hidden className="mr-2">▥</span> Analytics &amp; reports</button>
-                    <button onClick={() => { setShowNavDrawer(false); setShowAlertsDrawer(true); }} className="w-full rounded-lg px-3 py-2.5 text-left font-medium text-slate-700 transition-colors hover:bg-slate-100"><span aria-hidden className="mr-2">♧</span> Alerts <span className="float-right rounded-full bg-red-50 px-2 text-xs text-red-600">{unreadAlertCount}</span></button>
-                    <button onClick={() => { setShowNavDrawer(false); setShowCitizenReport(true); }} className="w-full rounded-lg px-3 py-2.5 text-left font-semibold text-red-700 transition-colors hover:bg-red-50"><span aria-hidden className="mr-2">!</span> Report an emergency</button>
+                    <button onClick={() => { setShowNavDrawer(false); setShowRoleWorkspace(true); }} className="w-full rounded-lg px-3 py-2.5 text-left font-medium text-muted transition-colors hover:bg-surface-muted hover:text-white cursor-pointer"><span aria-hidden className="mr-2">▤</span> Operations Workspace</button>
+                    <button onClick={() => { setShowNavDrawer(false); setShowAnalytics(true); }} className="w-full rounded-lg px-3 py-2.5 text-left font-medium text-muted transition-colors hover:bg-surface-muted hover:text-white cursor-pointer"><span aria-hidden className="mr-2">▥</span> Analytics &amp; Reports</button>
+                    <button onClick={() => { setShowNavDrawer(false); setShowAlertsDrawer(true); }} className="w-full rounded-lg px-3 py-2.5 text-left font-medium text-muted transition-colors hover:bg-surface-muted hover:text-white flex items-center justify-between cursor-pointer">
+                      <span><span aria-hidden className="mr-2">♧</span> Alerts</span>
+                      {unreadAlertCount > 0 && <span className="rounded-full bg-red-950 border border-red-800 text-red-400 px-2 text-xs font-bold">{unreadAlertCount}</span>}
+                    </button>
+                    <button onClick={() => { setShowNavDrawer(false); setShowCitizenReport(true); }} className="w-full rounded-lg px-3 py-2.5 text-left font-semibold text-red-400 border border-red-900/50 bg-red-950/40 transition-colors hover:bg-red-950/80 cursor-pointer"><span aria-hidden className="mr-2">!</span> Report an Emergency (SOS)</button>
                   </div>
                 </div>
-                <details className="rounded-lg border border-slate-200 px-3 py-2">
-                  <summary className="cursor-pointer list-none text-xs font-semibold text-slate-600">Switch operational role</summary>
-                  <div className="space-y-1.5 text-sm">
-                    <button
-                      onClick={() => {
-                        setShowNavDrawer(false);
-                        switchRole("Command Officer / Incident Commander");
-                        setShowRoleWorkspace(true);
-                      }}
-                      className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 flex items-center gap-2.5 text-slate-700 transition-colors cursor-pointer"
-                    >
-                      <span>🎖️</span> Command Officer / Commander
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowNavDrawer(false);
-                        switchRole("Dispatcher");
-                        setShowRoleWorkspace(true);
-                      }}
-                      className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 flex items-center gap-2.5 text-slate-700 transition-colors cursor-pointer"
-                    >
-                      <span>🗺️</span> Dispatcher & Report Queue
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowNavDrawer(false);
-                        switchRole("NDRF / SDRF Team Leader or Responder");
-                        setShowRoleWorkspace(true);
-                      }}
-                      className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 flex items-center gap-2.5 text-slate-700 transition-colors cursor-pointer"
-                    >
-                      <span>🚤</span> NDRF / SDRF Search & Rescue
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowNavDrawer(false);
-                        switchRole("Medic / Ambulance Team");
-                        setShowRoleWorkspace(true);
-                      }}
-                      className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 flex items-center gap-2.5 text-slate-700 transition-colors cursor-pointer"
-                    >
-                      <span>🚑</span> Field Medic & Hospital Triage
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowNavDrawer(false);
-                        switchRole("Firefighter / Fire Service Officer");
-                        setShowRoleWorkspace(true);
-                      }}
-                      className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 flex items-center gap-2.5 text-slate-700 transition-colors cursor-pointer"
-                    >
-                      <span>🚒</span> Firefighter & Water Hydrants
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowNavDrawer(false);
-                        switchRole("Logistics Officer");
-                        setShowRoleWorkspace(true);
-                      }}
-                      className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 flex items-center gap-2.5 text-slate-700 transition-colors cursor-pointer"
-                    >
-                      <span>📦</span> Logistics & Warehouse Supplies
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowNavDrawer(false);
-                        switchRole("System Administrator");
-                        setShowRoleWorkspace(true);
-                      }}
-                      className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-100 flex items-center gap-2.5 text-slate-700 transition-colors cursor-pointer"
-                    >
-                      <span>⚙️</span> System Admin & Audit Logs
-                    </button>
+
+                <div className="pt-2 border-t border-border">
+                  <h4 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted">Direct Operational Modules</h4>
+                  <div className="space-y-1 text-xs">
+                    <Link href="/dm" className="block px-3 py-2 rounded-lg text-muted hover:bg-surface-muted hover:text-sky-300 transition">
+                      → Command Center Dashboard (/dm)
+                    </Link>
+                    <Link href="/dm/incidents" className="block px-3 py-2 rounded-lg text-muted hover:bg-surface-muted hover:text-sky-300 transition">
+                      → Verified Incidents Queue
+                    </Link>
+                    <Link href="/dm/dispatches" className="block px-3 py-2 rounded-lg text-muted hover:bg-surface-muted hover:text-sky-300 transition">
+                      → Dispatch Orders &amp; Acknowledgements
+                    </Link>
+                    <Link href="/dm/resources" className="block px-3 py-2 rounded-lg text-muted hover:bg-surface-muted hover:text-sky-300 transition">
+                      → Emergency Resources &amp; Units
+                    </Link>
+                    <Link href="/dm/aid" className="block px-3 py-2 rounded-lg text-muted hover:bg-surface-muted hover:text-sky-300 transition">
+                      → Aid &amp; Relief Fulfillment
+                    </Link>
                   </div>
-                </details>
+                </div>
               </div>
             </div>
 
-            <div className="space-y-4 border-t border-slate-200 pt-4 text-xs text-slate-500">
+            <div className="space-y-4 border-t border-border pt-4 text-xs text-muted">
               {isAuthenticated ? (
                 <div>
-                  <p className="font-semibold text-slate-800">{currentUser.name}</p>
-                  <p className="mt-0.5">{currentUser.agency}</p>
-                  <button onClick={() => { logout(); setShowNavDrawer(false); }} className="mt-2 font-semibold text-red-600 hover:text-red-700">Sign out</button>
+                  <p className="font-semibold text-white">{currentUser.name}</p>
+                  <p className="mt-0.5 text-muted">{currentUser.agency}</p>
+                  <button onClick={() => { logout(); setShowNavDrawer(false); }} className="mt-2 font-semibold text-red-400 hover:text-red-300 cursor-pointer">Sign out</button>
                 </div>
               ) : (
-                <button onClick={() => { setShowNavDrawer(false); setAuthModalMode("login"); setShowAuthModal(true); }} className="font-semibold text-[#07569c] hover:underline">Sign in to your account</button>
+                <button onClick={() => { setShowNavDrawer(false); setAuthModalMode("login"); setShowAuthModal(true); }} className="font-semibold text-sky-400 hover:text-sky-300 hover:underline cursor-pointer">Sign in to your account</button>
               )}
-              <div className="font-semibold text-slate-700 mb-1">Emergency Helplines (India):</div>
-              <div>• National Emergency: <b>112</b></div>
-              <div>• Disaster Management (NDMA): <b>1070 / 1077</b></div>
-              <div>• Ambulance Service: <b>108</b></div>
+              <div className="font-semibold text-slate-300 mb-1">Emergency Helplines (India):</div>
+              <div className="space-y-0.5 text-[11px] text-muted">
+                <div>• National Emergency: <strong className="text-white">112</strong></div>
+                <div>• Disaster Management (NDMA): <strong className="text-white">1070 / 1077</strong></div>
+                <div>• Ambulance Service: <strong className="text-white">108</strong></div>
+              </div>
             </div>
           </div>
-          <div className="flex-1" onClick={() => setShowNavDrawer(false)} />
+          <div className="flex-1 cursor-pointer" onClick={() => setShowNavDrawer(false)} />
         </div>
       )}
 

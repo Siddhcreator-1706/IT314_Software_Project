@@ -1,32 +1,157 @@
 @import "tailwindcss";
 @import "leaflet/dist/leaflet.css";
 
+/* ==========================================================================
+   ResQ Central Design System & Semantic Color Tokens
+   Unified Palette: Deep Slate/Navy background (#070d18), Navy Surface (#0b1324),
+   Muted Surface (#111c33), High-contrast text (#f8fafc), Sky Accent (#0284c7 / #38bdf8),
+   and standard operational tones (Critical Red, High Orange, Medium Amber, Low Green).
+   ========================================================================== */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #070d18;
+  --foreground: #f8fafc;
+
+  /* Surfaces & Borders */
+  --surface: #0b1324;
+  --surface-muted: #111c33;
+  --surface-elevated: #16223d;
+  --border: #1e293b;
+  --border-muted: #152238;
+  --border-focus: #38bdf8;
+  --muted: #94a3b8;
+  --muted-dark: #64748b;
+
+  /* Brand / Primary / Sky Accent */
+  --accent: #0284c7;
+  --accent-hover: #0369a1;
+  --accent-foreground: #ffffff;
+  --brand-header-bg: #093452;
+  --brand-header-border: #062338;
+
+  /* Severity & Operational Status Tones */
+  --critical: #ef4444;
+  --critical-soft: #3b1219;
+  --critical-border: #7f1d1d;
+
+  --high: #f97316;
+  --high-soft: #3a1f0e;
+  --high-border: #7c2d12;
+
+  --medium: #f59e0b;
+  --medium-soft: #33270b;
+  --medium-border: #78350f;
+
+  --low: #10b981;
+  --low-soft: #0b2e22;
+  --low-border: #064e3b;
+
+  --info: #38bdf8;
+  --info-soft: #0c2a42;
+  --info-border: #075985;
+
+  --ai: #c084fc;
+  --ai-soft: #24193f;
+  --ai-border: #581c87;
+
+  --neutral-soft: #172036;
+
+  /* Fonts */
+  --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-border-muted: var(--border-muted);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+
+  --color-critical: var(--critical);
+  --color-critical-soft: var(--critical-soft);
+  --color-high: var(--high);
+  --color-high-soft: var(--high-soft);
+  --color-medium: var(--medium);
+  --color-medium-soft: var(--medium-soft);
+  --color-low: var(--low);
+  --color-low-soft: var(--low-soft);
+  --color-info: var(--info);
+  --color-info-soft: var(--info-soft);
+  --color-ai: var(--ai);
+  --color-ai-soft: var(--ai-soft);
+  --color-neutral-soft: var(--neutral-soft);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* Base Body Styles */
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   overflow: hidden;
   height: 100vh;
   width: 100vw;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Focus visibility for accessibility */
+:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
+}
+
+/* Dialog backdrops */
+dialog::backdrop {
+  background: rgb(2 6 23 / 0.75);
+  backdrop-filter: blur(4px);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #1e293b;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #334155;
+}
+
+/* Compatibility alias for existing .dm-theme classes */
+.dm-theme {
+  --dm-surface: var(--surface);
+  --dm-surface-muted: var(--surface-muted);
+  --dm-muted: var(--muted);
+  --dm-border: var(--border);
+  --dm-accent: var(--accent);
+  --dm-accent-foreground: var(--accent-foreground);
+  --dm-critical: var(--critical);
+  --dm-critical-soft: var(--critical-soft);
+  --dm-high: var(--high);
+  --dm-high-soft: var(--high-soft);
+  --dm-medium: var(--medium);
+  --dm-medium-soft: var(--medium-soft);
+  --dm-low: var(--low);
+  --dm-low-soft: var(--low-soft);
+  --dm-info: var(--info);
+  --dm-info-soft: var(--info-soft);
+  --dm-ai: var(--ai);
+  --dm-ai-soft: var(--ai-soft);
+  --dm-neutral-soft: var(--neutral-soft);
 }
 
 /* ============ GPU ACCELERATED SMOOTH MAP ZOOM & PAN ============ */
@@ -51,25 +176,25 @@ body {
 
 /* ============ SCALE BAR & MINIMAP TWEAKS ============ */
 .leaflet-control-scale-line {
-  background: rgba(255, 255, 255, 0.88) !important;
-  color: #111 !important;
+  background: rgba(11, 19, 36, 0.9) !important;
+  color: #f1f5f9 !important;
   font-weight: 600 !important;
   font-size: 11px !important;
-  border-color: #14639e !important;
+  border-color: #0284c7 !important;
   padding: 2px 6px !important;
-  border-radius: 3px !important;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.3) !important;
+  border-radius: 4px !important;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.4) !important;
 }
 
 .leaflet-control-minimap {
-  border: 2px solid #ffffff !important;
-  border-radius: 6px !important;
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.45) !important;
+  border: 2px solid #1e293b !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6) !important;
   overflow: hidden !important;
-  background: #111 !important;
+  background: #0b1324 !important;
 }
 
-/* ============ HIDE ALL WATERMARKS & ATTRIBUTION ============ */
+/* ============ HIDE ATTRIBUTION WATERMARKS ============ */
 .leaflet-control-attribution {
   display: none !important;
 }
@@ -80,78 +205,19 @@ body {
   z-index: 600 !important;
 }
 
-
 /* Leaflet Popup Styling */
 .leaflet-popup-content-wrapper {
-  background: rgba(255, 255, 255, 0.96);
-  backdrop-filter: blur(8px);
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-  font-family: inherit;
-  padding: 4px;
+  background: rgba(11, 19, 36, 0.96) !important;
+  color: #f8fafc !important;
+  backdrop-filter: blur(12px) !important;
+  border: 1px solid #1e293b !important;
+  border-radius: 12px !important;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.6) !important;
+  font-family: inherit !important;
+  padding: 4px !important;
 }
 
 .leaflet-popup-tip {
-  background: rgba(255, 255, 255, 0.96);
-}
-
-/* ============ DISASTER MANAGEMENT WORKSPACE (scoped to .dm-theme) ============
-   Semantic tokens for the /dm workspace in the ResQ navy/sky palette. Scoped to the
-   workspace root so the portal, login and other modules keep their own styling. */
-@theme inline {
-  --color-surface: var(--dm-surface);
-  --color-surface-muted: var(--dm-surface-muted);
-  --color-muted: var(--dm-muted);
-  --color-border: var(--dm-border);
-  --color-accent: var(--dm-accent);
-  --color-accent-foreground: var(--dm-accent-foreground);
-  --color-critical: var(--dm-critical);
-  --color-critical-soft: var(--dm-critical-soft);
-  --color-high: var(--dm-high);
-  --color-high-soft: var(--dm-high-soft);
-  --color-medium: var(--dm-medium);
-  --color-medium-soft: var(--dm-medium-soft);
-  --color-low: var(--dm-low);
-  --color-low-soft: var(--dm-low-soft);
-  --color-info: var(--dm-info);
-  --color-info-soft: var(--dm-info-soft);
-  --color-ai: var(--dm-ai);
-  --color-ai-soft: var(--dm-ai-soft);
-  --color-neutral-soft: var(--dm-neutral-soft);
-}
-
-.dm-theme {
-  --background: #070d18;
-  --foreground: #f1f5f9;
-  --dm-surface: #0b1324;
-  --dm-surface-muted: #111c33;
-  --dm-muted: #94a3b8;
-  --dm-border: #1e293b;
-  --dm-accent: #0284c7;
-  --dm-accent-foreground: #ffffff;
-  --dm-critical: #f87171;
-  --dm-critical-soft: #3b1219;
-  --dm-high: #fb923c;
-  --dm-high-soft: #3a1f0e;
-  --dm-medium: #fbbf24;
-  --dm-medium-soft: #33270b;
-  --dm-low: #34d399;
-  --dm-low-soft: #0b2e22;
-  --dm-info: #38bdf8;
-  --dm-info-soft: #0c2a42;
-  --dm-ai: #c4b5fd;
-  --dm-ai-soft: #24193f;
-  --dm-neutral-soft: #172036;
-  background: var(--background);
-  color: var(--foreground);
-  color-scheme: dark;
-}
-
-.dm-theme :focus-visible {
-  outline: 2px solid #38bdf8;
-  outline-offset: 2px;
-}
-
-.dm-theme dialog::backdrop {
-  background: rgb(2 6 23 / 0.7);
+  background: rgba(11, 19, 36, 0.96) !important;
+  border: 1px solid #1e293b !important;
 }

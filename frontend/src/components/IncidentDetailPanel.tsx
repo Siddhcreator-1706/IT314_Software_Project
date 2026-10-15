@@ -54,171 +54,121 @@ export default function IncidentDetailPanel({ incident, onClose, onOpenDispatch 
     setOverrideReason("");
   };
 
-  const severityColors = {
-    CRITICAL: "bg-red-600 text-white",
-    HIGH: "bg-orange-500 text-white",
-    MODERATE: "bg-amber-400 text-slate-900",
-    LOW: "bg-emerald-600 text-white",
-  };
-
-  const lifecycleColors: { [key: string]: string } = {
-    "NEW REPORT": "bg-slate-200 text-slate-800",
-    "UNDER REVIEW": "bg-purple-100 text-purple-800 border border-purple-300",
-    "VERIFIED": "bg-blue-100 text-blue-800 border border-blue-300",
-    "DISPATCHED": "bg-amber-100 text-amber-800 border border-amber-300",
-    "RESPONSE IN PROGRESS": "bg-red-100 text-red-800 border border-red-300",
-    "RESOLVED": "bg-emerald-100 text-emerald-800 border border-emerald-300",
-    "CLOSED": "bg-slate-300 text-slate-700",
-    "REJECTED": "bg-rose-100 text-rose-800",
+  const severityBadges: Record<IncidentSeverity, string> = {
+    CRITICAL: "bg-critical-soft text-critical border border-critical/30",
+    HIGH: "bg-high-soft text-high border border-high/30",
+    MODERATE: "bg-medium-soft text-medium border border-medium/30",
+    LOW: "bg-low-soft text-low border border-low/30",
   };
 
   return (
-    <div className="fixed top-14 right-3 z-[1100] w-96 max-w-[calc(100vw-24px)] bg-white/98 backdrop-blur-md rounded-2xl shadow-2xl border border-slate-200 flex flex-col max-h-[calc(100vh-70px)] overflow-hidden animate-fadeIn">
+    <div className="fixed top-16 right-4 z-[1100] w-96 max-w-[calc(100vw-2rem)] bg-[#0b1324]/98 backdrop-blur-xl rounded-2xl shadow-2xl border border-border flex flex-col max-h-[calc(100vh-80px)] overflow-hidden animate-fadeIn text-foreground font-sans">
       {/* Header */}
-      <div className="bg-[#0c4a75] text-white p-3.5 flex items-start justify-between">
+      <div className="bg-[#093452] border-b border-[#062338] text-white p-4 flex items-start justify-between">
         <div className="flex-1 pr-2">
           <div className="flex items-center gap-2 mb-1">
-            <span className="font-mono text-xs font-bold bg-sky-900/90 px-1.5 py-0.5 rounded border border-sky-600/40">
+            <span className="font-mono text-xs font-bold bg-sky-950 px-2 py-0.5 rounded border border-sky-600/50 text-sky-300">
               {incident.id}
             </span>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${severityColors[incident.severity]}`}>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${severityBadges[incident.severity] || "bg-neutral-soft text-muted border border-border"}`}>
               {incident.severity}
             </span>
           </div>
-          <h3 className="font-bold text-sm leading-tight text-white line-clamp-1">{incident.title}</h3>
-          <p className="text-[11px] text-sky-200 flex items-center gap-1 mt-0.5">
+          <h3 className="font-bold text-sm text-white line-clamp-1">{incident.title}</h3>
+          <p className="text-[11px] text-sky-200/80 flex items-center gap-1 mt-0.5">
             <span>📍</span> {incident.locationName}
           </p>
         </div>
         <button
           onClick={onClose}
-          className="text-white/80 hover:text-white text-lg font-bold p-1 cursor-pointer"
+          className="text-white/70 hover:text-white text-base font-bold p-1 rounded-lg hover:bg-white/10 transition cursor-pointer"
+          aria-label="Close detail panel"
         >
           ✕
         </button>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-slate-200 bg-slate-50 text-[11px] font-semibold">
-        <button
-          onClick={() => setActiveTab("overview")}
-          className={`flex-1 py-2 text-center transition-colors cursor-pointer ${
-            activeTab === "overview" ? "border-b-2 border-sky-600 text-sky-800 bg-white" : "text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          Overview
-        </button>
-        <button
-          onClick={() => setActiveTab("triage")}
-          className={`flex-1 py-2 text-center transition-colors cursor-pointer relative ${
-            activeTab === "triage" ? "border-b-2 border-sky-600 text-sky-800 bg-white" : "text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          AI Triage
-          {incident.aiRecommendation?.status === "PENDING_REVIEW" && (
-            <span className="w-1.5 h-1.5 rounded-full bg-red-500 inline-block ml-1 animate-ping" />
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab("timeline")}
-          className={`flex-1 py-2 text-center transition-colors cursor-pointer ${
-            activeTab === "timeline" ? "border-b-2 border-sky-600 text-sky-800 bg-white" : "text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          Timeline
-        </button>
-        <button
-          onClick={() => setActiveTab("comms")}
-          className={`flex-1 py-2 text-center transition-colors cursor-pointer relative ${
-            activeTab === "comms" ? "border-b-2 border-sky-600 text-sky-800 bg-white" : "text-slate-500 hover:text-slate-800"
-          }`}
-        >
-          Chat ({incidentMessages.length})
-        </button>
+      <div className="flex border-b border-border bg-[#0b1324] text-xs font-medium">
+        {[
+          { key: "overview", label: "Overview", icon: "📋" },
+          { key: "triage", label: "AI Triage", icon: "✦" },
+          { key: "timeline", label: "Timeline", icon: "⏱️" },
+          { key: "comms", label: `Comms (${incidentMessages.length})`, icon: "💬" },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => setActiveTab(tab.key as any)}
+            className={`flex-1 py-2.5 text-center transition border-b-2 cursor-pointer flex items-center justify-center gap-1 ${
+              activeTab === tab.key
+                ? "border-sky-400 text-sky-300 font-semibold bg-surface-muted/40"
+                : "border-transparent text-muted hover:text-foreground hover:bg-surface-muted/20"
+            }`}
+          >
+            <span>{tab.icon}</span>
+            <span>{tab.label}</span>
+          </button>
+        ))}
       </div>
 
-      {/* Content */}
-      <div className="p-3.5 overflow-y-auto space-y-3.5 text-xs text-slate-700 flex-1">
+      {/* Tab Body */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 text-xs">
+        {/* OVERVIEW TAB */}
         {activeTab === "overview" && (
-          <div className="space-y-3">
-            {/* Status & Focus Button */}
-            <div className="flex items-center justify-between bg-slate-50 p-2 rounded-lg border border-slate-200">
-              <div>
-                <span className="text-[10px] text-slate-400 block font-bold uppercase">Lifecycle State</span>
-                <span className={`px-2 py-0.5 rounded text-[11px] font-bold inline-block ${lifecycleColors[incident.lifecycleStatus] || "bg-slate-200"}`}>
-                  {incident.lifecycleStatus}
-                </span>
-              </div>
-              <button
-                onClick={() => setMapFocusTarget({ lat: incident.lat, lon: incident.lon, zoom: 15, title: incident.title })}
-                className="bg-sky-600 hover:bg-sky-700 text-white px-2.5 py-1 rounded text-[11px] font-semibold flex items-center gap-1 cursor-pointer shadow-sm"
-              >
-                <span>🎯</span> Zoom on Map
-              </button>
-            </div>
-
-            {/* Description */}
+          <>
             <div>
-              <span className="font-bold text-slate-900 block mb-0.5">Description:</span>
-              <p className="text-slate-600 leading-relaxed bg-slate-50 p-2 rounded border border-slate-100">
+              <span className="font-semibold text-muted uppercase text-[10px] tracking-wider block mb-1">
+                Incident Description
+              </span>
+              <p className="text-foreground leading-relaxed bg-surface-muted/50 p-3 rounded-xl border border-border">
                 {incident.description}
               </p>
             </div>
 
-            {/* Stats */}
-            <div className="grid grid-cols-2 gap-2 text-[11px]">
-              <div className="bg-slate-50 p-2 rounded border border-slate-100">
-                <span className="text-slate-400 block">Estimated Affected:</span>
-                <b className="text-sm text-slate-900">~{incident.affectedPeopleEstimate} Persons</b>
+            <div className="grid grid-cols-2 gap-2.5">
+              <div className="bg-surface-muted/40 p-2.5 rounded-xl border border-border">
+                <span className="text-[10px] text-muted block uppercase tracking-wider font-semibold">Status</span>
+                <span className="font-semibold text-sky-300 text-xs mt-0.5 block">{incident.lifecycleStatus}</span>
               </div>
-              <div className="bg-slate-50 p-2 rounded border border-slate-100">
-                <span className="text-slate-400 block">Reporter Source:</span>
-                <b className="text-sm text-slate-900">{incident.reporterSource.replace(/_/g, " ")}</b>
+              <div className="bg-surface-muted/40 p-2.5 rounded-xl border border-border">
+                <span className="text-[10px] text-muted block uppercase tracking-wider font-semibold">Casualties / Trapped</span>
+                <span className="font-semibold text-white text-xs mt-0.5 block">{incident.affectedPeopleEstimate} people</span>
               </div>
             </div>
 
-            {/* Urgent Needs */}
-            {incident.urgentNeeds.length > 0 && (
-              <div>
-                <span className="font-bold text-slate-900 block mb-1">Urgent Capabilities Required:</span>
-                <div className="flex flex-wrap gap-1">
-                  {incident.urgentNeeds.map((need) => (
-                    <span key={need} className="bg-rose-50 text-rose-800 border border-rose-200 px-2 py-0.5 rounded text-[10.5px] font-medium">
-                      ⚠️ {need}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
             {/* Assigned Units */}
-            <div className="border-t border-slate-100 pt-2.5">
+            <div>
               <div className="flex items-center justify-between mb-1.5">
-                <span className="font-bold text-slate-900">Assigned Response Units ({assignedUnits.length}):</span>
+                <span className="font-semibold text-muted uppercase text-[10px] tracking-wider">
+                  Assigned Tactical Units ({assignedUnits.length})
+                </span>
                 <button
                   onClick={() => onOpenDispatch(incident.id)}
-                  className="text-sky-700 hover:text-sky-900 font-bold text-[11px] cursor-pointer"
+                  className="text-sky-400 hover:text-sky-300 font-semibold text-[11px] cursor-pointer"
                 >
                   + Dispatch Unit
                 </button>
               </div>
 
               {assignedUnits.length === 0 ? (
-                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-[11px] text-center">
-                  No units dispatched yet. Click <b>+ Dispatch Unit</b> to assign medics, firefighters, or rescue boats.
+                <div className="bg-surface-muted/30 border border-dashed border-border rounded-xl p-3 text-center text-muted text-[11px]">
+                  No response units dispatched yet.
                 </div>
               ) : (
                 <div className="space-y-1.5">
                   {assignedUnits.map((unit) => (
-                    <div key={unit.id} className="p-2 rounded bg-slate-50 border border-slate-200 flex items-center justify-between">
+                    <div
+                      key={unit.id}
+                      className="bg-surface-muted/50 border border-border rounded-xl p-2.5 flex items-center justify-between"
+                    >
                       <div>
-                        <div className="font-bold text-slate-800 flex items-center gap-1.5">
-                          <span>{unit.role.includes("Medic") ? "🚑" : unit.role.includes("Fire") ? "🚒" : "🚤"}</span>
-                          {unit.callsign} — {unit.personnelName}
+                        <div className="font-bold text-white text-xs flex items-center gap-1.5">
+                          <span>{unit.callsign}</span>
+                          <span className="text-[10px] text-sky-300 font-normal">({unit.personnelName})</span>
                         </div>
-                        <div className="text-[10px] text-slate-500">{unit.vehicleType} • {unit.agency}</div>
+                        <div className="text-[10px] text-muted">{unit.agency} · {unit.vehicleType}</div>
                       </div>
-                      <span className="bg-blue-100 text-blue-800 px-1.5 py-0.5 rounded text-[10px] font-bold">
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-950 text-emerald-300 border border-emerald-800/60">
                         {unit.status}
                       </span>
                     </div>
@@ -227,255 +177,237 @@ export default function IncidentDetailPanel({ incident, onClose, onOpenDispatch 
               )}
             </div>
 
-            {/* Lifecycle Status Change Actions */}
-            <div className="border-t border-slate-100 pt-2.5">
-              <span className="font-bold text-slate-900 block mb-1">Update Mission Lifecycle:</span>
-              <div className="grid grid-cols-2 gap-1.5">
-                {incident.lifecycleStatus !== "DISPATCHED" && (
-                  <button
-                    onClick={() => updateIncidentStatus(incident.id, "DISPATCHED")}
-                    className="p-1.5 rounded bg-amber-100 hover:bg-amber-200 text-amber-900 font-semibold cursor-pointer text-center"
+            {/* Urgent Needs Tags */}
+            <div>
+              <span className="font-semibold text-muted uppercase text-[10px] tracking-wider block mb-1.5">
+                Urgent Field Requirements
+              </span>
+              <div className="flex flex-wrap gap-1.5">
+                {incident.urgentNeeds.map((need) => (
+                  <span
+                    key={need}
+                    className="bg-surface-muted border border-border text-foreground px-2.5 py-1 rounded-lg text-[11px] font-medium"
                   >
-                    Mark Dispatched
-                  </button>
-                )}
-                {incident.lifecycleStatus !== "RESPONSE IN PROGRESS" && (
-                  <button
-                    onClick={() => updateIncidentStatus(incident.id, "RESPONSE IN PROGRESS")}
-                    className="p-1.5 rounded bg-blue-100 hover:bg-blue-200 text-blue-900 font-semibold cursor-pointer text-center"
-                  >
-                    In Progress
-                  </button>
-                )}
-                {incident.lifecycleStatus !== "RESOLVED" && (
-                  <button
-                    onClick={() => updateIncidentStatus(incident.id, "RESOLVED", "All victims secured")}
-                    className="p-1.5 rounded bg-emerald-100 hover:bg-emerald-200 text-emerald-900 font-semibold cursor-pointer text-center"
-                  >
-                    Resolve Incident
-                  </button>
-                )}
-                {incident.lifecycleStatus !== "CLOSED" && (
-                  <button
-                    onClick={() => updateIncidentStatus(incident.id, "CLOSED", "Mission closed")}
-                    className="p-1.5 rounded bg-slate-200 hover:bg-slate-300 text-slate-800 font-semibold cursor-pointer text-center"
-                  >
-                    Close Record
-                  </button>
-                )}
+                    • {need}
+                  </span>
+                ))}
               </div>
             </div>
-          </div>
+          </>
         )}
 
-        {/* AI Triage Tab */}
-        {activeTab === "triage" && incident.aiRecommendation && (
-          <div className="space-y-3">
-            <div className="bg-sky-50 border border-sky-200 rounded-xl p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <span className="font-bold text-sky-950 flex items-center gap-1.5 text-xs">
-                  <span>🤖</span> AI Fast Triage Assessment
+        {/* AI TRIAGE TAB */}
+        {activeTab === "triage" && (
+          <div className="space-y-3.5">
+            <div className="bg-ai-soft border border-ai/30 rounded-xl p-3.5">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-ai font-bold flex items-center gap-1.5 text-xs">
+                  <span>✦</span> Algorithmic Triage Assessment
                 </span>
-                <span className="font-bold text-[11px] bg-sky-200/80 text-sky-900 px-2 py-0.5 rounded">
-                  {incident.aiRecommendation.confidenceScore}% Confidence
+                <span className="text-[10px] bg-ai/20 text-ai px-2 py-0.5 rounded font-mono font-semibold">
+                  CONFIDENCE: {Math.round(incident.aiRecommendation?.confidenceScore || 88)}%
                 </span>
               </div>
-
-              <div className="text-[11px] text-sky-900 space-y-1">
-                <div><b>Proposed Severity:</b> <span className="font-bold text-red-700">{incident.aiRecommendation.proposedSeverity}</span></div>
-                <div><b>Recommended Priority:</b> Level {incident.aiRecommendation.recommendedPriority}</div>
-                <div><b>Evidence Synthesis:</b> {incident.aiRecommendation.evidenceSummary}</div>
-              </div>
+              <p className="text-foreground text-xs leading-relaxed">
+                {incident.aiRecommendation?.explanation ||
+                  incident.aiRecommendation?.evidenceSummary ||
+                  "Real-time sensor assessment and casualty clustering complete. Immediate resource staging advised."}
+              </p>
             </div>
 
-            {/* Identified Risks */}
-            <div>
-              <span className="font-bold text-slate-900 block mb-1">Identified Ground Risks:</span>
-              <ul className="list-disc pl-4 space-y-1 text-slate-600">
-                {incident.aiRecommendation.risksIdentified.map((r, i) => (
-                  <li key={i}>{r}</li>
+            <div className="bg-surface-muted/40 border border-border rounded-xl p-3 space-y-2">
+              <span className="text-[10px] text-muted uppercase font-semibold tracking-wider block">
+                Required Operational Capabilities
+              </span>
+              <ul className="space-y-1.5 text-[11px] text-foreground">
+                {(incident.aiRecommendation?.suggestedCapabilities || [
+                  "Water rescue boat team",
+                  "Medical evacuation unit",
+                  "Drone reconnaissance",
+                ]).map((action: string, idx: number) => (
+                  <li key={idx} className="flex items-start gap-2">
+                    <span className="text-sky-400 font-bold">•</span>
+                    <span>{action}</span>
+                  </li>
                 ))}
               </ul>
             </div>
 
-            {/* Missing Information Warnings */}
-            {incident.aiRecommendation.missingInformationWarnings.length > 0 && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-2.5 text-amber-900">
-                <span className="font-bold block mb-0.5">⚠️ Field Information Gaps:</span>
-                <ul className="list-disc pl-4 space-y-0.5 text-[11px]">
-                  {incident.aiRecommendation.missingInformationWarnings.map((w, i) => (
-                    <li key={i}>{w}</li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {/* AI Review State */}
-            <div className="p-2.5 rounded bg-slate-50 border border-slate-200 flex items-center justify-between text-[11px]">
-              <div>
-                <span className="text-slate-400 block">Triage Status:</span>
-                <b className="text-slate-800">{incident.aiRecommendation.status}</b>
-              </div>
-              {incident.aiRecommendation.reviewedBy && (
-                <div className="text-right text-slate-500">
-                  Reviewed by: <b>{incident.aiRecommendation.reviewedBy}</b>
-                </div>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="pt-2 flex flex-col gap-1.5">
-              {incident.aiRecommendation.status === "PENDING_REVIEW" && (
-                <button
-                  onClick={() => acceptAITriage(incident.id)}
-                  className="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold shadow-sm cursor-pointer"
-                >
-                  ✓ Accept AI Recommendation ({incident.aiRecommendation.proposedSeverity})
-                </button>
-              )}
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={() => acceptAITriage(incident.id)}
+                className="flex-1 bg-sky-600 hover:bg-sky-500 text-white font-semibold py-2 rounded-xl text-xs transition shadow-sm cursor-pointer"
+              >
+                Accept Triage
+              </button>
               <button
                 onClick={() => setShowOverrideModal(true)}
-                className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-lg font-semibold border border-slate-300 cursor-pointer"
+                className="bg-surface-muted hover:bg-surface-elevated text-muted hover:text-white border border-border px-3 py-2 rounded-xl text-xs transition cursor-pointer"
               >
-                ⚙️ Override Severity / Priority
+                Override
               </button>
             </div>
           </div>
         )}
 
-        {/* Timeline Tab */}
+        {/* TIMELINE TAB */}
         {activeTab === "timeline" && (
           <div className="space-y-3">
-            <span className="font-bold text-slate-900 block">Incident Audit & Action Timeline:</span>
-            <div className="relative border-l-2 border-sky-600/40 ml-2 space-y-3.5 pl-3">
-              {incident.timeline.map((evt) => (
-                <div key={evt.id} className="relative">
-                  <div className="absolute -left-[19px] top-0.5 w-2.5 h-2.5 rounded-full bg-sky-600" />
-                  <div className="text-[10px] text-slate-400">
-                    {new Date(evt.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} • {evt.actorName} ({evt.actorRole})
+            <div className="relative pl-4 border-l border-border space-y-4">
+              <div className="relative">
+                <span className="absolute -left-[21px] top-1 size-2.5 rounded-full bg-sky-400 ring-4 ring-[#0b1324]" />
+                <span className="text-[10px] text-muted font-mono">{incident.detectedAt}</span>
+                <p className="font-semibold text-white text-xs mt-0.5">Emergency Incident Detected & Logged</p>
+                <p className="text-[11px] text-muted mt-0.5">Report logged via multi-channel ERSS triage engine.</p>
+              </div>
+
+              {incident.timeline && incident.timeline.length > 0 ? (
+                incident.timeline.map((event) => (
+                  <div key={event.id} className="relative">
+                    <span className="absolute -left-[21px] top-1 size-2.5 rounded-full bg-emerald-400 ring-4 ring-[#0b1324]" />
+                    <span className="text-[10px] text-muted font-mono">{event.timestamp}</span>
+                    <p className="font-semibold text-white text-xs mt-0.5">{event.action}</p>
+                    <p className="text-[11px] text-muted mt-0.5">{event.actorName} ({event.actorRole}) {event.details ? `· ${event.details}` : ""}</p>
                   </div>
-                  <div className="font-semibold text-slate-800 text-[11px]">{evt.action}</div>
-                  {evt.details && <div className="text-slate-500 text-[10px] italic">{evt.details}</div>}
+                ))
+              ) : (
+                <div className="relative">
+                  <span className="absolute -left-[21px] top-1 size-2.5 rounded-full bg-amber-400 ring-4 ring-[#0b1324]" />
+                  <span className="text-[10px] text-muted font-mono">{incident.updatedAt}</span>
+                  <p className="font-semibold text-white text-xs mt-0.5">Operational Status: {incident.lifecycleStatus}</p>
+                  <p className="text-[11px] text-muted mt-0.5">Active resources and responders synchronizing telemetry.</p>
                 </div>
-              ))}
+              )}
             </div>
           </div>
         )}
 
-        {/* Tactical Chat Tab */}
+        {/* COMMS TAB */}
         {activeTab === "comms" && (
-          <div className="flex flex-col h-full space-y-2">
-            <div className="bg-sky-50 p-2 rounded text-[11px] text-sky-900 border border-sky-200 flex justify-between items-center">
-              <span><b>Channel:</b> {incident.id} Secure Net</span>
-              <span className="text-[10px] bg-sky-200 px-1.5 py-0.5 rounded font-bold">Encrypted</span>
-            </div>
-
-            <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+          <div className="flex flex-col h-64 space-y-2">
+            <div className="flex-1 overflow-y-auto space-y-2 pr-1">
               {incidentMessages.length === 0 ? (
-                <div className="text-center py-6 text-slate-400 italic">No field transmissions recorded on this channel yet.</div>
+                <div className="h-full grid place-items-center text-center text-muted text-[11px]">
+                  No tactical radio transmissions recorded.
+                </div>
               ) : (
                 incidentMessages.map((msg) => (
                   <div
                     key={msg.id}
-                    className={`p-2 rounded-lg text-[11px] border ${
+                    className={`p-2.5 rounded-xl border text-[11px] ${
                       msg.isPriority
-                        ? "bg-red-50 border-red-200 text-red-900"
-                        : "bg-slate-50 border-slate-200 text-slate-800"
+                        ? "bg-red-950/60 border-red-700/60 text-red-100"
+                        : "bg-surface-muted/50 border-border text-foreground"
                     }`}
                   >
-                    <div className="flex justify-between text-[10px] mb-1">
-                      <b className="text-slate-900">{msg.senderName} ({msg.senderRole})</b>
-                      <span className="text-slate-400">{new Date(msg.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>
+                    <div className="flex items-center justify-between font-semibold mb-0.5">
+                      <span className="text-sky-300 font-mono text-[10px]">{msg.senderName}</span>
+                      <span className="text-[9px] text-muted font-mono">{msg.timestamp.slice(11, 16)}</span>
                     </div>
-                    <div>{msg.messageText}</div>
-                    {msg.locationRef && (
-                      <button
-                        onClick={() => setMapFocusTarget({ lat: msg.locationRef!.lat, lon: msg.locationRef!.lon, zoom: 15, title: msg.locationRef!.label })}
-                        className="text-sky-700 underline text-[10px] mt-1 block cursor-pointer font-semibold"
-                      >
-                        📍 Pinned Location: {msg.locationRef.label}
-                      </button>
-                    )}
+                    <p className="leading-relaxed">{msg.messageText}</p>
                   </div>
                 ))
               )}
             </div>
 
-            <form onSubmit={handleSendChat} className="pt-2 border-t border-slate-200 space-y-1.5">
-              <div className="flex gap-1.5">
+            <form onSubmit={handleSendChat} className="space-y-1.5 pt-2 border-t border-border">
+              <div className="flex items-center gap-1.5">
                 <input
                   type="text"
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
-                  placeholder="Type operational tactical update..."
-                  className="flex-1 border border-slate-300 rounded p-1.5 text-xs text-slate-800"
+                  placeholder="Transmit tactical SITREP message..."
+                  className="flex-1 bg-surface border border-border rounded-lg px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted/60 focus:outline-none focus:border-info"
                 />
                 <button
                   type="submit"
-                  className="bg-sky-600 hover:bg-sky-700 text-white px-3 py-1.5 rounded font-bold text-xs cursor-pointer"
+                  className="bg-sky-600 hover:bg-sky-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition shadow-xs"
                 >
                   Send
                 </button>
               </div>
-              <label className="flex items-center gap-1.5 text-[10.5px] text-slate-600 cursor-pointer">
+              <label className="flex items-center gap-1.5 text-[10.5px] text-muted cursor-pointer">
                 <input
                   type="checkbox"
                   checked={isPriorityMsg}
                   onChange={(e) => setIsPriorityMsg(e.target.checked)}
-                  className="rounded text-red-600"
+                  className="accent-red-500 rounded"
                 />
-                <span>Broadcast as High Priority Flash Message</span>
+                <span>Broadcast as Priority Alert</span>
               </label>
             </form>
           </div>
         )}
       </div>
 
-      {/* Override Severity Dialog */}
+      {/* Footer Dispatch Actions */}
+      <div className="p-3 bg-[#0b1324] border-t border-border flex items-center justify-between gap-2">
+        <button
+          onClick={() => setMapFocusTarget({ lat: incident.lat, lon: incident.lon, zoom: 16, title: incident.title })}
+          className="rounded-lg border border-border bg-surface px-3 py-1.5 text-xs font-medium text-muted hover:text-white hover:bg-surface-muted transition cursor-pointer"
+        >
+          📍 Focus Map
+        </button>
+        <button
+          onClick={() => onOpenDispatch(incident.id)}
+          className="flex-1 bg-sky-600 hover:bg-sky-500 active:bg-sky-700 text-white font-semibold py-1.5 px-3 rounded-lg text-xs transition shadow-sm cursor-pointer text-center"
+        >
+          Deploy Dispatch Order
+        </button>
+      </div>
+
+      {/* Override Modal */}
       {showOverrideModal && (
-        <div className="fixed inset-0 z-[2500] bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl max-w-sm w-full p-4 shadow-2xl border border-slate-200 space-y-3">
-            <h4 className="font-bold text-sm text-slate-900">Override AI Triage Recommendation</h4>
-            <div>
-              <label className="block text-xs font-semibold mb-1">Select New Severity:</label>
-              <select
-                value={overrideSeverity}
-                onChange={(e) => setOverrideSeverity(e.target.value as IncidentSeverity)}
-                className="w-full border border-slate-300 rounded p-1.5 text-xs font-semibold"
-              >
-                <option value="CRITICAL">CRITICAL (Immediate Life Threat)</option>
-                <option value="HIGH">HIGH (Severe Hazard)</option>
-                <option value="MODERATE">MODERATE (Controlled Localized)</option>
-                <option value="LOW">LOW (Advisory / Minor)</option>
-              </select>
+        <div className="absolute inset-0 z-50 bg-[#070d18]/95 backdrop-blur-md p-5 flex flex-col justify-between animate-fadeIn">
+          <div>
+            <h4 className="font-bold text-white text-sm mb-1">Override AI Triage Severity</h4>
+            <p className="text-[11px] text-muted mb-3">Provide command rationale for audit records.</p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-semibold uppercase tracking-wider text-muted mb-1">
+                  New Operational Severity
+                </label>
+                <select
+                  value={overrideSeverity}
+                  onChange={(e) => setOverrideSeverity(e.target.value as IncidentSeverity)}
+                  className="w-full bg-[#0b1324] border border-border rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-info"
+                >
+                  <option value="CRITICAL">CRITICAL</option>
+                  <option value="HIGH">HIGH</option>
+                  <option value="MODERATE">MODERATE</option>
+                  <option value="LOW">LOW</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-semibold uppercase tracking-wider text-muted mb-1">
+                  Commander Rationale
+                </label>
+                <textarea
+                  value={overrideReason}
+                  onChange={(e) => setOverrideReason(e.target.value)}
+                  placeholder="e.g. Field scouts report flash flood level receding in sector 4..."
+                  rows={3}
+                  className="w-full bg-[#0b1324] border border-border rounded-lg p-2.5 text-xs text-white focus:outline-none focus:border-info placeholder:text-muted/60"
+                />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-semibold mb-1">Operational Justification (Audit Trail):</label>
-              <textarea
-                rows={2}
-                value={overrideReason}
-                onChange={(e) => setOverrideReason(e.target.value)}
-                placeholder="Ground reconnaissance confirms flood barrier intact..."
-                required
-                className="w-full border border-slate-300 rounded p-1.5 text-xs text-slate-800"
-              />
-            </div>
-            <div className="flex justify-end gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setShowOverrideModal(false)}
-                className="px-3 py-1.5 rounded bg-slate-100 hover:bg-slate-200 text-xs font-semibold"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleOverrideSubmit}
-                className="px-3 py-1.5 rounded bg-red-600 hover:bg-red-700 text-white text-xs font-bold"
-              >
-                Confirm Override
-              </button>
-            </div>
+          </div>
+
+          <div className="flex gap-2 pt-4 border-t border-border">
+            <button
+              onClick={() => setShowOverrideModal(false)}
+              className="flex-1 rounded-lg border border-border bg-surface py-2 text-xs font-semibold text-muted hover:text-white"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleOverrideSubmit}
+              className="flex-1 rounded-lg bg-sky-600 hover:bg-sky-500 py-2 text-xs font-semibold text-white shadow-sm"
+            >
+              Confirm Override
+            </button>
           </div>
         </div>
       )}

@@ -61,7 +61,6 @@ export const SimulationBar: React.FC<SimulationBarProps> = ({ isOpen, onClose })
     resetSimulation,
   } = useResQ();
 
-  // Auto-advance timer when running
   useEffect(() => {
     let timer: NodeJS.Timeout | null = null;
     if (simulationRunning) {
@@ -86,73 +85,72 @@ export const SimulationBar: React.FC<SimulationBarProps> = ({ isOpen, onClose })
   };
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[1100] max-w-xl w-[92vw] bg-[#0f172a]/95 border border-amber-500/40 backdrop-blur-md rounded-xl shadow-2xl p-3.5 text-slate-100 flex flex-col gap-2.5 animate-in slide-in-from-bottom-4 duration-200">
+    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[1100] max-w-xl w-[92vw] bg-[#0b1324]/95 border border-amber-500/40 backdrop-blur-xl rounded-2xl shadow-2xl p-4 text-foreground flex flex-col gap-2.5 animate-fadeIn font-sans">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse" />
-          <span className="text-xs font-bold uppercase tracking-wider text-amber-400">
-            End-to-End Disaster Simulation Engine
+          <span className="size-2 rounded-full bg-amber-400 animate-pulse" />
+          <span className="text-xs font-bold uppercase tracking-wider text-amber-300">
+            Disaster Scenario Simulation
           </span>
-          <span className="text-[10px] bg-amber-950 text-amber-300 border border-amber-800/80 px-2 py-0.5 rounded font-mono">
+          <span className="text-[10px] bg-amber-950/80 text-amber-200 border border-amber-600/50 px-2 py-0.5 rounded-full font-mono font-semibold">
             Step {simulationStep} of 9
           </span>
         </div>
         <button
           onClick={onClose}
-          className="text-slate-400 hover:text-white p-1 hover:bg-slate-800 rounded text-xs"
+          className="text-muted hover:text-white text-xs px-2 py-1 rounded hover:bg-surface-muted transition cursor-pointer font-bold"
+          title="Close Simulation Deck"
         >
           ✕
         </button>
       </div>
 
-      <div className="bg-slate-950/70 p-2.5 rounded border border-slate-800 text-xs">
-        <div className="font-bold text-white text-[12px] flex items-center gap-1.5">
-          <span>🎯</span> {currentInfo.title}
-        </div>
-        <div className="text-slate-300 text-[11px] mt-0.5">
-          {currentInfo.desc}
-        </div>
+      <div>
+        <h4 className="text-sm font-bold text-white">{currentInfo.title}</h4>
+        <p className="text-xs text-muted leading-relaxed mt-0.5">{currentInfo.desc}</p>
       </div>
 
-      {/* Controller Buttons */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
+      {/* Progress Line */}
+      <div className="w-full bg-surface h-1.5 rounded-full overflow-hidden border border-border">
+        <div
+          className="bg-amber-400 h-full transition-all duration-500 rounded-full"
+          style={{ width: `${(simulationStep / 9) * 100}%` }}
+        />
+      </div>
+
+      {/* Action Controls */}
+      <div className="flex items-center justify-between gap-2 pt-1">
+        <div className="flex gap-1.5">
           {simulationRunning ? (
             <button
               onClick={pauseSimulation}
-              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white rounded text-xs font-bold flex items-center gap-1 shadow"
+              className="bg-surface hover:bg-surface-elevated text-amber-300 border border-amber-500/40 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition"
             >
-              <span>⏸</span> Pause
+              ⏸ Pause
             </button>
           ) : (
             <button
               onClick={startSimulation}
-              disabled={simulationStep >= 9}
-              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white rounded text-xs font-bold flex items-center gap-1 shadow"
+              className="bg-amber-600 hover:bg-amber-500 text-white px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition shadow-xs"
             >
-              <span>▶</span> Auto Run
+              ▶ Auto Play
             </button>
           )}
-
           <button
             onClick={stepSimulation}
             disabled={simulationStep >= 9}
-            className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white rounded text-xs font-bold flex items-center gap-1 shadow"
+            className="bg-surface hover:bg-surface-elevated text-muted hover:text-foreground border border-border disabled:opacity-40 px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer transition"
           >
-            <span>⏭</span> Step Forward
-          </button>
-
-          <button
-            onClick={resetSimulation}
-            className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs font-medium"
-          >
-            Reset
+            ⏭ Next Step
           </button>
         </div>
 
-        <div className="text-[10px] text-slate-400 font-mono hidden sm:block">
-          All changes mutate live state
-        </div>
+        <button
+          onClick={resetSimulation}
+          className="text-muted hover:text-white text-xs transition cursor-pointer font-medium"
+        >
+          Reset Scenario
+        </button>
       </div>
     </div>
   );
