@@ -12,7 +12,7 @@ interface Props {
 
 export default function IncidentDetailPanel({ incident, onClose, onOpenDispatch }: Props) {
   const {
-    updateIncidentStatus,
+    updateIncidentStatus: _updateIncidentStatus,
     acceptAITriage,
     overrideAITriage,
     responders,

@@ -26,7 +26,7 @@ export const RoleWorkspaceModal: React.FC<RoleWorkspaceModalProps> = ({
     reports,
     verifyReport,
     rejectReport,
-    responders,
+    responders: _responders,
     resources,
     allocateResource,
     auditLogs,

@@ -391,7 +391,6 @@ function ResQGeoPortalInner() {
   const [currentBaseLayer, setCurrentBaseLayer] = useState<keyof typeof TILE_LAYERS>("streets");
   const [streetOverlayActive, setStreetOverlayActive] = useState(false);
   const [showLayerMenu, setShowLayerMenu] = useState(false);
-  const [showAboutModal, setShowAboutModal] = useState(false);
   const [showNavDrawer, setShowNavDrawer] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearching, setIsSearching] = useState(false);

@@ -21,7 +21,7 @@ export default function CitizenReportModal({ isOpen, onClose, pickedCoords }: Pr
   const [lon] = useState(pickedCoords?.lon || 76.1264);
   const [affectedCount, setAffectedCount] = useState(5);
   const [selectedNeeds, setSelectedNeeds] = useState<string[]>(["Rescue Boats"]);
-  const [reporterName, setReporterName] = useState("");
+  const [reporterName, _setReporterName] = useState("");
   const [reporterPhone, setReporterPhone] = useState("");
   const [submittedReportId, setSubmittedReportId] = useState<string | null>(null);
   const [trackSearchId, setTrackSearchId] = useState("");
