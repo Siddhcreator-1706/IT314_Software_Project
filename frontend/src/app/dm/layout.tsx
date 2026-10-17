@@ -12,7 +12,7 @@ export default async function DmLayout({ children }: LayoutProps<"/dm">) {
   const user = await currentUser();
   if (!user) redirect("/login?next=/dm");
 
-  if (user.role !== "DISASTER_MGMT" || !user.mfa_verified) {
+  if ((user.role !== "DISASTER_MGMT" && user.role !== "APP_MGMT") || !user.mfa_verified) {
     return (
       <main className="dm-theme flex h-screen items-center justify-center px-4">
         <div className="max-w-md rounded-xl border border-border bg-surface p-6 text-center">

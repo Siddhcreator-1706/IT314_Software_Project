@@ -170,10 +170,15 @@ export function ResQProvider({ children }: { children: React.ReactNode }) {
     setAuditLogs(ResQStorage.getAuditLogs());
   };
 
-  // Register and authenticate new user
+  // Register and authenticate new user.
+  // SECURITY: Role is always forced to "Public / Citizen" regardless of what is
+  // supplied in userData. Privileged accounts (staff, admin) are provisioned
+  // exclusively via the backend CLI and require MFA — never via self-registration.
   const signup = (userData: Omit<UserProfile, "id">): UserProfile => {
     const newUser: UserProfile = {
       ...userData,
+      role: "Public / Citizen",   // ENFORCED — never trust caller's role
+      agency: userData.agency || "Public Resident / Citizen",
       id: `USR-${Date.now().toString().slice(-4)}`,
     };
     ResQStorage.saveRegisteredUser(newUser);

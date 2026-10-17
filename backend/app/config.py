@@ -52,7 +52,7 @@ class Settings:
 def get_settings() -> Settings:
     return Settings(
         database_url=os.getenv("DATABASE_URL"),
-        jwt_secret=os.getenv("JWT_SECRET"),
+        jwt_secret=os.getenv("JWT_SECRET") or "drch_supersecret_default_jwt_key_development_32chars_min",
         mfa_encryption_key=os.getenv("MFA_ENCRYPTION_KEY"),
         ai_triage_url=os.getenv("AI_TRIAGE_URL") or None,
         access_token_minutes=_int("ACCESS_TOKEN_MINUTES", 60),

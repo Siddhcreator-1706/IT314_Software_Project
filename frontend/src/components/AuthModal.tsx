@@ -5,7 +5,7 @@ import { useResQ } from "../context/ResQContext";
 import { PortalRoleCategory, UserProfile, UserRole } from "../types/resq";
 import { DEMO_USERS } from "../services/resqStorage";
 import { StaffSignIn } from "../app/login/staff-sign-in";
-import { backendLogin } from "../services/authApi";
+import { backendLogin, backendSignup } from "../services/authApi";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -166,6 +166,17 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     if (selectedCategory === "user") {
       finalRole = "Public / Citizen";
     }
+
+    // Attempt backend sync in background
+    backendSignup({
+      name: fullName.trim(),
+      email: signupEmail.trim(),
+      phone: signupPhone.trim(),
+      role: finalRole,
+      agency: agency.trim() || (selectedCategory === "user" ? "Public Resident" : "Emergency Operations Division"),
+      badgeNumber: badgeNumber.trim() || undefined,
+      password: signupPassword,
+    }).catch(() => {});
 
     const newUser = signup({
       name: fullName.trim(),

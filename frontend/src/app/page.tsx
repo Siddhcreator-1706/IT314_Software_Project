@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
+import Link from "next/link";
 import { ResQProvider, useResQ } from "../context/ResQContext";
 import CitizenReportModal from "../components/CitizenReportModal";
 import IncidentDetailPanel from "../components/IncidentDetailPanel";
@@ -163,9 +164,18 @@ function CommandDashboard({
             <p className="mt-1.5 text-[11px] text-slate-500">Integrated Emergency Management</p>
           </div>
         </div>
-        <div className="text-right">
-          <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Regional command</p>
-          <p className="mt-1.5 text-sm font-semibold">National Operations Center</p>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/login"
+            className="flex items-center gap-1.5 rounded-lg bg-[#07569c] hover:bg-[#064782] px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition"
+          >
+            <span>🔐</span>
+            <span>Sign In / Staff Portal</span>
+          </Link>
+          <div className="text-right hidden sm:block">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-slate-500">Regional command</p>
+            <p className="mt-0.5 text-sm font-semibold">National Operations Center</p>
+          </div>
         </div>
       </header>
 
@@ -1509,21 +1519,18 @@ function ResQGeoPortalInner() {
             <span>‹ Back to Dashboard</span>
           </button>
 
-          {/* If NOT Authenticated */}
-          {!isAuthenticated ? (
-            <button
-              onClick={() => {
-                setAuthModalMode("login");
-                setShowAuthModal(true);
-              }}
-              className="bg-[#07569c] hover:bg-[#064782] text-white text-xs font-semibold px-3 py-1.5 rounded-lg cursor-pointer transition shadow-xs flex items-center gap-1.5"
-              title="Sign In or Register"
-            >
-              <span>🔐</span>
-              <span>Sign in</span>
-            </button>
-          ) : (
-            /* Unified Role Display & Switcher Dropdown (Merged into 1 button) */
+          {/* Sign In Button */}
+          <Link
+            href="/login"
+            className="flex items-center gap-1.5 rounded-lg bg-[#07569c] hover:bg-[#064782] px-3 py-1.5 text-xs font-semibold text-white shadow-xs transition"
+            title="Sign In to Staff or Citizen Portal"
+          >
+            <span>🔐</span>
+            <span>Sign In</span>
+          </Link>
+
+          {/* Unified Role Display & Switcher Dropdown */}
+          {isAuthenticated && (
             <div className="relative">
               <button
                 onClick={() => setShowRoleMenu((prev) => !prev)}
@@ -1631,6 +1638,14 @@ function ResQGeoPortalInner() {
                   </button>
 
                   <div className="pt-1.5 border-t border-slate-100 space-y-1">
+                    <Link
+                      href="/login"
+                      onClick={() => setShowRoleMenu(false)}
+                      className="w-full text-left px-2.5 py-1.5 rounded-lg hover:bg-sky-50 text-[#07569c] flex items-center gap-2 transition cursor-pointer font-medium"
+                    >
+                      <span>🔐</span> Staff &amp; Citizen Sign In (/login)
+                    </Link>
+
                     <button
                       onClick={() => {
                         setShowRoleWorkspace(true);

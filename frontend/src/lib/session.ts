@@ -51,11 +51,19 @@ export async function currentUser(): Promise<CurrentUser | null> {
   if (!token) return null;
 
   try {
-    const response = await fetch(`${API_URL}/api/v1/auth/me`, {
+    let response = await fetch(`${API_URL}/api/v1/auth/me`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "no-store",
       signal: AbortSignal.timeout(5000),
     });
+
+    if (response.status === 404) {
+      response = await fetch(`${API_URL}/api/v1/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+        signal: AbortSignal.timeout(5000),
+      });
+    }
 
     if (!response.ok) return null;
 

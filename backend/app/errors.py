@@ -82,6 +82,22 @@ def install_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def _unhandled(_: Request, exc: Exception):
+        from app.config import ConfigError
+        import psycopg
+
+        if isinstance(exc, ConfigError):
+            logger.warning(f"Configuration error: {exc}")
+            return JSONResponse(
+                status_code=503,
+                content=_body("CONFIG_ERROR", f"Service configuration error: {exc}"),
+            )
+        if isinstance(exc, psycopg.Error):
+            logger.warning(f"Database error: {exc}")
+            return JSONResponse(
+                status_code=503,
+                content=_body("DATABASE_UNAVAILABLE", "The database is temporarily unavailable or offline."),
+            )
+
         logger.exception("Unhandled error", exc_info=exc)
         return JSONResponse(
             status_code=500,

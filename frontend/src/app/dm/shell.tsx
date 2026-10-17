@@ -28,6 +28,7 @@ const NAV: { href: string; label: string; icon: string; permission?: string }[] 
   { href: "/dm/aid", label: "Aid & needs", icon: "◆" },
   { href: "/dm/campaigns", label: "Campaigns", icon: "₹" },
   { href: "/dm/analytics", label: "Analytics", icon: "▤" },
+  { href: "/dm/staff", label: "Staff accounts", icon: "👥", permission: "SUPERVISOR" },
 ];
 
 const PERMISSION_LABEL: Record<string, string> = {

@@ -4,7 +4,7 @@ import React, { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ResQProvider, useResQ } from "../../context/ResQContext";
-import { PortalRoleCategory, UserProfile } from "../../types/resq";
+import { PortalRoleCategory, UserProfile, UserRole } from "../../types/resq";
 import { DEMO_USERS } from "../../services/resqStorage";
 import { StaffSignIn } from "./staff-sign-in";
 import { backendLogin, checkBackendHealth } from "../../services/authApi";
@@ -37,9 +37,14 @@ function LoginPageContent() {
 
   const handleQuickDemoLogin = async (user: UserProfile) => {
     setErrorMsg(null);
+    // SECURITY: Quick demo login is for citizens only. Privileged roles (admin, staff)
+    // must authenticate via the real backend with MFA — never via a demo shortcut.
+    const citizenRoles: UserRole[] = ["Public / Citizen"];
+    if (!citizenRoles.includes(user.role)) {
+      setErrorMsg("Privileged accounts cannot use Quick Demo login. Please use the Staff sign-in above.");
+      return;
+    }
     setSuccessMsg(`Signing in as ${user.name} (${user.role})...`);
-    // Attempt backend sync in background
-    backendLogin(user.email, user.password || "").catch(() => {});
     setTimeout(() => {
       login(user);
       router.push("/");

@@ -13,9 +13,10 @@ from app.routers.dm import (
     incidents,
     moderation,
     resources,
+    staff,
 )
 
 # Router-level guard as defence in depth; FastAPI caches it, so routes that also declare it cost nothing extra.
 router = APIRouter(prefix="/api/v1/dm", tags=["disaster-management"], dependencies=[Depends(require_dm)])
-for module in (dashboard, incidents, ai, resources, dispatches, content, moderation, aid, analytics):
+for module in (dashboard, incidents, ai, resources, dispatches, content, moderation, aid, analytics, staff):
     router.include_router(module.router)

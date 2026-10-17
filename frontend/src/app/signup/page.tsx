@@ -4,40 +4,31 @@ import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ResQProvider, useResQ } from "../../context/ResQContext";
-import { PortalRoleCategory, UserRole } from "../../types/resq";
+import { backendSignup } from "../../services/authApi";
 
+/**
+ * Public self-registration — Citizens / general public ONLY.
+ *
+ * Security rule: This form always produces a "Public / Citizen" account.
+ * Administrator and Service Provider accounts are provisioned exclusively by
+ * Application Management via the backend CLI (app.cli) and require MFA.
+ * No client-supplied role is ever trusted.
+ */
 function SignupPageContent() {
   const router = useRouter();
   const { signup } = useResQ();
 
-  const [selectedCategory, setSelectedCategory] = useState<PortalRoleCategory>("user");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("+91 ");
-  const [specificRole, setSpecificRole] = useState<UserRole>("Public / Citizen");
-  const [agency, setAgency] = useState("Public Resident / Citizen");
-  const [badgeNumber, setBadgeNumber] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const handleCategoryChange = (cat: PortalRoleCategory) => {
-    setSelectedCategory(cat);
-    setErrorMsg(null);
-    if (cat === "user") {
-      setSpecificRole("Public / Citizen");
-      setAgency("Public Resident / Citizen");
-    } else if (cat === "admin") {
-      setSpecificRole("Command Officer / Incident Commander");
-      setAgency("National Disaster Management Authority (NDMA)");
-    } else {
-      setSpecificRole("Medic / Ambulance Team");
-      setAgency("Emergency Medical Services (EMS 108)");
-    }
-  };
-
-  const handleSignupSubmit = (e: React.FormEvent) => {
+  const handleSignupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
@@ -49,8 +40,12 @@ function SignupPageContent() {
       setErrorMsg("Please enter a valid email address.");
       return;
     }
-    if (password.length < 6) {
-      setErrorMsg("Password must be at least 6 characters.");
+    if (!phone.trim() || phone.trim() === "+91") {
+      setErrorMsg("Please enter your phone number.");
+      return;
+    }
+    if (password.length < 8) {
+      setErrorMsg("Password must be at least 8 characters.");
       return;
     }
     if (password !== confirmPassword) {
@@ -58,29 +53,44 @@ function SignupPageContent() {
       return;
     }
 
-    let finalRole: UserRole = specificRole;
-    if (selectedCategory === "user") {
-      finalRole = "Public / Citizen";
+    setIsSubmitting(true);
+
+    // 1. Sync to FastAPI backend gateway if reachable
+    try {
+      await backendSignup({
+        name: fullName.trim(),
+        email: email.trim().toLowerCase(),
+        phone: phone.trim(),
+        role: "Public / Citizen",
+        agency: "Public Resident / Citizen",
+        password: password,
+      });
+    } catch {
+      // Offline fallback continues seamlessly
     }
 
+    // Role is always enforced as "Public / Citizen" — never accepted from form input.
     const newUser = signup({
       name: fullName.trim(),
-      email: email.trim(),
+      email: email.trim().toLowerCase(),
       phone: phone.trim(),
-      role: finalRole,
-      agency: agency.trim() || (selectedCategory === "user" ? "Public Citizen" : "Emergency Operations Division"),
-      badgeNumber: badgeNumber.trim() || undefined,
+      role: "Public / Citizen",  // HARDCODED — not from user input
+      agency: "Public Resident / Citizen",
       password: password,
     });
 
-    setSuccessMsg(`Account created for ${newUser.name}! Entering your customized dashboard...`);
+    setSuccessMsg(`Welcome, ${newUser.name}! Your citizen account has been created.`);
     setTimeout(() => {
       router.push("/");
-    }, 450);
+    }, 800);
   };
+
+  const inputClass =
+    "w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500 transition";
 
   return (
     <div className="min-h-screen w-screen bg-[#070d18] text-white flex flex-col justify-between overflow-x-hidden font-sans">
+      {/* Top Banner */}
       <header className="h-14 bg-[#0c4a75] border-b border-[#093554] px-6 flex items-center justify-between shadow-md">
         <Link href="/" className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-full bg-sky-400/20 border border-white flex items-center justify-center text-lg">
@@ -99,218 +109,163 @@ function SignupPageContent() {
           href="/"
           className="text-xs bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-full transition flex items-center gap-1.5"
         >
-          <span>←</span> Return to General Dashboard
+          <span>←</span> Return to Dashboard
         </Link>
       </header>
 
       <main className="flex-1 flex items-center justify-center p-4 py-8">
-        <div className="bg-[#0b1324] border border-slate-700/80 rounded-2xl shadow-2xl max-w-lg w-full p-6 md:p-8 space-y-6">
+        <div className="bg-[#0b1324] border border-slate-700/80 rounded-2xl shadow-2xl max-w-md w-full p-6 md:p-8 space-y-6">
+
+          {/* Header */}
           <div className="text-center space-y-1">
+            <div className="w-14 h-14 rounded-full bg-sky-500/10 border border-sky-500/30 flex items-center justify-center text-3xl mx-auto mb-3">
+              👤
+            </div>
             <h1 className="text-2xl font-extrabold text-white tracking-tight">
-              Create an Account
+              Citizen Registration
             </h1>
             <p className="text-xs text-slate-400">
-              Register as a Citizen, Administrator, or Service Provider to access customized emergency tools.
+              Register as a citizen to access emergency SOS, shelter maps, and public alerts.
             </p>
           </div>
 
-          <div>
-            <label className="block text-xs font-bold uppercase tracking-wider text-slate-300 mb-2">
-              Who is registering? <span className="text-sky-400">*</span>
-            </label>
-            <div className="grid grid-cols-3 gap-2.5">
-              <button
-                type="button"
-                onClick={() => handleCategoryChange("user")}
-                className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
-                  selectedCategory === "user"
-                    ? "bg-sky-950/70 border-sky-500 shadow-md ring-1 ring-sky-500"
-                    : "bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700"
-                }`}
-              >
-                <span className="text-xl mb-1">👤</span>
-                <div>
-                  <div className={`text-xs font-bold ${selectedCategory === "user" ? "text-white" : "text-slate-300"}`}>
-                    Citizen / User
-                  </div>
-                  <div className="text-[9.5px] text-slate-400">Emergency SOS intake</div>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleCategoryChange("admin")}
-                className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
-                  selectedCategory === "admin"
-                    ? "bg-blue-950/70 border-blue-500 shadow-md ring-1 ring-blue-500"
-                    : "bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700"
-                }`}
-              >
-                <span className="text-xl mb-1">🛡️</span>
-                <div>
-                  <div className={`text-xs font-bold ${selectedCategory === "admin" ? "text-white" : "text-slate-300"}`}>
-                    Administrator
-                  </div>
-                  <div className="text-[9.5px] text-slate-400">Command & Dispatch</div>
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleCategoryChange("service_provider")}
-                className={`p-3 rounded-xl border text-left transition cursor-pointer flex flex-col justify-between ${
-                  selectedCategory === "service_provider"
-                    ? "bg-amber-950/70 border-amber-500 shadow-md ring-1 ring-amber-500"
-                    : "bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700"
-                }`}
-              >
-                <span className="text-xl mb-1">🚑</span>
-                <div>
-                  <div className={`text-xs font-bold ${selectedCategory === "service_provider" ? "text-white" : "text-slate-300"}`}>
-                    Service Provider
-                  </div>
-                  <div className="text-[9.5px] text-slate-400">Medic, Fire & NDRF</div>
-                </div>
-              </button>
+          {/* Role notice */}
+          <div className="flex items-start gap-3 p-3 bg-sky-950/50 border border-sky-800/60 rounded-xl text-sky-200 text-xs">
+            <span className="text-base mt-0.5">ℹ️</span>
+            <div>
+              <span className="font-semibold">Public citizen accounts only.</span>
+              {" "}Staff and administrator accounts are issued by Application Management.
+              If you are a responder or officer,{" "}
+              <Link href="/login" className="underline text-sky-300 hover:text-sky-200">
+                sign in here
+              </Link>{" "}with your issued credentials.
             </div>
           </div>
 
+          {/* Error / Success */}
           {errorMsg && (
-            <div className="p-3 bg-red-950/80 border border-red-700/60 rounded-xl text-red-200 text-xs flex items-center gap-2">
+            <div role="alert" className="p-3 bg-red-950/80 border border-red-700/60 rounded-xl text-red-200 text-xs flex items-center gap-2">
               <span>⚠️</span>
               <span>{errorMsg}</span>
             </div>
           )}
           {successMsg && (
-            <div className="p-3 bg-emerald-950/80 border border-emerald-700/60 rounded-xl text-emerald-200 text-xs flex items-center gap-2">
+            <div role="status" className="p-3 bg-emerald-950/80 border border-emerald-700/60 rounded-xl text-emerald-200 text-xs flex items-center gap-2">
               <span>✅</span>
               <span>{successMsg}</span>
             </div>
           )}
 
-          <form onSubmit={handleSignupSubmit} className="space-y-3.5">
+          {/* Form */}
+          <form onSubmit={handleSignupSubmit} className="space-y-4">
+            {/* Name + Phone */}
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Full Name</label>
+                <label htmlFor="signup-name" className="block text-xs font-semibold text-slate-300 mb-1">
+                  Full Name <span className="text-sky-400">*</span>
+                </label>
                 <input
+                  id="signup-name"
                   type="text"
                   required
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
                   placeholder="e.g. Ramesh Chandra"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                  className={inputClass}
+                  autoComplete="name"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Phone Number</label>
+                <label htmlFor="signup-phone" className="block text-xs font-semibold text-slate-300 mb-1">
+                  Phone Number <span className="text-sky-400">*</span>
+                </label>
                 <input
+                  id="signup-phone"
                   type="tel"
                   required
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="+91 98765 43210"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                  className={inputClass}
+                  autoComplete="tel"
                 />
               </div>
             </div>
 
+            {/* Email */}
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Email Address</label>
+              <label htmlFor="signup-email" className="block text-xs font-semibold text-slate-300 mb-1">
+                Email Address <span className="text-sky-400">*</span>
+              </label>
               <input
+                id="signup-email"
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="ramesh@resq.gov.in"
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                placeholder="you@example.com"
+                className={inputClass}
+                autoComplete="email"
               />
             </div>
 
-            {selectedCategory !== "user" && (
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Operational Role</label>
-                  <select
-                    value={specificRole}
-                    onChange={(e) => setSpecificRole(e.target.value as UserRole)}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-sky-500"
-                  >
-                    {selectedCategory === "admin" ? (
-                      <>
-                        <option value="Command Officer / Incident Commander">Incident Commander (NDMA)</option>
-                        <option value="Dispatcher">Emergency Dispatcher (ERSS 112)</option>
-                        <option value="System Administrator">System Administrator (DRCH)</option>
-                      </>
-                    ) : (
-                      <>
-                        <option value="Medic / Ambulance Team">Ambulance Paramedic (EMS 108)</option>
-                        <option value="Firefighter / Fire Service Officer">Fire & Rescue Officer</option>
-                        <option value="NDRF / SDRF Team Leader or Responder">NDRF Rescue Team Leader</option>
-                        <option value="Logistics Officer">Disaster Logistics & Relief Officer</option>
-                      </>
-                    )}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1">Badge / Callsign</label>
-                  <input
-                    type="text"
-                    value={badgeNumber}
-                    onChange={(e) => setBadgeNumber(e.target.value)}
-                    placeholder={selectedCategory === "admin" ? "NDMA-HQ-09" : "AMB-22 / FIRE-15"}
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
-                  />
-                </div>
-              </div>
-            )}
-
+            {/* Password */}
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">Agency / Organization</label>
+              <div className="flex items-center justify-between mb-1">
+                <label htmlFor="signup-password" className="text-xs font-semibold text-slate-300">
+                  Password <span className="text-sky-400">*</span>
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="text-[11px] text-sky-400 hover:text-sky-300 cursor-pointer"
+                >
+                  {showPassword ? "Hide" : "Show"}
+                </button>
+              </div>
               <input
-                type="text"
-                value={agency}
-                onChange={(e) => setAgency(e.target.value)}
-                placeholder={selectedCategory === "user" ? "Public Resident" : "e.g. State Disaster Response Force"}
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                id="signup-password"
+                type={showPassword ? "text" : "password"}
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Min 8 characters"
+                className={inputClass}
+                autoComplete="new-password"
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Password</label>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Min 6 characters"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1">Confirm Password</label>
-                <input
-                  type="password"
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Re-enter password"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
-                />
-              </div>
+            {/* Confirm Password */}
+            <div>
+              <label htmlFor="signup-confirm" className="block text-xs font-semibold text-slate-300 mb-1">
+                Confirm Password <span className="text-sky-400">*</span>
+              </label>
+              <input
+                id="signup-confirm"
+                type={showPassword ? "text" : "password"}
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Re-enter password"
+                className={inputClass}
+                autoComplete="new-password"
+              />
             </div>
 
-            <div className="pt-2">
+            <div className="pt-1">
               <button
+                id="signup-submit"
                 type="submit"
-                className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-2.5 px-4 rounded-xl text-sm transition shadow-lg shadow-emerald-600/30 cursor-pointer flex items-center justify-center gap-2"
+                disabled={isSubmitting}
+                className="w-full bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 disabled:cursor-wait text-white font-bold py-2.5 px-4 rounded-xl text-sm transition shadow-lg shadow-emerald-600/30 cursor-pointer flex items-center justify-center gap-2"
               >
-                <span>Complete Registration & Enter Portal</span>
+                <span>{isSubmitting ? "Creating account…" : "Create Citizen Account"}</span>
                 <span>→</span>
               </button>
             </div>
           </form>
 
+          {/* Footer nav */}
           <div className="pt-3 border-t border-slate-800 text-center text-xs text-slate-400 space-y-2">
             <div>
               Already have an account?{" "}
@@ -320,7 +275,7 @@ function SignupPageContent() {
             </div>
             <div>
               <Link href="/" className="text-slate-400 hover:text-slate-200">
-                Or browse general public dashboard →
+                Browse as guest →
               </Link>
             </div>
           </div>
