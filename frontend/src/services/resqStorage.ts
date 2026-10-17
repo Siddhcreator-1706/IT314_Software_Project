@@ -114,6 +114,16 @@ export const DEMO_USERS: UserProfile[] = [
     password: "provider123password",
   },
   {
+    id: "USR-000",
+    name: "DRCH System Administrator",
+    email: "admin@drch.gov.in",
+    role: "System Administrator",
+    agency: "National Disaster Response Hub (DRCH HQ)",
+    badgeNumber: "DRCH-ADM-01",
+    phone: "+91 99999 00001",
+    password: "Admin@123",
+  },
+  {
     id: "USR-007",
     name: "Devendra Rao",
     email: "admin@resq.gov.in",

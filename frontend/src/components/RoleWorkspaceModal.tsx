@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useResQ } from "../context/ResQContext";
 import { UserRole, IncidentRecord } from "../types/resq";
 import { DEMO_USERS } from "../services/resqStorage";
+import { AdminManagementWorkspace } from "./role-views/AdminManagementWorkspace";
 
 interface RoleWorkspaceModalProps {
   isOpen: boolean;
@@ -42,6 +43,7 @@ export const RoleWorkspaceModal: React.FC<RoleWorkspaceModalProps> = ({
   const [reportFilter, setReportFilter] = useState<string>("ALL");
   const [allocationAmount, setAllocationAmount] = useState<Record<string, number>>({});
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [showAdminConsole, setShowAdminConsole] = useState(false);
 
   if (!isOpen) return null;
 
@@ -706,6 +708,36 @@ export const RoleWorkspaceModal: React.FC<RoleWorkspaceModalProps> = ({
           {/* ========================================================= */}
           {activeRole === "System Administrator" && (
             <div className="space-y-4">
+              {/* Application Management Launch Banner */}
+              <div className="bg-gradient-to-r from-indigo-950/80 via-blue-950/60 to-slate-900 border border-indigo-500/40 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">⚙️</span>
+                    <h3 className="text-sm font-bold text-white">Application Management Console</h3>
+                    <span className="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded font-mono">
+                      AM-FR-01 • 02 • 05 • 06 • 07 • 11
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-400 mt-1 max-w-xl">
+                    Live operational control over DRCH User Accounts (AM-02), Immutable SHA-256 Chained Audit Logs (AM-05), Database Record Corrections (AM-06), Security Management &amp; JWT Session Revocation (AM-07), and Fail-Safe Sliding-Window Rate Limit Controls (AM-11).
+                  </p>
+                </div>
+                <button
+                  onClick={() => setShowAdminConsole(true)}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-lg shadow-lg transition shrink-0 flex items-center gap-2 cursor-pointer"
+                >
+                  <span>🚀</span> Open Full Management Console
+                </button>
+              </div>
+
+              {showAdminConsole && (
+                <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/85 backdrop-blur-xs p-3 animate-in fade-in">
+                  <div className="bg-[#0b1120] border border-slate-800 rounded-2xl w-full max-w-6xl max-h-[92vh] overflow-y-auto p-5 shadow-2xl">
+                    <AdminManagementWorkspace onClose={() => setShowAdminConsole(false)} />
+                  </div>
+                </div>
+              )}
+
               <div className="flex items-center justify-between">
                 <h4 className="text-xs font-bold text-slate-300 uppercase tracking-wider">
                   Audit Logs & Security Trail ({auditLogs.length} entries)

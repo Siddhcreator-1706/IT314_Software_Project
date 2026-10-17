@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { useResQ } from "../context/ResQContext";
 import { PortalRoleCategory, UserProfile, UserRole } from "../types/resq";
 import { DEMO_USERS } from "../services/resqStorage";
+import { adminApi } from "../services/adminApi";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -70,7 +71,7 @@ export const AuthModal: React.FC<AuthModalProps> = ({
   };
 
   // Submit Login
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
 
@@ -80,6 +81,18 @@ export const AuthModal: React.FC<AuthModalProps> = ({
     if (!identifier) {
       setErrorMsg("Please enter your email or badge ID.");
       return;
+    }
+
+    // Authenticate with backend API if password provided
+    try {
+      if (password) {
+        await adminApi.login(identifier, password);
+      }
+    } catch (apiErr: unknown) {
+      if (identifier === "admin@drch.gov.in" || identifier === "admin@resq.gov.in") {
+        setErrorMsg((apiErr as Error).message || "Admin authentication failed.");
+        return;
+      }
     }
 
     // Find in all registered & demo users

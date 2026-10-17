@@ -3,6 +3,10 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+
+from admin_router import router as admin_router
+from rate_limiter import AbuseControlMiddleware
 
 logger = logging.getLogger("drch.backend")
 logging.basicConfig(level=logging.INFO)
@@ -39,6 +43,21 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
+
+# CORS configuration for frontend
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Abuse control & Rate Limiting Middleware (AM-FR-11)
+app.add_middleware(AbuseControlMiddleware)
+
+# Include Application Management & Authentication Router
+app.include_router(admin_router)
 
 @app.get('/')
 def read_root():

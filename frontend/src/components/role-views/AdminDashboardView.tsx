@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { useResQ } from "../../context/ResQContext";
 import { IncidentRecord } from "../../types/resq";
+import { AdminManagementWorkspace } from "./AdminManagementWorkspace";
 
 interface AdminDashboardViewProps {
   onOpenWorkspace: () => void;
@@ -32,6 +33,7 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
 
   const [isMinimized, setIsMinimized] = useState(false);
   const [activeTab, setActiveTab] = useState<"incidents" | "ai_triage" | "resources">("incidents");
+  const [showAdminConsole, setShowAdminConsole] = useState(false);
 
   const pendingAIIncidents = incidents.filter(
     (inc) => inc.aiRecommendation && inc.aiRecommendation.status === "PENDING_REVIEW"
@@ -61,6 +63,14 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           </div>
 
           <div className="flex items-center gap-1.5">
+            <button
+              onClick={() => setShowAdminConsole(true)}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white text-[10.5px] font-bold px-2.5 py-1 rounded-lg transition cursor-pointer shadow flex items-center gap-1"
+              title="Open Application Management Console (AM-FR-01 to 11)"
+            >
+              <span>⚙️</span>
+              <span>App Admin</span>
+            </button>
             <button
               onClick={onOpenWorkspace}
               className="bg-blue-600 hover:bg-blue-500 text-white text-[10.5px] font-bold px-2.5 py-1 rounded-lg transition cursor-pointer shadow"
@@ -316,6 +326,14 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({
           </div>
         )}
       </div>
+
+      {showAdminConsole && (
+        <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/85 backdrop-blur-xs p-3 animate-in fade-in">
+          <div className="bg-[#0b1120] border border-slate-800 rounded-2xl w-full max-w-6xl max-h-[92vh] overflow-y-auto p-5 shadow-2xl">
+            <AdminManagementWorkspace onClose={() => setShowAdminConsole(false)} />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

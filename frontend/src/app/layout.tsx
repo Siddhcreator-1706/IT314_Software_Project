@@ -27,16 +27,6 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <head>
-        <link
-          rel="stylesheet"
-          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-        />
-        <link
-          rel="stylesheet"
-          href="https://unpkg.com/leaflet-minimap@3.6.1/dist/Control.MiniMap.min.css"
-        />
-      </head>
       <body className="h-full w-full overflow-hidden m-0 p-0 bg-slate-900 font-sans">
         {children}
       </body>

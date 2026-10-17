@@ -14,6 +14,7 @@ import { GeneralPublicDashboardView } from "../components/role-views/GeneralPubl
 import { CitizenDashboardView } from "../components/role-views/CitizenDashboardView";
 import { AdminDashboardView } from "../components/role-views/AdminDashboardView";
 import { ServiceProviderDashboardView } from "../components/role-views/ServiceProviderDashboardView";
+import { AdminManagementWorkspace } from "../components/role-views/AdminManagementWorkspace";
 import { IncidentRecord, PortalRoleCategory } from "../types/resq";
 
 // Basemap layer configurations with maxNativeZoom to prevent labels disappearing at deep zoom
@@ -138,6 +139,7 @@ function ResQGeoPortalInner() {
   const [showAlertsDrawer, setShowAlertsDrawer] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showSimulationBar, setShowSimulationBar] = useState(false);
+  const [showAdminWorkspace, setShowAdminWorkspace] = useState(false);
   const [dispatchIncident, setDispatchIncident] = useState<IncidentRecord | null>(null);
   const [showDispatchModal, setShowDispatchModal] = useState(false);
 
@@ -1084,6 +1086,15 @@ function ResQGeoPortalInner() {
                   >
                     <span>📊</span> Analytics
                   </button>
+
+                  <button
+                    onClick={() => setShowAdminWorkspace(true)}
+                    className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs px-2.5 py-1 rounded-full cursor-pointer transition shadow border border-indigo-400/40"
+                    title="Open Application Management Console (AM-FR-01 to 11)"
+                  >
+                    <span>⚙️</span>
+                    <span className="font-semibold">App Admin</span>
+                  </button>
                 </>
               )}
 
@@ -1644,6 +1655,15 @@ function ResQGeoPortalInner() {
           setShowDispatchModal(true);
         }}
       />
+
+      {/* ============ APPLICATION MANAGEMENT CONSOLE ============ */}
+      {showAdminWorkspace && (
+        <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/85 backdrop-blur-xs p-3 animate-in fade-in">
+          <div className="bg-[#0b1120] border border-slate-800 rounded-2xl w-full max-w-6xl max-h-[92vh] overflow-y-auto p-5 shadow-2xl">
+            <AdminManagementWorkspace onClose={() => setShowAdminWorkspace(false)} />
+          </div>
+        </div>
+      )}
 
       {/* ============ ALERTS DRAWER ============ */}
       <AlertsDrawer
