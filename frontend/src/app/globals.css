@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "leaflet/dist/leaflet.css";
 
 :root {
   --background: #ffffff;
@@ -58,7 +57,7 @@ body {
   border-color: #14639e !important;
   padding: 2px 6px !important;
   border-radius: 3px !important;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.3) !important;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3) !important;
 }
 
 .leaflet-control-minimap {
@@ -86,7 +85,7 @@ body {
   background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(8px);
   border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
   font-family: inherit;
   padding: 4px;
 }
@@ -98,59 +97,59 @@ body {
 /* ============ DISASTER MANAGEMENT WORKSPACE (scoped to .dm-theme) ============
    Semantic tokens for the /dm workspace in the ResQ navy/sky palette. Scoped to the
    workspace root so the portal, login and other modules keep their own styling. */
-@theme inline {
-  --color-surface: var(--dm-surface);
-  --color-surface-muted: var(--dm-surface-muted);
-  --color-muted: var(--dm-muted);
-  --color-border: var(--dm-border);
-  --color-accent: var(--dm-accent);
-  --color-accent-foreground: var(--dm-accent-foreground);
-  --color-critical: var(--dm-critical);
-  --color-critical-soft: var(--dm-critical-soft);
-  --color-high: var(--dm-high);
-  --color-high-soft: var(--dm-high-soft);
-  --color-medium: var(--dm-medium);
-  --color-medium-soft: var(--dm-medium-soft);
-  --color-low: var(--dm-low);
-  --color-low-soft: var(--dm-low-soft);
-  --color-info: var(--dm-info);
-  --color-info-soft: var(--dm-info-soft);
-  --color-ai: var(--dm-ai);
-  --color-ai-soft: var(--dm-ai-soft);
-  --color-neutral-soft: var(--dm-neutral-soft);
-}
+  @theme inline {
+    --color-surface: var(--dm-surface);
+    --color-surface-muted: var(--dm-surface-muted);
+    --color-muted: var(--dm-muted);
+    --color-border: var(--dm-border);
+    --color-accent: var(--dm-accent);
+    --color-accent-foreground: var(--dm-accent-foreground);
+    --color-critical: var(--dm-critical);
+    --color-critical-soft: var(--dm-critical-soft);
+    --color-high: var(--dm-high);
+    --color-high-soft: var(--dm-high-soft);
+    --color-medium: var(--dm-medium);
+    --color-medium-soft: var(--dm-medium-soft);
+    --color-low: var(--dm-low);
+    --color-low-soft: var(--dm-low-soft);
+    --color-info: var(--dm-info);
+    --color-info-soft: var(--dm-info-soft);
+    --color-ai: var(--dm-ai);
+    --color-ai-soft: var(--dm-ai-soft);
+    --color-neutral-soft: var(--dm-neutral-soft);
+  }
 
-.dm-theme {
-  --background: #070d18;
-  --foreground: #f1f5f9;
-  --dm-surface: #0b1324;
-  --dm-surface-muted: #111c33;
-  --dm-muted: #94a3b8;
-  --dm-border: #1e293b;
-  --dm-accent: #0284c7;
-  --dm-accent-foreground: #ffffff;
-  --dm-critical: #f87171;
-  --dm-critical-soft: #3b1219;
-  --dm-high: #fb923c;
-  --dm-high-soft: #3a1f0e;
-  --dm-medium: #fbbf24;
-  --dm-medium-soft: #33270b;
-  --dm-low: #34d399;
-  --dm-low-soft: #0b2e22;
-  --dm-info: #38bdf8;
-  --dm-info-soft: #0c2a42;
-  --dm-ai: #c4b5fd;
-  --dm-ai-soft: #24193f;
-  --dm-neutral-soft: #172036;
-  background: var(--background);
-  color: var(--foreground);
-  color-scheme: dark;
-}
+  .dm-theme {
+    --background: #070d18;
+    --foreground: #f1f5f9;
+    --dm-surface: #0b1324;
+    --dm-surface-muted: #111c33;
+    --dm-muted: #94a3b8;
+    --dm-border: #1e293b;
+    --dm-accent: #0284c7;
+    --dm-accent-foreground: #ffffff;
+    --dm-critical: #f87171;
+    --dm-critical-soft: #3b1219;
+    --dm-high: #fb923c;
+    --dm-high-soft: #3a1f0e;
+    --dm-medium: #fbbf24;
+    --dm-medium-soft: #33270b;
+    --dm-low: #34d399;
+    --dm-low-soft: #0b2e22;
+    --dm-info: #38bdf8;
+    --dm-info-soft: #0c2a42;
+    --dm-ai: #c4b5fd;
+    --dm-ai-soft: #24193f;
+    --dm-neutral-soft: #172036;
+    background: var(--background);
+    color: var(--foreground);
+    color-scheme: dark;
+  }
 
-.dm-theme :focus-visible {
-  outline: 2px solid #38bdf8;
-  outline-offset: 2px;
-}
+  .dm-theme :focus-visible {
+    outline: 2px solid #38bdf8;
+    outline-offset: 2px;
+  }
 
 .dm-theme dialog::backdrop {
   background: rgb(2 6 23 / 0.7);

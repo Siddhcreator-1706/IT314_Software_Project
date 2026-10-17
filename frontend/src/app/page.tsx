@@ -607,6 +607,7 @@ function ResQGeoPortalInner() {
   const [showSplash, setShowSplash] = useState(false);
   const [splashFading, setSplashFading] = useState(false);
   const [showDashboard, setShowDashboard] = useState(false);
+  const [citizenViewPublicMap, setCitizenViewPublicMap] = useState(false);
   const [showMapView, setShowMapView] = useState(false);
   const [mapReady, setMapReady] = useState(false);
 
@@ -1329,6 +1330,25 @@ function ResQGeoPortalInner() {
     );
   }
 
+  // Post-login Citizen experience: Functionality-first, no full-screen map background
+  if (isAuthenticated && roleCategory === "user" && !citizenViewPublicMap) {
+    return (
+      <>
+        <CitizenDashboardView
+          onOpenCitizenReport={() => setShowCitizenReport(true)}
+          onViewPublicMap={() => setCitizenViewPublicMap(true)}
+          onSignOut={() => logout()}
+        />
+        {showCitizenReport && (
+          <CitizenReportModal
+            isOpen={showCitizenReport}
+            onClose={() => setShowCitizenReport(false)}
+          />
+        )}
+      </>
+    );
+  }
+
   return (
     <div className="relative w-screen h-screen overflow-hidden select-none font-sans bg-slate-900 text-slate-800">
 
@@ -1508,7 +1528,18 @@ function ResQGeoPortalInner() {
             <span aria-hidden>▦</span>
             <span>‹ Back to Dashboard</span>
           </button>
-
+          {/* Role-specific dashboard panel */}
+          <button
+            onClick={() => setShowDashboard((prev) => !prev)}
+            className={`hidden md:flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-full border transition cursor-pointer ${showDashboard
+              ? "bg-sky-500/30 border-sky-400/60 text-sky-200"
+              : "bg-slate-900/60 border-slate-700/60 text-slate-300 hover:text-white hover:border-sky-600/50"
+              }`}
+            title="Toggle role-specific dashboard panel"
+          >
+            <span>📊</span>
+            <span>My workspace</span>
+          </button>
           {/* If NOT Authenticated */}
           {!isAuthenticated ? (
             <button
@@ -1526,18 +1557,28 @@ function ResQGeoPortalInner() {
             /* Unified Role Display & Switcher Dropdown (Merged into 1 button) */
             <div className="relative">
               <button
-                onClick={() => setShowRoleMenu((prev) => !prev)}
-                className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:border-slate-300 transition shadow-xs cursor-pointer"
-                title="Click to switch role or view workspace"
+                onClick={() => {
+                  if (roleCategory === "user") {
+                    setCitizenViewPublicMap(false);
+                  } else {
+                    setShowRoleWorkspace(true);
+                  }
+                }}
+                className={`bg-slate-900/90 hover:bg-slate-900 border px-3 py-1 rounded-full text-xs font-medium flex items-center gap-1.5 shadow-sm transition ${roleCategory === "user"
+                  ? "border-sky-500/70 text-sky-200"
+                  : roleCategory === "admin"
+                    ? "border-blue-500/70 text-blue-200"
+                    : "border-amber-500/70 text-amber-200"
+                  }`}
+                title="Open Operational Role Workspace"
               >
                 <span
-                  className={`w-2 h-2 rounded-full ${
-                    roleCategory === "user"
-                      ? "bg-sky-500"
-                      : roleCategory === "admin"
-                      ? "bg-blue-600 animate-pulse"
-                      : "bg-amber-500 animate-pulse"
-                  }`}
+                  className={`w-2 h-2 rounded-full ${roleCategory === "user"
+                    ? "bg-sky-400"
+                    : roleCategory === "admin"
+                      ? "bg-blue-400 animate-pulse"
+                      : "bg-amber-400 animate-pulse"
+                    }`}
                 />
                 <span className="font-semibold text-slate-800">
                   {roleCategory === "user"
@@ -1697,6 +1738,19 @@ function ResQGeoPortalInner() {
         </nav>
       </header>
 
+      {/* ============ RETURN TO CITIZEN DASHBOARD (When citizen views public map) ============ */}
+      {isAuthenticated && roleCategory === "user" && citizenViewPublicMap && (
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-[1100] bg-[#0c4a75] border border-sky-400 text-white px-4 py-1.5 rounded-full shadow-2xl flex items-center gap-3 text-xs animate-fadeIn">
+          <span>🗺️ Viewing National Bhuvan Map</span>
+          <button
+            onClick={() => setCitizenViewPublicMap(false)}
+            className="bg-sky-500 hover:bg-sky-400 text-white font-bold px-3 py-0.5 rounded-full text-xs transition cursor-pointer shadow-xs"
+          >
+            ← Back to Citizen Dashboard
+          </button>
+        </div>
+      )}
+
       {/* ============ SEARCH PANEL ============ */}
       <button
         onClick={() => setShowNavDrawer(true)}
@@ -1729,9 +1783,8 @@ function ResQGeoPortalInner() {
           onClick={() => setShowLayerMenu(!showLayerMenu)}
           title="Choose map layer"
           aria-label="Choose map layer"
-          className={`p-2.5 px-3 transition-colors text-sm font-bold cursor-pointer ${
-            showLayerMenu ? "bg-sky-100 text-[#0c4a75]" : "text-[#0c4a75] hover:bg-slate-100"
-          }`}
+          className={`p-2.5 px-3 transition-colors text-sm font-bold cursor-pointer ${showLayerMenu ? "bg-sky-100 text-[#0c4a75]" : "text-[#0c4a75] hover:bg-slate-100"
+            }`}
         >
           ◆
         </button>
@@ -1759,11 +1812,10 @@ function ResQGeoPortalInner() {
               <button
                 key={key}
                 onClick={() => switchBaseLayer(key as keyof typeof TILE_LAYERS)}
-                className={`w-full text-left px-2.5 py-2 rounded text-xs flex items-center justify-between transition-colors cursor-pointer ${
-                  currentBaseLayer === key
-                    ? "bg-sky-50 text-[#0c4a75] font-semibold border border-sky-200"
-                    : "hover:bg-slate-50 text-slate-700"
-                }`}
+                className={`w-full text-left px-2.5 py-2 rounded text-xs flex items-center justify-between transition-colors cursor-pointer ${currentBaseLayer === key
+                  ? "bg-sky-50 text-[#0c4a75] font-semibold border border-sky-200"
+                  : "hover:bg-slate-50 text-slate-700"
+                  }`}
               >
                 <span>{config.name}</span>
                 {currentBaseLayer === key && <span className="text-sky-600 font-bold">✓</span>}
