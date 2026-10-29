@@ -11,6 +11,7 @@ from app.config import get_settings
 from app.errors import install_error_handlers
 from app.routers import auth
 from app.routers.dm import router as dm_router
+from app.routers.public import router as public_router  # Nisarg S1-07: public incidents API
 from app.schemas.citizen import (
     CreateReportRequest,
     PublicAlertResponse,
@@ -159,6 +160,7 @@ app = FastAPI(
 install_error_handlers(app)
 app.include_router(auth.router)
 app.include_router(dm_router)
+app.include_router(public_router)  # Nisarg S1-07: public incidents (no auth required)
 
 
 # CORS — allow frontend dev server and production origins
@@ -286,18 +288,24 @@ async def get_citizen_report(
 
 # ═══════════════════════════════════════════════════════════════════
 # PUBLIC DATA ENDPOINTS (no auth required)
+# DEPRECATED: /api/public/incidents and /api/public/alerts are superseded
+# by the production PostGIS router at /api/v1/public/incidents (Nisarg S1-07).
+# These stubs are kept for backwards compatibility with any demo frontend that
+# has not yet migrated.  They will be removed after Sprint 1 sign-off.
 # ═══════════════════════════════════════════════════════════════════
 
 @app.get(
     "/api/public/incidents",
     response_model=list[PublicIncidentResponse],
-    summary="Get active verified incidents for public map",
+    summary="[DEPRECATED] Use /api/v1/public/incidents instead",
+    deprecated=True,
+    include_in_schema=True,
 )
-async def list_public_incidents():
+async def list_public_incidents_legacy():
     """
-    Returns currently active, verified incidents approved for public visibility.
-    Used by the citizen compact map. Does not expose unverified reports,
-    private responder data, or resolved/closed incidents.
+    DEPRECATED — SQLite demo endpoint.
+    Migrated to PostgreSQL/PostGIS: GET /api/v1/public/incidents (Nisarg S1-07).
+    This endpoint will be removed after Sprint 1.
     """
     if not _SQLITE_CITIZEN_AVAILABLE:
         return []
