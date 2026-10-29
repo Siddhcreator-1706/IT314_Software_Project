@@ -1,10 +1,8 @@
 """Unit tests for S1-11 Team-Recommendation Engine."""
 
 from app.services.recommendations import (
-    SCENARIO_CAPABILITY_RULES,
     get_recommended_teams,
     get_required_capabilities,
-    normalize_scenario,
     score_and_rank_teams,
 )
 

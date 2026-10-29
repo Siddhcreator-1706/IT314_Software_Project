@@ -348,9 +348,12 @@ def district_for(
         return online_district
 
     # 3. In-memory nearest-centroid fallback (Gujarat only, offline-safe)
-    if state_filter is None or (state_filter and state_filter.strip().lower() == "gujarat"):
-        if _bbox_check(latitude, longitude) and _pip_polygon(latitude, longitude):
-            return _nearest_district(latitude, longitude)
+    if (
+        (state_filter is None or (state_filter and state_filter.strip().lower() == "gujarat"))
+        and _bbox_check(latitude, longitude)
+        and _pip_polygon(latitude, longitude)
+    ):
+        return _nearest_district(latitude, longitude)
 
     return None
 

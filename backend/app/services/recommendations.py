@@ -14,10 +14,10 @@ Core capabilities:
 
 from __future__ import annotations
 
+import json
 import logging
 import math
 from typing import Any
-from uuid import UUID
 
 from pydantic import BaseModel, Field
 
@@ -368,10 +368,9 @@ def score_and_rank_teams(
 
         tags = t.get("capability_tags") or {}
         if isinstance(tags, str):
-            import json
             try:
                 tags = json.loads(tags)
-            except Exception:
+            except (json.JSONDecodeError, TypeError, ValueError):
                 tags = {}
 
         # 1. Match mandatory capabilities

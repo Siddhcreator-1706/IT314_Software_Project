@@ -142,7 +142,7 @@ export async function fetchReportById(options: ApiOptions, reportId: string) {
 
 export async function fetchPublicIncidents() {
   try {
-    return await apiFetch<PublicIncident[]>("/api/v1/public/incidents");
+    return await apiFetch<PublicIncident[]>("/api/v1/public/incidents", { userId: "public" });
   } catch {
     return apiFetch<PublicIncident[]>("/api/public/incidents", { userId: "public" });
   }

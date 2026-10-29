@@ -13,17 +13,10 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.geo import GUJARAT_BBOX, _bbox_check, district_for, is_in_gujarat
-from app.routers.public import (
-    _DEMO_INCIDENTS,
-    PublicIncidentResponse,
-    _apply_demo_filters,
-    _build_query,
-)
-from app.services.dispatch import _ESCALATION_LOCK
+from app.geo import _bbox_check, district_for, is_in_gujarat
+from app.routers.public import _DEMO_INCIDENTS
 from app.services.recommendations import (
     get_recommended_teams,
-    get_required_capabilities,
     score_and_rank_teams,
 )
 
