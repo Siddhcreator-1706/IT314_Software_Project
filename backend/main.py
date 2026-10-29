@@ -102,8 +102,11 @@ async def spatial_boundary_monthly_worker():
         while True:
             if settings.database_url:
                 try:
+                    from app.geo import load_boundaries_from_db
                     from app.services.spatial_sync import check_and_sync_all_sources
-                    await asyncio.to_thread(check_and_sync_all_sources)
+                    results = await asyncio.to_thread(check_and_sync_all_sources)
+                    if any(r.get("status") == "synced" for r in results):
+                        await asyncio.to_thread(load_boundaries_from_db)
                 except Exception:
                     logger.exception("Spatial boundary sync check encountered error; will retry next interval")
             await asyncio.sleep(settings.boundary_sync_check_interval_seconds)
@@ -131,6 +134,17 @@ async def lifespan(app: FastAPI):
             await asyncio.to_thread(apply_migrations)
         except Exception:
             logger.exception("Database migration failed on startup")
+
+        # Startup: load official PostGIS spatial boundaries into in-memory RAM cache (Option 2)
+        try:
+            from app.geo import load_boundaries_from_db
+            loaded = await asyncio.to_thread(load_boundaries_from_db)
+            if loaded:
+                logger.info("Loaded Gujarat boundary and district cache from PostGIS into RAM.")
+            else:
+                logger.info("PostGIS boundary table not yet populated; active on static fallback.")
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to load boundary cache from PostGIS; using static fallback.")
 
     # Startup: spawn worker tasks in background
     worker_task = asyncio.create_task(ai_workers_background_consumer())

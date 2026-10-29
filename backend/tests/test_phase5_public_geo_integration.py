@@ -13,7 +13,13 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from app.geo import _bbox_check, district_for, is_in_gujarat
+from app.geo import (
+    _bbox_check,
+    district_for,
+    get_boundary_cache_status,
+    is_in_gujarat,
+    load_boundaries_from_db,
+)
 from app.routers.public import _DEMO_INCIDENTS
 from app.services.recommendations import (
     get_recommended_teams,
@@ -148,6 +154,32 @@ def test_district_for_lookup():
     assert district_for(22.3039, 70.8022) == "Rajkot"
     # External point returns None
     assert district_for(19.0760, 72.8777) is None
+
+
+def test_boundary_cache_startup_and_telemetry():
+    """Verify Option 2: PostGIS boundary cache loads into RAM and tracks telemetry."""
+    # Ensure cache telemetry contract is respected
+    telemetry = get_boundary_cache_status()
+    assert telemetry["state"] == "Gujarat"
+    assert telemetry["polygon_vertex_count"] > 10
+    assert telemetry["district_centroid_count"] == 33
+    assert "min_lat" in telemetry["bbox"]
+    assert "max_lat" in telemetry["bbox"]
+
+    # Verify graceful fallback if mock conn has no rows
+    class EmptyConn:
+        def execute(self, *args, **kwargs):
+            class Cursor:
+                def fetchone(self):
+                    return None
+                def fetchall(self):
+                    return []
+            return Cursor()
+
+    loaded = load_boundaries_from_db(conn=EmptyConn())
+    assert loaded is False
+    # Cache should remain valid with fallbacks
+    assert get_boundary_cache_status()["polygon_vertex_count"] > 10
 
 
 # ═══════════════════════════════════════════════════════════════════════════

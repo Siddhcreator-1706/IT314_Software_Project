@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+from datetime import UTC, datetime
 from typing import Any
 
 import httpx
@@ -91,11 +93,137 @@ _DISTRICT_CENTROIDS: list[tuple[str, float, float]] = [
 ]
 
 
+# ---------------------------------------------------------------------------
+# In-Memory RAM Cache for PostGIS Spatial Boundaries (Option 2)
+# Initialized with static fallbacks, updated from PostGIS during startup.
+# ---------------------------------------------------------------------------
+_GEO_CACHE: dict[str, Any] = {
+    "source": "static_fallback",
+    "bbox": dict(GUJARAT_BBOX),
+    "polygon": list(_GUJARAT_POLYGON),
+    "district_centroids": list(_DISTRICT_CENTROIDS),
+    "last_loaded_at": None,
+}
+
+
+def load_boundaries_from_db(conn: Any = None) -> bool:
+    """Load official Gujarat boundary polygon, Box2D bbox, and district centroids
+
+    from PostGIS table administrative_boundaries into RAM for <1 ms in-memory checks.
+    PostGIS acts as the single source of truth.
+    Falls back gracefully to static defaults if DB is unseeded or unavailable.
+    """
+    settings = get_settings()
+    if conn is None and not settings.database_url:
+        return False
+
+    def _query_and_populate(active_conn: Any) -> bool:
+        # 1. Query State boundary polygon and Box2D
+        state_sql = """
+            SELECT ST_AsGeoJSON(boundary_geom) AS geojson, Box2D(boundary_geom) AS box2d
+            FROM administrative_boundaries
+            WHERE state_name = 'Gujarat' AND level = 'STATE'
+            LIMIT 1;
+        """
+        row = active_conn.execute(state_sql).fetchone()
+        if not row:
+            logger.debug("PostGIS administrative_boundaries has no STATE row for Gujarat.")
+            return False
+
+        geojson_raw = row["geojson"] if isinstance(row, dict) else row[0]
+        box2d_raw = row["box2d"] if isinstance(row, dict) else row[1]
+
+        # 2. Parse Box2D bounding box: BOX(min_lon min_lat, max_lon max_lat)
+        if box2d_raw:
+            m = re.search(
+                r"BOX\(\s*([\d\.\-]+)\s+([\d\.\-]+)\s*,\s*([\d\.\-]+)\s+([\d\.\-]+)\s*\)",
+                str(box2d_raw),
+            )
+            if m:
+                min_lon, min_lat, max_lon, max_lat = map(float, m.groups())
+                new_bbox = {
+                    "min_lat": min_lat,
+                    "max_lat": max_lat,
+                    "min_lon": min_lon,
+                    "max_lon": max_lon,
+                }
+                _GEO_CACHE["bbox"] = new_bbox
+                GUJARAT_BBOX.update(new_bbox)
+
+        # 3. Parse GeoJSON polygon / multipolygon
+        if geojson_raw:
+            geo_obj = json.loads(geojson_raw)
+            coords: list[tuple[float, float]] = []
+            if geo_obj.get("type") == "Polygon":
+                coords = [(float(pt[0]), float(pt[1])) for pt in geo_obj["coordinates"][0]]
+            elif geo_obj.get("type") == "MultiPolygon":
+                rings = [poly[0] for poly in geo_obj["coordinates"] if poly]
+                if rings:
+                    rings.sort(key=len, reverse=True)
+                    coords = [(float(pt[0]), float(pt[1])) for pt in rings[0]]
+
+            if coords:
+                _GEO_CACHE["polygon"] = coords
+                _GUJARAT_POLYGON[:] = coords
+
+        # 4. Query all 33 Gujarat district centroids from PostGIS
+        district_sql = """
+            SELECT district_name, ST_Y(centroid_geom) AS lat, ST_X(centroid_geom) AS lon
+            FROM administrative_boundaries
+            WHERE state_name = 'Gujarat' AND level = 'DISTRICT' AND district_name IS NOT NULL
+            ORDER BY district_name;
+        """
+        d_rows = active_conn.execute(district_sql).fetchall()
+        if d_rows:
+            parsed_centroids: list[tuple[str, float, float]] = []
+            for r in d_rows:
+                d_name = r["district_name"] if isinstance(r, dict) else r[0]
+                d_lat = float(r["lat"] if isinstance(r, dict) else r[1])
+                d_lon = float(r["lon"] if isinstance(r, dict) else r[2])
+                parsed_centroids.append((str(d_name), d_lat, d_lon))
+
+            if parsed_centroids:
+                _GEO_CACHE["district_centroids"] = parsed_centroids
+                _DISTRICT_CENTROIDS[:] = parsed_centroids
+
+        _GEO_CACHE["source"] = "postgis"
+        _GEO_CACHE["last_loaded_at"] = datetime.now(UTC).isoformat()
+        logger.info(
+            "Loaded PostGIS spatial boundaries into RAM: %d vertices, %d districts (source: postgis).",
+            len(_GEO_CACHE["polygon"]),
+            len(_GEO_CACHE["district_centroids"]),
+        )
+        return True
+
+    try:
+        if conn is not None:
+            return _query_and_populate(conn)
+        from app import db
+        with db.transaction() as db_conn:
+            return _query_and_populate(db_conn)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to load boundary cache from PostGIS (%s); keeping fallback.", exc)
+        return False
+
+
+def get_boundary_cache_status() -> dict[str, Any]:
+    """Return runtime telemetry of the in-memory boundary cache."""
+    return {
+        "source": _GEO_CACHE["source"],
+        "state": "Gujarat",
+        "last_loaded_at": _GEO_CACHE["last_loaded_at"],
+        "polygon_vertex_count": len(_GEO_CACHE["polygon"]),
+        "district_centroid_count": len(_GEO_CACHE["district_centroids"]),
+        "bbox": dict(_GEO_CACHE["bbox"]),
+    }
+
+
 def _bbox_check(latitude: float, longitude: float) -> bool:
     """Fast bounding-box pre-filter. Returns False if definitely outside Gujarat."""
+    bbox = _GEO_CACHE.get("bbox") or GUJARAT_BBOX
     return (
-        GUJARAT_BBOX["min_lat"] <= latitude <= GUJARAT_BBOX["max_lat"]
-        and GUJARAT_BBOX["min_lon"] <= longitude <= GUJARAT_BBOX["max_lon"]
+        bbox["min_lat"] <= latitude <= bbox["max_lat"]
+        and bbox["min_lon"] <= longitude <= bbox["max_lon"]
     )
 
 
@@ -106,7 +234,7 @@ def _pip_polygon(latitude: float, longitude: float) -> bool:
     Arguments use (lat, lon) convention; the polygon stores (lon, lat) pairs.
     """
     x, y = longitude, latitude
-    poly = _GUJARAT_POLYGON
+    poly = _GEO_CACHE.get("polygon") or _GUJARAT_POLYGON
     inside = False
     n = len(poly)
     j = n - 1
@@ -121,10 +249,11 @@ def _pip_polygon(latitude: float, longitude: float) -> bool:
 
 def _nearest_district(latitude: float, longitude: float) -> str | None:
     """Return the nearest Gujarat district by Euclidean centroid distance (in-memory)."""
-    if not _DISTRICT_CENTROIDS:
+    centroids = _GEO_CACHE.get("district_centroids") or _DISTRICT_CENTROIDS
+    if not centroids:
         return None
     best_name, best_dist = "", float("inf")
-    for name, clat, clon in _DISTRICT_CENTROIDS:
+    for name, clat, clon in centroids:
         d = (latitude - clat) ** 2 + (longitude - clon) ** 2
         if d < best_dist:
             best_dist, best_name = d, name
@@ -323,20 +452,29 @@ def district_for(
     """Find administrative district for given coordinates.
 
     Resolution order:
-    1. PostGIS spatial query (sub-ms DB round-trip, most authoritative).
-    2. Live geocoder (Google Maps → OSM Nominatim) with automatic PostGIS caching.
-    3. In-memory nearest-centroid fallback (offline-safe, <1 ms, Gujarat only).
+    1. PostGIS spatial query (sub-ms DB round-trip when active connection provided).
+    2. In-memory PostGIS RAM cache (sub-millisecond lookup for Gujarat, zero I/O).
+    3. Live geocoder (Google Maps → OSM Nominatim) for border edges or global coordinates.
 
     If state_filter is specified (default 'Gujarat'), coordinates outside state return None.
     Set state_filter=None for nationwide/global resolution.
     """
-    # 1. PostGIS (authoritative, fast)
+    # 1. PostGIS function (authoritative, when active DB connection provided)
     if conn is not None:
         db_district = _query_postgis_district(conn, latitude, longitude)
         if db_district:
             return db_district
 
-    # 2. Live geocoder
+    # 2. In-memory PostGIS RAM cache (Gujarat only, <0.01 ms, zero network I/O)
+    is_gujarat_point = _bbox_check(latitude, longitude) and _pip_polygon(latitude, longitude)
+    if is_gujarat_point and (state_filter is None or state_filter.strip().lower() == "gujarat"):
+        return _nearest_district(latitude, longitude)
+
+    # Fast reject if state_filter requires Gujarat and point is definitely out of bounding box
+    if state_filter and state_filter.strip().lower() == "gujarat" and not _bbox_check(latitude, longitude):
+        return None
+
+    # 3. Live geocoder fallback
     online_district, online_state = resolve_district_online(latitude, longitude)
     if online_district:
         if state_filter and online_state and online_state.lower() != state_filter.lower():
@@ -346,14 +484,6 @@ def district_for(
                 conn, online_district, online_state or "Gujarat", latitude, longitude
             )
         return online_district
-
-    # 3. In-memory nearest-centroid fallback (Gujarat only, offline-safe)
-    if (
-        (state_filter is None or (state_filter and state_filter.strip().lower() == "gujarat"))
-        and _bbox_check(latitude, longitude)
-        and _pip_polygon(latitude, longitude)
-    ):
-        return _nearest_district(latitude, longitude)
 
     return None
 
