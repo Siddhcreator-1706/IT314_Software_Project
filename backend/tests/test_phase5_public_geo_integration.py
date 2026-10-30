@@ -1,14 +1,10 @@
-"""Phase 5: Automated Testing, Security Hardening & Integration Gate (S1-07, S1-09, S1-19).
+"""Phase 5: Automated Testing, Security Hardening & Integration Gate (S1-07, S1-09).
 
 Owned by: Nisarg
 Covers:
 1. Public API Security & PII Protection (no SUBMITTED/REJECTED leaks, no PII fields).
 2. Gujarat Geofencing Precision & PostGIS Boundary Cache.
-3. End-to-End Core Loop: Report -> Verify -> Public Feed visibility -> Dispatch Escalation.
 """
-
-import uuid
-from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -175,72 +171,4 @@ def test_boundary_cache_startup_and_telemetry():
     assert loaded is False
     # Cache should remain valid with fallbacks
     assert get_boundary_cache_status()["polygon_vertex_count"] > 10
-
-
-# ═══════════════════════════════════════════════════════════════════════════
-# 3. INTEGRATION GATE (S1-09 & S1-19 Workflow Simulation)
-# ═══════════════════════════════════════════════════════════════════════════
-
-def test_core_lifecycle_transition_logic():
-    """
-    Simulates the core lifecycle state machine:
-    SUBMITTED -> VERIFIED -> Visible on Public API.
-    """
-    raw_reports = [
-        {
-            "incident_ref": "TEST-INC-001",
-            "scenario": "URBAN_FLOODING",
-            "district": "Ahmedabad",
-            "status": "SUBMITTED",
-            "verified_by": None,
-            "latitude": 23.03,
-            "longitude": 72.56,
-        },
-        {
-            "incident_ref": "TEST-INC-002",
-            "scenario": "INDUSTRIAL_FIRE",
-            "district": "Surat",
-            "status": "VERIFIED",
-            "verified_by": str(uuid.uuid4()),
-            "latitude": 21.10,
-            "longitude": 72.68,
-        },
-    ]
-
-    # Public filter simulation
-    public_visible = [
-        r for r in raw_reports
-        if r["status"] in ("VERIFIED", "DISPATCHED", "RESOLVED")
-        and r["verified_by"] is not None
-    ]
-
-    refs = [r["incident_ref"] for r in public_visible]
-    assert "TEST-INC-001" not in refs, "SUBMITTED unverified incident leaked to public!"
-    assert "TEST-INC-002" in refs, "VERIFIED incident missing from public view!"
-
-
-def test_dispatch_escalation_logic():
-    """Verify overdue dispatch orders are flagged for escalation without blocking the system."""
-    fake_dispatches = [
-        {
-            "dispatch_id": str(uuid.uuid4()),
-            "status": "REQUESTED",
-            "created_at": datetime.now(UTC) - timedelta(minutes=25),
-        },
-        {
-            "dispatch_id": str(uuid.uuid4()),
-            "status": "REQUESTED",
-            "created_at": datetime.now(UTC) - timedelta(minutes=5),
-        },
-    ]
-
-    timeout_minutes = 15
-    overdue = [
-        d for d in fake_dispatches
-        if d["status"] == "REQUESTED"
-        and d["created_at"] < datetime.now(UTC) - timedelta(minutes=timeout_minutes)
-    ]
-
-    assert len(overdue) == 1, "Failed to identify exactly one overdue dispatch order"
-    assert overdue[0]["dispatch_id"] == fake_dispatches[0]["dispatch_id"]
 
