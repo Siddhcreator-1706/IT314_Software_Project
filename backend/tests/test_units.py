@@ -179,3 +179,31 @@ def test_dynamic_geocoder_google_maps(monkeypatch):
     district, state = resolve_district_online(21.1702, 72.8311)
     assert district == "Surat"
     assert state == "Gujarat"
+
+
+def test_ci_db_guard_decision_logic():
+    """Exercise REQUIRE_DB_TESTS guard decision logic in isolation.
+
+    Cases:
+    - guard on and zero DB tests => fail (False)
+    - guard on and some DB tests => ok (True)
+    - guard off and zero DB tests => ok (True)
+    - guard off and some DB tests => ok (True)
+    """
+    try:
+        from conftest import evaluate_ci_guard
+    except ImportError:
+        from tests.conftest import evaluate_ci_guard
+
+    # Guard on and zero DB tests => fail
+    assert evaluate_ci_guard(require_db=True, db_tests_ran=False) is False
+
+    # Guard on and some DB tests => ok
+    assert evaluate_ci_guard(require_db=True, db_tests_ran=True) is True
+
+    # Guard off and zero DB tests => ok
+    assert evaluate_ci_guard(require_db=False, db_tests_ran=False) is True
+
+    # Guard off and some DB tests => ok
+    assert evaluate_ci_guard(require_db=False, db_tests_ran=True) is True
+
