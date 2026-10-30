@@ -45,9 +45,37 @@ function LoginPageContent() {
       return;
     }
     setSuccessMsg(`Signing in as ${user.name} (${user.role})...`);
+
+    // Create demo token and establish session cookie for proxy routes (/report, /my-reports)
+    try {
+      const demoPayload = {
+        sub: user.id || `citizen_${Date.now()}`,
+        role: "NORMAL_USER",
+        name: user.name,
+        email: user.email,
+      };
+      const b64 = (obj: object) =>
+        typeof window !== "undefined"
+          ? btoa(unescape(encodeURIComponent(JSON.stringify(obj)))).replace(/=+$/, "")
+          : Buffer.from(JSON.stringify(obj)).toString("base64url");
+      const demoToken = `${b64({ alg: "HS256", typ: "JWT" })}.${b64(demoPayload)}.mock_signature`;
+
+      await fetch("/api/session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: demoToken }),
+      });
+    } catch {
+      // Continue even if session cookie endpoint failed
+    }
+
     setTimeout(() => {
       login(user);
-      router.push("/");
+      if (next && next.startsWith("/") && !next.startsWith("//")) {
+        router.push(next);
+      } else {
+        router.push("/");
+      }
     }, 450);
   };
 

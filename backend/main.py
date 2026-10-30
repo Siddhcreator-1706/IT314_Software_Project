@@ -225,6 +225,7 @@ async def submit_citizen_report(
         "Flood / Urban Flood",
         "Cyclone / Coastal Flooding",
         "Major Urban / Building Fire",
+        "Earthquake / Structural Collapse",
     ]
     if payload.category not in allowed_categories:
         raise HTTPException(
