@@ -49,7 +49,7 @@ function LoginPageContent() {
     // Create demo token and establish session cookie for proxy routes (/report, /my-reports)
     try {
       const demoPayload = {
-        sub: user.id || `citizen_${Date.now()}`,
+        sub: user.id || "citizen_demo",
         role: "NORMAL_USER",
         name: user.name,
         email: user.email,
