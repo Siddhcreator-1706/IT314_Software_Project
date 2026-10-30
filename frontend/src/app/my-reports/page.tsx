@@ -321,7 +321,7 @@ export default function MyReportsPage() {
                           ))}
                         <div className="flex items-center gap-2 text-slate-500">
                           <span>ℹ️</span>
-                          <span>Coordinates: {report.lat.toFixed(4)}°N, {report.lon.toFixed(4)}°E (Gujarat)</span>
+                          <span>Coordinates: {(report.lat ?? (report as unknown as { latitude?: number }).latitude ?? 22.2587).toFixed(4)}°N, {(report.lon ?? (report as unknown as { longitude?: number }).longitude ?? 71.1924).toFixed(4)}°E (Gujarat)</span>
                         </div>
                       </div>
                     </div>

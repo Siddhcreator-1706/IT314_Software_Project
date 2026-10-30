@@ -12,6 +12,13 @@ const SCENARIOS = [
   { id: "earthquake", label: "Earthquake", icon: "🏚️", desc: "Structural collapse, tremors, trapped victims" },
 ];
 
+const SCENARIO_TO_CATEGORY: Record<string, string> = {
+  urban_flooding: "Flood / Urban Flood",
+  cyclone: "Cyclone / Coastal Flooding",
+  industrial_fire: "Major Urban / Building Fire",
+  earthquake: "Earthquake / Structural Collapse",
+};
+
 const URGENCIES = [
   { id: "LOW", label: "Low", color: "border-slate-600 text-slate-300" },
   { id: "MEDIUM", label: "Medium", color: "border-amber-600 text-amber-300" },
@@ -157,6 +164,7 @@ export default function ReportIncidentPage() {
     setIsSubmitting(true);
 
     try {
+      const resolvedCategory = SCENARIO_TO_CATEGORY[scenario] || "Flood / Urban Flood";
       const payload = {
         scenario,
         description: description.trim(),
@@ -168,7 +176,7 @@ export default function ReportIncidentPage() {
         address_text: addressText.trim() || undefined,
         landmark: landmark.trim() || undefined,
         // Stand-in compatible fields
-        category: scenario,
+        category: resolvedCategory,
         location_name: addressText || landmark || "Gujarat Incident Location",
         lat: latitude,
         lon: longitude,

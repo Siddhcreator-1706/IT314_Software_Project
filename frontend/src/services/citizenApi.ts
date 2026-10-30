@@ -219,13 +219,11 @@ export async function fetchReportById(
 // ── Public Endpoints (no auth required) ────────────────────────
 
 export async function fetchPublicIncidents() {
-export async function fetchPublicIncidents() {
   const primary = await apiFetch<PublicIncident[]>("/api/v1/public/incidents");
   if (primary.data || !primary.error) {
     return primary;
   }
   return apiFetch<PublicIncident[]>("/api/public/incidents");
-}
 }
 
 export async function fetchPublicAlerts() {
