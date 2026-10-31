@@ -22,6 +22,7 @@ from app.schemas.recommendations import (
     CandidateTeam,
     TeamRecommendationResponse,
     TeamRequestDecisionRequest,
+    TeamRequestDecisionResponse,
     TeamRequestItem,
 )
 
@@ -43,5 +44,6 @@ __all__ = [
     "ShelterResponse",
     "TeamRecommendationResponse",
     "TeamRequestDecisionRequest",
+    "TeamRequestDecisionResponse",
     "TeamRequestItem",
 ]

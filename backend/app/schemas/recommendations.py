@@ -69,3 +69,14 @@ class TeamRequestDecisionRequest(BaseModel):
     target_resource_id: uuid.UUID | None = Field(
         None, description="Optional team resource UUID to pre-fill on approval"
     )
+
+
+class TeamRequestDecisionResponse(BaseModel):
+    """Result of dispatcher decision on backup team request."""
+
+    request_id: uuid.UUID
+    status: str
+    decision_rationale: str | None = None
+    decided_at: datetime
+    dispatch_draft: dict[str, Any] | None = None
+
