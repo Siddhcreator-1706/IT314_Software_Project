@@ -252,7 +252,8 @@ def apply_progress(
         after["longitude"] = longitude
 
     actor_id = getattr(actor, "user_id", None)
-    record_dispatch_progress(conn, dispatch_id, event, note, actor_id)
+    progress_id = record_dispatch_progress(conn, dispatch_id, event, note, actor_id)
+    dispatch["progress_id"] = progress_id
 
     if event == "EN_ROUTE" and dispatch["status"] == "ACKNOWLEDGED":
         set_dispatch_status(
