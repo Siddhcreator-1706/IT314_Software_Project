@@ -130,6 +130,9 @@ def apply_acknowledgement(
     records progress entry, and logs cryptographic audit trail.
     """
     dispatch = lock_dispatch(conn, dispatch_id, dispatch=dispatch)
+    if dispatch["status"] == "ACKNOWLEDGED":
+        logger.info("Dispatch %s already acknowledged; returning idempotent response", dispatch.get("dispatch_ref"))
+        return dispatch
     if dispatch["status"] != "REQUESTED":
         raise record_dispatch_conflict(conn, actor, dispatch, "ACKNOWLEDGEMENT")
 

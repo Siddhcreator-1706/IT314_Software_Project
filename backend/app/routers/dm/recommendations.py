@@ -16,6 +16,7 @@ from app.auth import Dispatcher, DMUser
 from app.common import notify
 from app.config import get_settings
 from app.errors import ApiError, not_found
+from app.geo import get_district_centroid
 from app.schemas.recommendations import (
     TeamRecommendationResponse,
     TeamRequestDecisionRequest,
@@ -60,7 +61,7 @@ def get_incident_team_recommendations(
     with db.transaction() as conn:
         row = conn.execute(
             """
-            SELECT incident_id, incident_ref, scenario, status,
+            SELECT incident_id, incident_ref, scenario, status, district,
                    ST_Y(geom::geometry) AS latitude, ST_X(geom::geometry) AS longitude
             FROM incidents
             WHERE incident_id = %(incident_id)s
@@ -71,8 +72,15 @@ def get_incident_team_recommendations(
         if row is None:
             raise not_found("Incident")
 
-        lat = float(row["latitude"]) if row["latitude"] is not None else 23.0225
-        lon = float(row["longitude"]) if row["longitude"] is not None else 72.5714
+        lat = float(row["latitude"]) if row["latitude"] is not None else None
+        lon = float(row["longitude"]) if row["longitude"] is not None else None
+
+        if lat is None or lon is None:
+            centroid = get_district_centroid(row.get("district"))
+            if centroid:
+                lat, lon = centroid
+            else:
+                lat, lon = 23.0225, 72.5714  # Default fallback to State HQ centroid (Ahmedabad)
 
         candidates = recommend_candidate_teams(
             latitude=lat,
