@@ -214,32 +214,41 @@ class PipelineOrchestrator:
             print(f"📝 Description: {state.task_description}")
 
         # Stage 2 & 3: Planning
-        plan_file: Optional[Path] = None
+        plan_file: Optional[Path] = self.reports_dir / f"{state.task_id}_plan.md"
         plan_text: Optional[str] = None
+
+        planning_already_done = (
+            state.stages.get("planning", {}).get("status") == "COMPLETED"
+            and plan_file.exists()
+        )
+
         if not target_step or target_step in ["plan", "all"]:
-            self.state_mgr.transition(state, "PLANNING")
-            plan_text, plan_file = generate_plan(
-                task_id=state.task_id,
-                task_description=state.task_description,
-                repo_root=self.repo_root,
-                reports_dir=self.reports_dir,
-                config=self.config,
-                dry_run=dry_run,
-            )
-            if not plan_file:
-                print("❌ Planning failed or aborted.")
-                self.state_mgr.transition(state, "FAILED_PLANNING")
-                return False
+            if planning_already_done and target_step != "plan":
+                print(f"  ℹ️ Using existing approved plan: {plan_file.relative_to(self.repo_root)}")
+            else:
+                self.state_mgr.transition(state, "PLANNING")
+                plan_text, plan_file = generate_plan(
+                    task_id=state.task_id,
+                    task_description=state.task_description,
+                    repo_root=self.repo_root,
+                    reports_dir=self.reports_dir,
+                    config=self.config,
+                    dry_run=dry_run,
+                )
+                if not plan_file:
+                    print("❌ Planning failed or aborted.")
+                    self.state_mgr.transition(state, "FAILED_PLANNING")
+                    return False
 
-            self.state_mgr.record_stage(
-                state=state,
-                stage_name="planning",
-                status="COMPLETED",
-                payload={"plan_file": str(plan_file)},
-            )
+                self.state_mgr.record_stage(
+                    state=state,
+                    stage_name="planning",
+                    status="COMPLETED",
+                    payload={"plan_file": str(plan_file)},
+                )
 
-        # Stage 4: Human Plan Approval Gate
-        if not self.config.get("auto_approve_plan", False) and not dry_run:
+        # Stage 4: Human Plan Approval Gate (Only if freshly planned)
+        if not planning_already_done and not self.config.get("auto_approve_plan", False) and not dry_run:
             print("\n" + "=" * 60)
             print(f"🛑 HUMAN APPROVAL REQUIRED: Implementation Plan ({state.task_id})")
             print(f"   Review the plan at: {self.reports_dir / f'{state.task_id}_plan.md'}")
@@ -279,6 +288,20 @@ Implement the required code changes now."""
                 cwd=self.repo_root,
                 dry_run=dry_run,
             )
+
+            if not impl_result and not dry_run:
+                print("\n⚠️ Claude Code was unable to complete implementation (rate limit or CLI unavailable).")
+                print("🔄 Creating Google Antigravity handoff to continue task seamlessly...")
+                handoff_path = self.generate_antigravity_handoff(state, plan_file)
+                self.state_mgr.transition(
+                    state,
+                    "HANDED_OFF_TO_ANTIGRAVITY",
+                    {"handoff_file": str(handoff_path), "reason": "claude_limit_or_unavailable"},
+                )
+                print("✅ Handed off to Google Antigravity. Open the workspace in Antigravity to apply edits.")
+                print(f"   When finished, resume validation with:")
+                print(f"   python scripts/ai-dev.py --resume {state.task_id} --step validate\n")
+                return True
 
             self.state_mgr.record_stage(
                 state=state,

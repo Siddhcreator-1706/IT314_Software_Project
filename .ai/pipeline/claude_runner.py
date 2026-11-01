@@ -28,6 +28,8 @@ def detect_claude_cli() -> Dict[str, Any]:
             ["claude", "--version"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=5,
         )
         if proc.returncode == 0:
@@ -100,6 +102,8 @@ def invoke_claude(
             cmd,
             cwd=cwd,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             capture_output=True,
             timeout=timeout_seconds,
         )

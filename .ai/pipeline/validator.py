@@ -138,6 +138,8 @@ def execute_validation_checks(
                 cwd=repo_root,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=180,
             )
             duration = round(time.time() - start_time, 2)

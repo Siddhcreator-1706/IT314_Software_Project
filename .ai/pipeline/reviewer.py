@@ -25,6 +25,8 @@ def extract_git_diff(repo_root: Path, max_lines: int = 1200) -> str:
             cwd=repo_root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=15,
         )
         proc_staged = subprocess.run(
@@ -32,14 +34,19 @@ def extract_git_diff(repo_root: Path, max_lines: int = 1200) -> str:
             cwd=repo_root,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             timeout=15,
         )
 
+        staged_out = (proc_staged.stdout or "").strip()
+        unstaged_out = (proc_unstaged.stdout or "").strip()
+
         diff = ""
-        if proc_staged.stdout.strip():
-            diff += "=== STAGED CHANGES ===\n" + proc_staged.stdout.strip() + "\n\n"
-        if proc_unstaged.stdout.strip():
-            diff += "=== UNSTAGED CHANGES ===\n" + proc_unstaged.stdout.strip() + "\n"
+        if staged_out:
+            diff += "=== STAGED CHANGES ===\n" + staged_out + "\n\n"
+        if unstaged_out:
+            diff += "=== UNSTAGED CHANGES ===\n" + unstaged_out + "\n"
 
         if not diff.strip():
             # Check untracked files
@@ -48,9 +55,11 @@ def extract_git_diff(repo_root: Path, max_lines: int = 1200) -> str:
                 cwd=repo_root,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=10,
             )
-            untracked = proc_status.stdout.strip()
+            untracked = (proc_status.stdout or "").strip()
             if untracked:
                 diff = f"=== UNTRACKED FILES ONLY ===\n{untracked}\n"
 
