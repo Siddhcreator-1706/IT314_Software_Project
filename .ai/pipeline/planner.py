@@ -11,7 +11,7 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from .claude_runner import invoke_claude
+from .claude_runner import invoke_claude_detailed
 
 logger = logging.getLogger("drch.ai.planner")
 
@@ -53,6 +53,16 @@ EXCLUDE_EXTENSIONS = {
     ".gz",
 }
 
+# Baseline DRCH Constraints shared across planner, reviewer, and orchestrator
+DRCH_CONSTRAINTS = """1. Neon PostgreSQL 16 + PostGIS: Strictly no Supabase Auth, auth.users, or Supabase SQL.
+2. Application-Managed Auth: Argon2id password hashing, TOTP MFA, and session revocation.
+3. Audit Logging: SHA-256 hash-chained append-only logs with immutable triggers.
+4. AI Boundaries: Advisory triage only; human dispatch approval strictly required.
+5. Privacy: Reporter PII protected, public incident coordinates truncated to 4 decimals.
+6. Disaster Scope: Exactly 3 disaster scenarios (cyclone, industrial_fire, urban_flooding).
+7. Git Safety: NEVER suggest automated git commit, push, or history rewriting.
+8. Reuse Existing Code: Do not duplicate existing services, models, schemas, or UI components."""
+
 
 def scan_repository_context(repo_root: Path, max_files: int = 120) -> List[str]:
     """Scan key repository files for context while filtering binaries and noise."""
@@ -83,14 +93,7 @@ TASK:
 {task_description}
 
 TECHNICAL CONSTRAINTS & REPOSITORY RULES:
-1. Neon PostgreSQL 16 + PostGIS: Strictly no Supabase Auth, auth.users, or Supabase SQL.
-2. Application-Managed Auth: Argon2id password hashing, TOTP MFA, and session revocation.
-3. Audit Logging: SHA-256 hash-chained append-only logs with immutable triggers.
-4. AI Boundaries: Advisory triage only; human dispatch approval strictly required.
-5. Privacy: Reporter PII protected, public incident coordinates truncated to 4 decimals.
-6. Disaster Scope: Exactly 3 disaster scenarios (cyclone, industrial_fire, urban_flooding).
-7. Git Safety: NEVER suggest automated git commit, push, or history rewriting.
-8. Reuse Existing Code: Do not duplicate existing services, models, schemas, or UI components.
+{DRCH_CONSTRAINTS}
 
 REPOSITORY STRUCTURE OVERVIEW:
 {key_files_sample}
@@ -122,6 +125,7 @@ def generate_plan(
     reports_dir: Path,
     config: Dict[str, Any],
     dry_run: bool = False,
+    role: str = "planner",
 ) -> Tuple[Optional[str], Optional[Path]]:
     """Generate an implementation plan and write it to `.ai/reports/<task_id>_plan.md`."""
     reports_dir.mkdir(parents=True, exist_ok=True)
@@ -133,18 +137,18 @@ def generate_plan(
     print(f"  🔍 Scanning repo context ({len(context_files)} files identified)...")
     print("  📋 Generating architecture-compliant implementation plan...")
 
-    plan_text = invoke_claude(
+    result = invoke_claude_detailed(
         prompt=prompt,
         config=config,
         label=f"Plan Generation for {task_id}",
         cwd=repo_root,
+        role=role,
         dry_run=dry_run,
     )
 
-    if not plan_text:
+    if not result.ok or not result.text:
         return None, None
 
-    plan_file.write_text(plan_text, encoding="utf-8")
+    plan_file.write_text(result.text, encoding="utf-8")
     print(f"  ✅ Plan saved to: {plan_file.relative_to(repo_root)}")
-    return plan_text, plan_file
-
+    return result.text, plan_file
