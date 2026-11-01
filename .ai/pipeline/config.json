@@ -1,0 +1,15 @@
+{
+  "claude_command": [
+    "claude",
+    "-p"
+  ],
+  "model": null,
+  "permission_mode": "default",
+  "validation_commands": [
+    "python -m ruff check backend/",
+    "python -m pytest backend/tests/test_units.py -v"
+  ],
+  "max_diff_chars": 50000,
+  "auto_approval_dry_run": false
+}
+
