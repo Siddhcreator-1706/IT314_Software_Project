@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { SiteHeader, NavLink } from "@/components/Brand";
 import Link from "next/link";
 import { fetchMyReports, ReportData } from "@/services/citizenApi";
 
@@ -120,35 +121,14 @@ export default function MyReportsPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans overflow-y-auto">
       {/* Header */}
-      <header className="h-16 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between sticky top-0 z-20">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition">
-            <span className="text-xl">🛡️</span>
-            <span className="font-bold text-white text-base tracking-wide">ResQ Gujarat</span>
-          </Link>
-          <span className="text-slate-600">/</span>
-          <span className="text-xs uppercase tracking-wider font-semibold text-sky-400 bg-sky-400/10 px-2 py-0.5 rounded border border-sky-400/20">
-            My Incident Reports
-          </span>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <div className="text-[11px] text-slate-500 font-mono hidden sm:flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
-            Auto-refreshes every 15s • Updated {lastRefreshed.toLocaleTimeString()}
-          </div>
-          <Link
-            href="/report"
-            className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-md shadow-sky-600/30 transition flex items-center gap-1.5"
-          >
-            <span>+</span>
-            <span>Report Incident</span>
-          </Link>
-          <Link href="/citizen/dashboard" className="text-xs text-slate-400 hover:text-white transition">
-            Dashboard
-          </Link>
-        </div>
-      </header>
+      <SiteHeader subtitle="My Incident Reports" maxWidth="max-w-5xl">
+        <span className="hidden items-center gap-1.5 font-mono text-[11px] text-sky-200/80 xl:flex">
+          <span className="size-1.5 animate-ping rounded-full bg-emerald-400" />
+          Auto-refresh 15s · {lastRefreshed.toLocaleTimeString()}
+        </span>
+        <NavLink href="/report" variant="primary">+ Report<span className="hidden sm:inline"> Incident</span></NavLink>
+        <NavLink href="/citizen/dashboard" hideBelow="sm">Dashboard</NavLink>
+      </SiteHeader>
 
       {/* Main Content */}
       <main className="flex-1 max-w-5xl w-full mx-auto p-6 md:p-8">

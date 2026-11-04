@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { SiteHeader } from "../Brand";
 import { DisasterCategory } from "../../types/resq";
 import * as CitizenApi from "../../services/citizenApi";
 
@@ -395,25 +396,7 @@ export const CitizenDashboardView: React.FC<CitizenDashboardViewProps> = ({
       `}</style>
 
       {/* ─── Blue Header (ResQ AI Bhuvan-inspired Identity) ─── */}
-      <header className="h-14 bg-[#0c4a75] border-b border-[#093554] px-4 md:px-8 flex items-center justify-between text-white shadow-md sticky top-0 z-50">
-        <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-sky-400/20 border border-white/70 flex items-center justify-center text-lg shadow-inner">
-            🛡️
-          </div>
-          <div>
-            <div className="flex items-baseline gap-2 leading-none">
-              <span className="text-lg font-extrabold tracking-tight text-white">ResQ</span>
-              <span className="text-xs font-light text-sky-200">Citizen Safety Portal</span>
-              <span className="hidden sm:inline-block text-[9.5px] uppercase font-bold bg-sky-900/90 text-sky-200 px-1.5 py-0.5 rounded border border-sky-700/60">
-                Public User
-              </span>
-            </div>
-            <div className="text-[10px] text-sky-200/80 leading-tight mt-0.5 hidden sm:block">
-              ResQ • Emergency Services (112)
-            </div>
-          </div>
-        </div>
-
+      <SiteHeader subtitle="Citizen Safety Portal" brandHref="/" maxWidth="max-w-none">
         <div className="flex items-center gap-2.5">
           {backendOnline !== null && (
             <span
@@ -429,7 +412,7 @@ export const CitizenDashboardView: React.FC<CitizenDashboardViewProps> = ({
           )}
 
           {/* Citizen Profile Pill */}
-          <div className="flex items-center gap-2 bg-sky-900/50 border border-sky-700/50 px-3 py-1 rounded-full text-xs">
+          <div className="hidden sm:flex items-center gap-2 bg-sky-900/50 border border-sky-700/50 px-3 py-1 rounded-full text-xs">
             <span className="w-5 h-5 rounded-full bg-sky-500/30 text-sky-200 flex items-center justify-center text-[11px] font-bold">
               {currentUser.name.charAt(0)}
             </span>
@@ -538,7 +521,7 @@ export const CitizenDashboardView: React.FC<CitizenDashboardViewProps> = ({
             Sign Out
           </button>
         </div>
-      </header>
+      </SiteHeader>
 
       {/* ─── Top Welcome & Summary Section ─── */}
       <section className="bg-white border-b border-slate-200 px-4 md:px-8 py-5">

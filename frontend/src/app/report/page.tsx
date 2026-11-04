@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { SiteHeader, NavLink } from "@/components/Brand";
 import Link from "next/link";
 import { isInGujarat, GUJARAT_CENTER } from "@/lib/geo";
 import { createReport, fetchPublicIncidents, type PublicIncident, type Scenario } from "@/services/citizenApi";
@@ -206,29 +207,11 @@ Urgent needs: ${needs.join(", ")}` : description.trim(),
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans overflow-y-auto">
       {/* Header */}
-      <header className="h-16 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between sticky top-0 z-20">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition">
-            <span className="text-xl">🛡️</span>
-            <span className="font-bold text-white text-base tracking-wide">ResQ Gujarat</span>
-          </Link>
-          <span className="text-slate-600">/</span>
-          <span className="text-xs uppercase tracking-wider font-semibold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
-            Citizen Emergency Dispatch
-          </span>
-        </div>
-        <div className="flex items-center gap-4 text-xs font-medium">
-          <Link href="/my-reports" className="text-slate-300 hover:text-white transition flex items-center gap-1.5">
-            📋 My Reports
-          </Link>
-          <Link href="/citizen/dashboard" className="text-slate-300 hover:text-white transition flex items-center gap-1.5">
-            🏠 Citizen Dashboard
-          </Link>
-          <Link href="/" className="text-slate-400 hover:text-slate-200 transition">
-            Public Map
-          </Link>
-        </div>
-      </header>
+      <SiteHeader subtitle="Citizen Emergency Dispatch" maxWidth="max-w-5xl">
+        <NavLink href="/my-reports">My Reports</NavLink>
+        <NavLink href="/citizen/dashboard" hideBelow="sm">Dashboard</NavLink>
+        <NavLink href="/" hideBelow="sm">Public Map</NavLink>
+      </SiteHeader>
 
       {/* Main Container */}
       <main className="flex-1 max-w-4xl w-full mx-auto p-6 md:p-8">

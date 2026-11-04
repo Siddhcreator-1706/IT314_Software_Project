@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { SiteHeader, NavLink } from "@/components/Brand";
 import { fetchPublicCampaigns, PublicCampaign } from "@/services/citizenApi";
 
 type DonationStep = "select" | "order_created" | "confirmed";
@@ -176,29 +177,9 @@ export default function DonatePage() {
         </div>
       )}
 
-      {/* Header */}
-      <header className="border-b border-slate-200 bg-white shadow-xs">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-4 sm:px-6">
-          <div className="flex items-center gap-3">
-            <Link href="/" className="flex items-center gap-2 group">
-              <span className="flex size-8 items-center justify-center rounded-lg bg-red-600 text-white font-bold text-sm shadow-xs group-hover:bg-red-700 transition">
-                RQ
-              </span>
-              <span className="text-base font-bold tracking-tight text-slate-900">
-                ResQ Disaster Relief Fund
-              </span>
-            </Link>
-          </div>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="text-xs sm:text-sm font-medium text-slate-600 hover:text-slate-900 transition"
-            >
-              Back to Operations
-            </Link>
-          </div>
-        </div>
-      </header>
+      <SiteHeader subtitle="Disaster Relief Fund" maxWidth="max-w-5xl">
+        <NavLink href="/">← Back to map</NavLink>
+      </SiteHeader>
 
       <main className="mx-auto max-w-5xl px-4 pt-8 sm:px-6">
         <div className="mb-8">
