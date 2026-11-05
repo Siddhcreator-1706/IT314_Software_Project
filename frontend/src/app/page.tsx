@@ -43,6 +43,7 @@ export default function PublicPortalPage() {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<any>(null);
   const markersLayerRef = useRef<any>(null);
+  const alertsLayerRef = useRef<any>(null);
 
   const [incidents, setIncidents] = useState<PublicIncident[]>([]);
   const [alerts, setAlerts] = useState<PublicAlert[]>([]);
@@ -51,6 +52,7 @@ export default function PublicPortalPage() {
   const [error, setError] = useState<string | null>(null);
   const [coordsText, setCoordsText] = useState("Gujarat, India");
   const [activeBaseLayer, setActiveBaseLayer] = useState<"streets" | "humanitarian">("streets");
+  const [showAlertsLayer, setShowAlertsLayer] = useState(true);
   const [showAlertsDrawer, setShowAlertsDrawer] = useState(false);
   const [districtFilter, setDistrictFilter] = useState<string>("");
   const visibleIncidents = districtFilter ? incidents.filter((i) => i.district === districtFilter) : incidents;
@@ -144,6 +146,7 @@ export default function PublicPortalPage() {
         L.control.scale({ imperial: false, position: "bottomleft" }).addTo(map);
 
         markersLayerRef.current = L.layerGroup().addTo(map);
+        alertsLayerRef.current = L.layerGroup().addTo(map);
 
         map.on("mousemove", (e: any) => {
           setCoordsText(`${e.latlng.lat.toFixed(4)}°N, ${e.latlng.lng.toFixed(4)}°E`);
@@ -198,6 +201,74 @@ export default function PublicPortalPage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [incidents, districtFilter]);
+
+  // 5. Update Public Alerts Layer (SRS Requirement S2-11)
+  useEffect(() => {
+    const map = mapRef.current;
+    const layer = alertsLayerRef.current;
+    const L = (window as any).L;
+
+    if (!map || !layer || !L) return;
+
+    layer.clearLayers();
+
+    if (!showAlertsLayer) return;
+
+    alerts.forEach((alert) => {
+      let lat = alert.lat;
+      let lon = alert.lon;
+
+      if (!lat || !lon) {
+        if (alert.description.includes("Saurashtra") || alert.description.includes("Kutch")) {
+          lat = 22.3;
+          lon = 69.6;
+        } else if (alert.description.includes("Ahmedabad") || alert.description.includes("Gandhinagar")) {
+          lat = 23.0225;
+          lon = 72.5714;
+        } else if (alert.description.includes("Bharuch") || alert.description.includes("Dahej")) {
+          lat = 21.71;
+          lon = 72.98;
+        } else {
+          return;
+        }
+      }
+
+      const isCrit = alert.severity === "CRITICAL";
+      const bg = isCrit ? "#dc2626" : alert.severity === "HIGH" ? "#ea580c" : "#eab308";
+
+      const icon = L.divIcon({
+        className: "custom-alert-pin",
+        html: `
+          <div style="position: relative; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; cursor: pointer;">
+            <span style="position: absolute; width: 100%; height: 100%; border-radius: 50%; background: ${bg}; opacity: 0.4; animation: ping 1.5s cubic-bezier(0, 0, 0.2, 1) infinite;"></span>
+            <div style="background-color: ${bg}; width: 28px; height: 28px; border-radius: 8px; border: 2px solid white; box-shadow: 0 2px 8px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; font-size: 13px; color: white;">
+              ⚠️
+            </div>
+          </div>
+        `,
+        iconSize: [32, 32],
+        iconAnchor: [16, 16],
+      });
+
+      const marker = L.marker([lat, lon], { icon }).addTo(layer);
+
+      marker.bindPopup(`
+        <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; min-width: 220px; padding: 4px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px;">
+            <strong style="color: ${bg}; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;">${alert.severity} ALERT</strong>
+            ${
+              alert.is_fallback
+                ? '<span style="background: #fef3c7; color: #92400e; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px; border: 1px solid #fde68a;">SAMPLE DATA</span>'
+                : '<span style="background: #dbeafe; color: #1e40af; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px;">OFFICIAL</span>'
+            }
+          </div>
+          <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px; color: #0f172a;">${alert.title}</div>
+          <div style="color: #475569; margin-bottom: 6px; line-height: 1.4;">${alert.description}</div>
+          <div style="font-size: 10px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 4px;">Source: ${alert.source}</div>
+        </div>
+      `);
+    });
+  }, [alerts, showAlertsLayer]);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-900 font-sans flex flex-col">
@@ -365,26 +436,51 @@ export default function PublicPortalPage() {
               </li>
             ))}
           </ul>
+
+          <div className="mt-3 pt-2 border-t border-slate-800">
+            <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-1">Layers</div>
+            <div className="flex items-center gap-2 text-[11px] text-amber-300">
+              <span className="w-4 h-4 rounded bg-amber-600 border border-white flex items-center justify-center text-[10px] leading-none">
+                ⚠️
+              </span>
+              <span>Early Warnings {showAlertsLayer ? "(On)" : "(Off)"}</span>
+            </div>
+          </div>
         </div>
 
-        {/* Basemap switcher */}
-        <div className="absolute top-3 right-3 z-[500] bg-slate-900/90 backdrop-blur border border-slate-700 rounded-xl p-1 text-xs text-white shadow-xl flex gap-1 pointer-events-auto">
+        {/* Layer Controls: Basemap & Alerts Layer Toggle */}
+        <div className="absolute top-3 right-3 z-[500] flex items-center gap-2 pointer-events-auto">
           <button
-            onClick={() => setActiveBaseLayer("streets")}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
-              activeBaseLayer === "streets" ? "bg-sky-600 text-white font-bold" : "text-slate-400 hover:text-white"
+            onClick={() => setShowAlertsLayer(!showAlertsLayer)}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold shadow-xl border transition flex items-center gap-1.5 ${
+              showAlertsLayer
+                ? "bg-amber-600 text-white border-amber-400 shadow-amber-900/40"
+                : "bg-slate-900/90 text-slate-400 border-slate-700 hover:text-white"
             }`}
+            title="Toggle Early Warning Alerts map layer (SRS S2-11)"
           >
-            Streets
+            <span>⚠️</span>
+            <span>Alerts: {showAlertsLayer ? "ON" : "OFF"}</span>
           </button>
-          <button
-            onClick={() => setActiveBaseLayer("humanitarian")}
-            className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
-              activeBaseLayer === "humanitarian" ? "bg-sky-600 text-white font-bold" : "text-slate-400 hover:text-white"
-            }`}
-          >
-            Humanitarian
-          </button>
+
+          <div className="bg-slate-900/90 backdrop-blur border border-slate-700 rounded-xl p-1 text-xs text-white shadow-xl flex gap-1">
+            <button
+              onClick={() => setActiveBaseLayer("streets")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                activeBaseLayer === "streets" ? "bg-sky-600 text-white font-bold" : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Streets
+            </button>
+            <button
+              onClick={() => setActiveBaseLayer("humanitarian")}
+              className={`px-2.5 py-1 rounded-lg text-xs font-medium transition ${
+                activeBaseLayer === "humanitarian" ? "bg-sky-600 text-white font-bold" : "text-slate-400 hover:text-white"
+              }`}
+            >
+              Humanitarian
+            </button>
+          </div>
         </div>
 
         {/* Selected Incident Detail Card (Public Contract Only) */}

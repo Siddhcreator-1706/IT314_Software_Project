@@ -61,6 +61,8 @@ class PublicAlert(BaseModel):
     certainty: str | None = None
     language: str | None = None
     area_text: str | None
+    latitude: float | None = None
+    longitude: float | None = None
     is_fallback: bool
     effective_at: datetime | None
     expires_at: datetime | None
@@ -150,8 +152,8 @@ def list_public_alerts():
         rows = conn.execute(
             """
             SELECT alert_id::text AS alert_id, source, event_type, severity, urgency, certainty, language,
-                   area_text, is_fallback,
-                   effective_at, expires_at
+                   area_text, ROUND(latitude::numeric, 4)::float AS latitude, ROUND(longitude::numeric, 4)::float AS longitude,
+                   is_fallback, effective_at, expires_at
             FROM external_alerts
             WHERE source IN ('SACHET', 'USGS', 'GDACS', 'IMD')
               AND (expires_at IS NULL OR expires_at > now())

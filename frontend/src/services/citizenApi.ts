@@ -149,6 +149,24 @@ export async function fetchReportById(reportId: string): Promise<ApiResult<Repor
   return { ...res, data: res.data ? toReport(res.data) : null };
 }
 
+/**
+ * Citizen response to a dispatcher information request (SRS Requirement S2-13).
+ * POST /api/v1/me/incidents/{id}/information via BFF proxy.
+ */
+export async function replyToInformationRequest(
+  incidentId: string,
+  message: string
+): Promise<ApiResult<{ incident_id: string; status: string }>> {
+  return apiFetch<{ incident_id: string; status: string }>(
+    `/api/citizen/me/incidents/${encodeURIComponent(incidentId)}/information`,
+    undefined,
+    {
+      method: "POST",
+      body: JSON.stringify({ message }),
+    }
+  );
+}
+
 // ── Public endpoints (no auth) ─────────────────────────────────
 
 /** Contract: GET /api/v1/public/incidents */
@@ -207,6 +225,8 @@ interface PublicAlertDto {
   event_type: string;
   severity: string;
   area_text: string | null;
+  latitude: number | null;
+  longitude: number | null;
   is_fallback: boolean;
   effective_at: string | null;
   expires_at: string | null;
@@ -222,6 +242,8 @@ export interface PublicAlert {
   related_incident_id: string | null;
   source: string;
   is_fallback: boolean;
+  lat: number | null;
+  lon: number | null;
 }
 
 export async function fetchPublicAlerts(): Promise<ApiResult<PublicAlert[]>> {
@@ -239,6 +261,8 @@ export async function fetchPublicAlerts(): Promise<ApiResult<PublicAlert[]>> {
       related_incident_id: null,
       source: a.source,
       is_fallback: a.is_fallback,
+      lat: a.latitude,
+      lon: a.longitude,
     })),
   };
 }

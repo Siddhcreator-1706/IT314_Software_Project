@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { fetchMyReports, ReportData } from "@/services/citizenApi";
+import { fetchMyReports, replyToInformationRequest, ReportData } from "@/services/citizenApi";
 
 const STATUS_CONFIG: Record<
   string,
@@ -65,6 +65,12 @@ export default function MyReportsPage() {
   const [error, setError] = useState<string | null>(null);
   const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
   const [selectedReport, setSelectedReport] = useState<ReportData | null>(null);
+
+  // Information response state (SRS Requirement S2-13)
+  const [replyText, setReplyText] = useState<Record<string, string>>({});
+  const [replyingId, setReplyingId] = useState<string | null>(null);
+  const [replyError, setReplyError] = useState<{ id: string; message: string } | null>(null);
+  const [replySuccess, setReplySuccess] = useState<string | null>(null);
 
   const loadReports = useCallback(async () => {
     try {
@@ -249,6 +255,65 @@ export default function MyReportsPage() {
                   <p className="text-sm text-slate-300 mb-5 leading-relaxed bg-slate-950/50 p-3 rounded-xl border border-slate-800/60">
                     {report.description}
                   </p>
+
+                  {/* Citizen Information Response Form (SRS S2-13) */}
+                  {currentStatus === "NEEDS_INFORMATION" && (
+                    <div className="mb-5 p-4 rounded-xl border border-orange-700/60 bg-orange-950/40 text-orange-200">
+                      <div className="flex items-center gap-2 mb-2 font-bold text-xs text-orange-300">
+                        <span>⚠️</span>
+                        <span>Action Required: Command Center requested additional information</span>
+                      </div>
+                      <p className="text-xs text-orange-200/80 mb-3">
+                        Please clarify situation details, stranded counts, or nearby landmarks to assist response dispatchers.
+                      </p>
+                      {replySuccess === report.id ? (
+                        <div className="text-xs text-emerald-400 font-medium py-1">
+                          ✓ Your response has been submitted to dispatchers.
+                        </div>
+                      ) : (
+                        <form
+                          onSubmit={async (e) => {
+                            e.preventDefault();
+                            const text = replyText[report.id]?.trim();
+                            if (!text || text.length < 3) return;
+                            setReplyingId(report.id);
+                            setReplyError(null);
+                            const res = await replyToInformationRequest(report.id, text);
+                            setReplyingId(null);
+                            if (res.error) {
+                              setReplyError({ id: report.id, message: res.error });
+                            } else {
+                              setReplySuccess(report.id);
+                              setReplyText((prev) => ({ ...prev, [report.id]: "" }));
+                              loadReports();
+                            }
+                          }}
+                          className="space-y-2"
+                        >
+                          <textarea
+                            value={replyText[report.id] || ""}
+                            onChange={(e) => setReplyText((prev) => ({ ...prev, [report.id]: e.target.value }))}
+                            placeholder="Provide additional details or landmark info..."
+                            rows={2}
+                            className="w-full rounded-lg bg-slate-900 border border-orange-800/80 p-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                            required
+                          />
+                          {replyError?.id === report.id && (
+                            <div className="text-[11px] text-red-400 font-medium">{replyError.message}</div>
+                          )}
+                          <div className="flex justify-end">
+                            <button
+                              type="submit"
+                              disabled={replyingId === report.id}
+                              className="px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold shadow transition disabled:opacity-50 cursor-pointer"
+                            >
+                              {replyingId === report.id ? "Submitting..." : "Send Response"}
+                            </button>
+                          </div>
+                        </form>
+                      )}
+                    </div>
+                  )}
 
                   {/* Visual 4-Stage Progression Timeline */}
                   <div className="pt-2">
