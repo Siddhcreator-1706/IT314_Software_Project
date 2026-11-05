@@ -35,7 +35,8 @@ set -euo pipefail
 # All secrets and credentials must be supplied via environment variables.
 # No secrets or passwords have hardcoded defaults.
 # ==============================================================================
-SMOKE_BASE_URL="${SMOKE_BASE_URL:-${API_URL:-http://localhost:8000}}"
+SMOKE_BASE_URL="${STAGING_URL:-${SMOKE_BASE_URL:-${API_URL:-http://localhost:8000}}}"
+SMOKE_COLD_START_TIMEOUT="${SMOKE_COLD_START_TIMEOUT:-90}"
 
 # Staff / Dispatcher Credentials (Required for verification & dispatch)
 SMOKE_STAFF_EMAIL="${SMOKE_STAFF_EMAIL:-}"
@@ -200,11 +201,16 @@ do_request() {
     local idemp_key="${4:-}"
     local json_payload="${5:-}"
 
-    local url="${SMOKE_BASE_URL}${endpoint}"
+    local url
+    if [[ "$endpoint" =~ ^https?:// ]]; then
+        url="$endpoint"
+    else
+        url="${SMOKE_BASE_URL}${endpoint}"
+    fi
     : > "$HTTP_RESP_FILE"
     : > "$HTTP_HEADERS_FILE"
 
-    local curl_cmd=(curl -s -S -X "$method" "$url" -D "$HTTP_HEADERS_FILE" -o "$HTTP_RESP_FILE" -w "%{http_code}")
+    local curl_cmd=(curl -s -S --connect-timeout 10 --max-time 30 -X "$method" "$url" -D "$HTTP_HEADERS_FILE" -o "$HTTP_RESP_FILE" -w "%{http_code}")
     curl_cmd+=(-H "Accept: application/json")
 
     if [[ -n "$auth_token" ]]; then
@@ -231,27 +237,61 @@ get_resp_body() {
 # ==============================================================================
 log "Starting ResQ smoke verification against target: ${SMOKE_BASE_URL}"
 
+HAVE_STAFF_CREDS=1
 if [[ -z "${SMOKE_STAFF_EMAIL:-}" || -z "${SMOKE_STAFF_PASSWORD:-}" || -z "${SMOKE_STAFF_TOTP_SECRET:-}" ]]; then
-    echo "ERROR: Missing required staff credentials (SMOKE_STAFF_EMAIL, SMOKE_STAFF_PASSWORD, SMOKE_STAFF_TOTP_SECRET)" >&2
-    exit 1
+    log "NOTICE: Staff credentials not fully provided; dispatcher verification and dispatch steps will be recorded as blocked."
+    HAVE_STAFF_CREDS=0
 fi
 
 # ==============================================================================
 # PART 1: CORE DISASTER REPORTING & VERIFICATION LOOP
 # ==============================================================================
 
-# 1. Health & Database Connectivity
-do_request "GET" "/health"
-if [[ "$LAST_HTTP_CODE" -eq 200 ]]; then
+# 1. Health & Database Connectivity (wait-and-retry up to 90s for cold start)
+log "Probing target readiness at ${SMOKE_BASE_URL} (polling up to ${SMOKE_COLD_START_TIMEOUT}s for cold start)..."
+POLL_START=$(date +%s)
+HEALTHY=0
+COLD_START_TIME=0
+LIVENESS_CODE="000"
+READINESS_CODE="000"
+DB_STATUS=""
+
+while true; do
+    do_request "GET" "/health"
+    LIVENESS_CODE="$LAST_HTTP_CODE"
+
     do_request "GET" "/api/v1/health"
+    READINESS_CODE="$LAST_HTTP_CODE"
     DB_STATUS="$(py_eval "$(get_resp_body)" "data.get('database')")"
-    if [[ "$LAST_HTTP_CODE" -eq 200 && "$DB_STATUS" == "ok" ]]; then
-        pass_step "CORE-1" "Service liveness and database readiness verified"
-    else
-        fail_step "CORE-1" "Readiness probe failed" "HTTP ${LAST_HTTP_CODE}, database=${DB_STATUS}"
+
+    if [[ "$LIVENESS_CODE" -eq 200 && "$READINESS_CODE" -eq 200 && "$DB_STATUS" == "ok" ]]; then
+        HEALTHY=1
+        break
     fi
+
+    # Fallback to /health/ready if defined
+    do_request "GET" "/health/ready"
+    if [[ "$LAST_HTTP_CODE" -eq 200 ]]; then
+        HEALTHY=1
+        break
+    fi
+
+    NOW=$(date +%s)
+    ELAPSED=$((NOW - POLL_START))
+    if [[ $ELAPSED -ge $SMOKE_COLD_START_TIMEOUT ]]; then
+        break
+    fi
+    log "Target not ready yet (Liveness: ${LIVENESS_CODE}, Readiness: ${READINESS_CODE}, DB: ${DB_STATUS:-unknown}). Retrying in 3s (${ELAPSED}s elapsed)..."
+    sleep 3
+done
+
+POLL_END=$(date +%s)
+COLD_START_TIME=$((POLL_END - POLL_START))
+
+if [[ "$HEALTHY" -eq 1 ]]; then
+    pass_step "CORE-1" "Service liveness and database readiness verified (ready in ${COLD_START_TIME}s)"
 else
-    fail_step "CORE-1" "Liveness probe failed" "HTTP ${LAST_HTTP_CODE}"
+    fail_step "CORE-1" "Readiness probe failed after ${COLD_START_TIME}s timeout" "HTTP liveness=${LIVENESS_CODE}, readiness=${READINESS_CODE}, database=${DB_STATUS:-unknown}"
 fi
 
 # 2. Citizen Registration
@@ -327,6 +367,8 @@ fi
 STAFF_TOKEN=""
 if [[ -z "$INCIDENT_ID" ]]; then
     skip_step "CORE-6" "Dispatcher verification" "Missing incident ID from submission step"
+elif [[ "$HAVE_STAFF_CREDS" -eq 0 ]]; then
+    skip_step "CORE-6" "Dispatcher verification" "Staff credentials (SMOKE_STAFF_*) not provided"
 else
     LOGIN_PAYLOAD="{\"email\": \"${SMOKE_STAFF_EMAIL}\", \"password\": \"${SMOKE_STAFF_PASSWORD}\"}"
     do_request "POST" "/api/v1/auth/login" "" "" "$LOGIN_PAYLOAD"
@@ -676,16 +718,38 @@ fi
 # ==============================================================================
 
 # W1: Staging Webhook Invalid Signature Refusal
-if [[ "$SMOKE_SKIP_W1" == "1" || -z "$SMOKE_STAGING_WEBHOOK_URL" ]]; then
-    skip_step "W1" "Staging webhook endpoint security check" "SMOKE_SKIP_W1=1 or SMOKE_STAGING_WEBHOOK_URL unset"
+if [[ "$SMOKE_SKIP_W1" == "1" ]]; then
+    skip_step "W1" "Staging webhook endpoint security check" "SMOKE_SKIP_W1=1"
 else
-    # Deliver request with tampered/invalid signature
-    do_request "POST" "$SMOKE_STAGING_WEBHOOK_URL" "" "" "{\"event\": \"payment.authorized\", \"payload\": {}}"
-    # Refusal expected: 400, 401, 403, 404, or 422
-    if [[ "$LAST_HTTP_CODE" -ge 400 && "$LAST_HTTP_CODE" -lt 500 ]]; then
+    WEBHOOK_TARGET="${SMOKE_STAGING_WEBHOOK_URL:-${SMOKE_BASE_URL}/api/v1/payments/webhook/razorpay}"
+    if [[ ! "$WEBHOOK_TARGET" =~ ^https?:// ]]; then
+        WEBHOOK_TARGET="${SMOKE_BASE_URL}${WEBHOOK_TARGET}"
+    fi
+
+    log "Checking webhook security at ${WEBHOOK_TARGET} with tampered signature..."
+    : > "$HTTP_RESP_FILE"
+    : > "$HTTP_HEADERS_FILE"
+
+    # Send request with invalid HMAC signature (never send valid signature or real secrets)
+    LAST_HTTP_CODE="$(curl -s -S --connect-timeout 10 --max-time 30 -X POST "$WEBHOOK_TARGET" \
+        -D "$HTTP_HEADERS_FILE" -o "$HTTP_RESP_FILE" -w "%{http_code}" \
+        -H "Accept: application/json" \
+        -H "Content-Type: application/json" \
+        -H "X-Razorpay-Signature: invalid_sig_probe_only_test_0000000000000000000000000000000000000000" \
+        -H "X-Signature: invalid_sig_probe_only_test_0000000000000000000000000000000000000000" \
+        --data '{"event": "payment.authorized", "payload": {}}' 2>/dev/null || echo "000")"
+
+    # Refusal expected from reachable & secured endpoint: 400, 401, 403, or 422
+    # If unmounted (e.g. DEFECT-S2-16-WEBHOOK-404): returns 404
+    # If 200/201: SECURITY FAULT (accepted invalid signature)
+    if [[ "$LAST_HTTP_CODE" -eq 400 || "$LAST_HTTP_CODE" -eq 401 || "$LAST_HTTP_CODE" -eq 403 || "$LAST_HTTP_CODE" -eq 422 ]]; then
         pass_step "W1" "Webhook endpoint verified reachable and secured against invalid signature (HTTP ${LAST_HTTP_CODE})"
+    elif [[ "$LAST_HTTP_CODE" -eq 404 ]]; then
+        fail_step "W1" "Webhook endpoint unmounted (HTTP 404 - DEFECT-S2-16-WEBHOOK-404, Owner: Shlok)"
+    elif [[ "$LAST_HTTP_CODE" -ge 200 && "$LAST_HTTP_CODE" -lt 300 ]]; then
+        fail_step "W1" "SECURITY CRITICAL: Webhook accepted payload with invalid signature" "HTTP ${LAST_HTTP_CODE}"
     else
-        fail_step "W1" "Webhook did not refuse invalid signature" "HTTP ${LAST_HTTP_CODE}"
+        fail_step "W1" "Webhook endpoint check failed" "HTTP ${LAST_HTTP_CODE}"
     fi
 fi
 

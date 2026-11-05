@@ -56,6 +56,8 @@ The suite executes four logical phases:
 | Environment Variable | Required | Default | Description |
 | :--- | :---: | :---: | :--- |
 | `SMOKE_BASE_URL` | No | `http://localhost:8000` | Target URL of the backend API gateway. |
+| `STAGING_URL` | No | *None* | Staging target override (used by CD & staging verification). |
+| `SMOKE_COLD_START_TIMEOUT` | No | `90` | Cold-start timeout in seconds for Render spin-up. |
 | `SMOKE_STAFF_EMAIL` | **Yes** | *None* | Email address of the seeded staff dispatcher. |
 | `SMOKE_STAFF_PASSWORD` | **Yes** | *None* | Password for the staff dispatcher account. |
 | `SMOKE_STAFF_TOTP_SECRET` | **Yes** | *None* | Base32 RFC 6238 TOTP secret for staff MFA sign-in. |
