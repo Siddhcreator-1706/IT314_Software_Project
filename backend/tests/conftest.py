@@ -10,11 +10,12 @@ Fixtures:
 - client: Session-scoped FastAPI TestClient.
 - sql: Autocommit psycopg connection (dict_row factory) for DB state setup & assertions.
 - make: Factory instance providing helpers for creating users, incidents, agencies,
-  resources, field users, and assigned field dispatches.
+  resources, field users, assigned field dispatches, and source signals.
 - citizen_user: Authenticated NORMAL_USER account.
 - staff_user: Authenticated DISASTER_MGMT staff account with DISPATCH and SUPERVISOR permissions.
 - field_user: Authenticated FIELD_TEAM user bound to a real team resource and field_team_members record.
 - field_dispatch: A realistic dispatch order (REQUESTED) assigned to field_user's team.
+- source_signal: A realistic raw ingested signal (PENDING) in source_signals.
 """
 
 import os
@@ -88,7 +89,15 @@ def _ensure_schema() -> None:
             conn.execute(s.read_text(encoding="utf-8"))
 
 
-DB_FIXTURE_NAMES = {"sql", "make", "citizen_user", "staff_user", "field_user", "field_dispatch"}
+DB_FIXTURE_NAMES = {
+    "sql",
+    "make",
+    "citizen_user",
+    "staff_user",
+    "field_user",
+    "field_dispatch",
+    "source_signal",
+}
 
 
 def pytest_collection_modifyitems(config, items):
@@ -366,6 +375,44 @@ class Factory:
 
         return {**dict(dispatch), "incident": incident, "resource_id": res_id, "staff": staff}
 
+    def signal(
+        self,
+        source: str = "REPLAY",
+        content_text: str | None = None,
+        language: str = "en",
+        latitude: float | None = 23.045,
+        longitude: float | None = 72.568,
+        location_text: str = "Ashram Road, Ahmedabad",
+        ai_label: str = "URBAN_FLOODING",
+        ai_confidence: float = 0.88,
+        status: str = "PENDING",
+        is_simulated: bool = True,
+        **kwargs,
+    ) -> dict:
+        """Insert a source_signals row using real database columns."""
+        values = {
+            "source": source,
+            "source_uid": kwargs.get("source_uid") or unique("sig-uid"),
+            "content_text": content_text or unique("Water rising rapidly near Ashram Road underpass"),
+            "language": language,
+            "location_text": location_text,
+            "latitude": latitude,
+            "longitude": longitude,
+            "ai_label": ai_label,
+            "ai_confidence": ai_confidence,
+            "status": status,
+            "is_simulated": is_simulated,
+        }
+        for k, v in kwargs.items():
+            if k != "source_uid":
+                values[k] = v
+
+        query = pgsql.SQL("INSERT INTO source_signals ({}) VALUES ({}) RETURNING *").format(
+            pgsql.SQL(", ").join(pgsql.Identifier(k) for k in values),
+            pgsql.SQL(", ").join(pgsql.Placeholder() for _ in values),
+        )
+        return self.conn.execute(query, list(values.values())).fetchone()
+
 
 @pytest.fixture
 def make(sql):
@@ -390,4 +437,9 @@ def field_user(make):
 @pytest.fixture
 def field_dispatch(make, field_user):
     return make.field_dispatch(field_user)
+
+
+@pytest.fixture
+def source_signal(make):
+    return make.signal()
 

@@ -94,6 +94,7 @@ docker stop drch_test_db && docker rm drch_test_db
 - `staff_user`: Active `DISASTER_MGMT` staff account with TOTP MFA secret and `DISPATCH`, `SUPERVISOR` permissions.
 - `field_user`: Active `FIELD_TEAM` user bound to a team resource and `field_team_members` record with verified MFA.
 - `field_dispatch`: A realistic operational dispatch order (`REQUESTED`) assigned to the `field_user`'s team resource with active reservation.
+- `source_signal`: A realistic raw ingested signal (`PENDING`) in `source_signals`.
 
 ---
 
