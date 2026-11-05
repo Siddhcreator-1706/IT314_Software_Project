@@ -10,12 +10,13 @@ Fixtures:
 - client: Session-scoped FastAPI TestClient.
 - sql: Autocommit psycopg connection (dict_row factory) for DB state setup & assertions.
 - make: Factory instance providing helpers for creating users, incidents, agencies,
-  resources, field users, assigned field dispatches, and source signals.
+  resources, field users, assigned field dispatches, source signals, and donation campaigns.
 - citizen_user: Authenticated NORMAL_USER account.
 - staff_user: Authenticated DISASTER_MGMT staff account with DISPATCH and SUPERVISOR permissions.
 - field_user: Authenticated FIELD_TEAM user bound to a real team resource and field_team_members record.
 - field_dispatch: A realistic dispatch order (REQUESTED) assigned to field_user's team.
 - source_signal: A realistic raw ingested signal (PENDING) in source_signals.
+- campaign: An active donation campaign (ACTIVE) in donation_campaigns.
 """
 
 import os
@@ -97,6 +98,7 @@ DB_FIXTURE_NAMES = {
     "field_user",
     "field_dispatch",
     "source_signal",
+    "campaign",
 }
 
 
@@ -413,6 +415,32 @@ class Factory:
         )
         return self.conn.execute(query, list(values.values())).fetchone()
 
+    def campaign(
+        self,
+        title: str | None = None,
+        purpose: str = "Emergency Disaster Relief",
+        scenario: str = "URBAN_FLOODING",
+        status: str = "ACTIVE",
+        target_amount: float = 1_000_000.0,
+        currency: str = "INR",
+        **kwargs,
+    ) -> dict:
+        """Insert a donation_campaigns row using real database columns."""
+        values = {
+            "title": title or unique("Relief Campaign"),
+            "purpose": purpose,
+            "scenario": scenario,
+            "status": status,
+            "target_amount": target_amount,
+            "currency": currency,
+        }
+        values.update(kwargs)
+        query = pgsql.SQL("INSERT INTO donation_campaigns ({}) VALUES ({}) RETURNING *").format(
+            pgsql.SQL(", ").join(pgsql.Identifier(k) for k in values),
+            pgsql.SQL(", ").join(pgsql.Placeholder() for _ in values),
+        )
+        return self.conn.execute(query, list(values.values())).fetchone()
+
 
 @pytest.fixture
 def make(sql):
@@ -442,4 +470,9 @@ def field_dispatch(make, field_user):
 @pytest.fixture
 def source_signal(make):
     return make.signal()
+
+
+@pytest.fixture
+def campaign(make):
+    return make.campaign()
 

@@ -95,6 +95,7 @@ docker stop drch_test_db && docker rm drch_test_db
 - `field_user`: Active `FIELD_TEAM` user bound to a team resource and `field_team_members` record with verified MFA.
 - `field_dispatch`: A realistic operational dispatch order (`REQUESTED`) assigned to the `field_user`'s team resource with active reservation.
 - `source_signal`: A realistic raw ingested signal (`PENDING`) in `source_signals`.
+- `campaign`: An active donation campaign (`ACTIVE`) in `donation_campaigns`.
 
 ---
 
