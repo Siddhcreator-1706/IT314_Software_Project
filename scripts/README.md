@@ -22,7 +22,10 @@ The suite executes four logical phases:
    - Public map presence: Verified incident visible with coordinates truncated to <= 4 decimal places and zero reporter PII.
    - Citizen timeline progression: Contains `SUBMITTED` and `VERIFIED` milestones.
 
-2. **Field Operations Flow (`F1` – `F4`):**
+2. **AI Advisory Triage Gate (`AI-1`):**
+   - **`AI-1`**: Dispatcher triggers AI advisory triage (`POST /api/v1/dm/incidents/{id}/ai-triage`). Validates advisory triage response (`GENERATED` or `LOW_CONFIDENCE`) or graceful `503 AI_UNAVAILABLE` fallback, and confirms that incident status and verified priority remain 100% immutable (strictly advisory, human-in-the-loop invariant).
+
+3. **Field Operations Flow (`F1` – `F4`):**
    - **`F1`**: Dispatcher creates a tactical dispatch for the verified incident to a seeded response team (`POST /api/v1/dm/incidents/{id}/dispatches` with `Idempotency-Key`).
    - **`F2`**: Field team responder authenticates and verifies assignment presence in `GET /api/v1/field/assignments`.
    - **`F3`**: Operational milestone progression:
@@ -33,13 +36,13 @@ The suite executes four logical phases:
      - State verification: Dispatch is `COMPLETED`, resources released, and incident remains open (`NOT CLOSED`).
    - **`F4`**: Cross-team isolation: A responder from another field unit receives HTTP 404 `NOT_FOUND` (never 403) on that dispatch.
 
-3. **Citizen Donations & Payment Gateway Flow (`D1` – `D4`):**
+4. **Citizen Donations & Payment Gateway Flow (`D1` – `D4`):**
    - **`D1`**: Citizen creates a donation order (`POST /api/v1/donations` with `Idempotency-Key`); response is labelled `is_sandbox: true` and status is `PENDING`.
    - **`D2`**: Payment verification with HMAC-SHA256 signature calculated from the gateway secret (`POST /api/v1/donations/{id}/verify`); transitions to `CONFIRMED` and receives a receipt number (`REC-YYYY-XXXXXX`).
    - **`D3`**: Idempotent replay: Resending the verification payload returns HTTP 200 with identical receipt number.
    - **`D4`**: Citizen donations feed (`GET /api/v1/me/donations`) reflects the confirmed donation and receipt.
 
-4. **Staging Webhook Probe (`W1`):**
+5. **Staging Webhook Probe (`W1`):**
    - Probe staging webhook URL with an invalid signature, verifying that the endpoint is reachable and strictly refuses unauthorized deliveries.
 
 ---
@@ -83,6 +86,7 @@ For staging environments or branches where particular backend endpoints are stil
 | `SMOKE_SKIP_OUTSIDE_GUJARAT` | CORE-4 | `POST /api/v1/incidents` | `0` | Zalak |
 | `SMOKE_SKIP_PUBLIC_UNVERIFIED` | CORE-5 | `GET /api/v1/public/incidents` | `0` | Nisarg |
 | `SMOKE_SKIP_PUBLIC_VERIFIED` | CORE-7 | `GET /api/v1/public/incidents` | `0` | Nisarg |
+| `SMOKE_SKIP_AI` | AI-1 | `POST /api/v1/dm/incidents/{id}/ai-triage` | `0` | Nisarg / Dhruv |
 | `SMOKE_SKIP_F1` | F1 | `POST /api/v1/dm/incidents/{id}/dispatches` | `0` | Shlok |
 | `SMOKE_SKIP_F2` | F2 | `GET /api/v1/field/assignments` | `0` | Dhruv |
 | `SMOKE_SKIP_F3` | F3 | `POST /api/v1/field/dispatches/{id}/*` | `0` | Dhruv |

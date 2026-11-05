@@ -12,7 +12,9 @@
 #      - Dispatcher authentication (Password + TOTP MFA) & incident verification
 #      - Public map presence for verified incident (no PII, 4-decimal coords)
 #      - Citizen timeline tracking (SUBMITTED -> VERIFIED)
-#   2. Field Operations Loop:
+#   2. AI Advisory Triage Gate:
+#      - AI-1: Advisory triage recommendation (advisory status or 503 fallback; zero incident mutation)
+#   3. Field Operations Loop:
 #      - F1: Dispatcher creates tactical dispatch for verified incident (Idempotency-Key)
 #      - F2: Field team responder logs in; GET /field/assignments includes dispatch
 #      - F3: Responder state transitions: acknowledge -> EN_ROUTE -> ON_SCENE -> complete
@@ -67,6 +69,7 @@ SMOKE_SKIP_INCIDENT_SUBMIT="${SMOKE_SKIP_INCIDENT_SUBMIT:-0}"
 SMOKE_SKIP_OUTSIDE_GUJARAT="${SMOKE_SKIP_OUTSIDE_GUJARAT:-0}"
 SMOKE_SKIP_PUBLIC_UNVERIFIED="${SMOKE_SKIP_PUBLIC_UNVERIFIED:-0}"
 SMOKE_SKIP_PUBLIC_VERIFIED="${SMOKE_SKIP_PUBLIC_VERIFIED:-0}"
+SMOKE_SKIP_AI="${SMOKE_SKIP_AI:-0}"
 SMOKE_SKIP_F1="${SMOKE_SKIP_F1:-0}"
 SMOKE_SKIP_F2="${SMOKE_SKIP_F2:-0}"
 SMOKE_SKIP_F3="${SMOKE_SKIP_F3:-0}"
@@ -404,6 +407,42 @@ else
         pass_step "CORE-8" "Citizen timeline correctly recorded SUBMITTED and VERIFIED milestones"
     else
         fail_step "CORE-8" "Citizen timeline invalid" "statuses=${TL_STATUSES}"
+    fi
+fi
+
+# ==============================================================================
+# AI ADVISORY TRIAGE GATE (AI-1)
+# ==============================================================================
+if [[ "$SMOKE_SKIP_AI" == "1" ]]; then
+    skip_step "AI-1" "AI advisory triage check" "SMOKE_SKIP_AI=1"
+elif [[ -z "$STAFF_TOKEN" || -z "$INCIDENT_ID" ]]; then
+    skip_step "AI-1" "AI advisory triage check" "Missing staff token or incident ID"
+else
+    # Query incident before triage to compare state and priority
+    do_request "GET" "/api/v1/dm/incidents/${INCIDENT_ID}" "$STAFF_TOKEN"
+    PRE_STATUS="$(py_eval "$(get_resp_body)" "data.get('status')")"
+    PRE_PRIORITY="$(py_eval "$(get_resp_body)" "data.get('priority')")"
+
+    do_request "POST" "/api/v1/dm/incidents/${INCIDENT_ID}/ai-triage" "$STAFF_TOKEN"
+    AI_HTTP_CODE="$LAST_HTTP_CODE"
+    AI_STATUS="$(py_eval "$(get_resp_body)" "data.get('status') or data.get('error', {}).get('code')")"
+
+    # Query incident after triage to verify state and priority remain unchanged
+    do_request "GET" "/api/v1/dm/incidents/${INCIDENT_ID}" "$STAFF_TOKEN"
+    POST_STATUS="$(py_eval "$(get_resp_body)" "data.get('status')")"
+    POST_PRIORITY="$(py_eval "$(get_resp_body)" "data.get('priority')")"
+
+    STATUS_UNCHANGED="false"
+    if [[ "$PRE_STATUS" == "$POST_STATUS" && "$PRE_PRIORITY" == "$POST_PRIORITY" ]]; then
+        STATUS_UNCHANGED="true"
+    fi
+
+    if [[ "$AI_HTTP_CODE" -eq 200 && ( "$AI_STATUS" == "GENERATED" || "$AI_STATUS" == "LOW_CONFIDENCE" ) && "$STATUS_UNCHANGED" == "true" ]]; then
+        pass_step "AI-1" "AI advisory triage returned recommendation (${AI_STATUS}) with zero incident mutation"
+    elif [[ "$AI_HTTP_CODE" -eq 503 && "$AI_STATUS" == "AI_UNAVAILABLE" && "$STATUS_UNCHANGED" == "true" ]]; then
+        pass_step "AI-1" "AI service unavailable (503 AI_UNAVAILABLE recorded), incident status and priority preserved"
+    else
+        fail_step "AI-1" "AI advisory triage check failed" "HTTP ${AI_HTTP_CODE}, status=${AI_STATUS}, pre_status=${PRE_STATUS}, post_status=${POST_STATUS}"
     fi
 fi
 
