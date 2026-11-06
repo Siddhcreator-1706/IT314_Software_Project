@@ -170,13 +170,17 @@ coverage.xml
 *.cover
 .hypothesis/
 .pytest_cache/
+.ruff_cache/
 cover/
 
-# Scratch & Audit files
+# Scratch, Patch & Audit files
 scratch/
 scratch_*.*
 audit.json
 frontend/audit.json
+*.patch
+*.diff
+docs/perf/explain-local.md
 
 # ------------------------------------------------------------------------------
 # 6. Operating System Artifacts
@@ -247,9 +251,12 @@ documents/
 # 9. Personal / Local AI Assistant Settings & Runtime Outputs
 # ------------------------------------------------------------------------------
 .claude/settings.local.json
+.claude/worktrees/
 .agents/settings.local.json
 .ai/tasks/
 .ai/reports/
 .ai/handoffs/
+
+
 
 

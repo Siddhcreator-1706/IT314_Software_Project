@@ -37,6 +37,20 @@ from main import app as main_app
 # ── Test Fixtures & Actors ──────────────────────────────────────────────
 
 
+@pytest.fixture(autouse=True)
+def _database_configured():
+    """Exercise the database code path against the mocked connection.
+
+    Without this, the router's offline demo branch (no DATABASE_URL) answered instead of the
+    mocked connection, so results depended on whether the runner had a test database.
+    """
+    with patch(
+        "app.routers.dm.recommendations.get_settings",
+        return_value=MagicMock(database_url="postgresql://mocked/drch_test"),
+    ):
+        yield
+
+
 @pytest.fixture
 def dispatcher_principal() -> Principal:
     return Principal(
@@ -123,14 +137,18 @@ def test_scenario_normalization():
 
 
 def test_scoring_formula_and_ranking():
-    """Verify ranking adheres to Score = (Overlap * 10) - (Distance * 0.05)."""
+    """S3-14 formula: Score = (groups covered * 10) + (secondary tags * 3) - (km * 0.08).
+
+    boat, flood_rescue and water_rescue are one "water rescue" group, so listing more synonyms
+    does not outweigh 40 km of extra travel; a team with no primary match always ranks last.
+    """
     team_a_id = uuid.uuid4()
     team_b_id = uuid.uuid4()
     team_c_id = uuid.uuid4()
 
     mock_db_teams = [
         {
-            # Overlap: 2 (boat, flood_rescue), Dist: 10 km -> Score = 20 - 0.5 = 19.5
+            # 1 group (water rescue), Dist: 10 km -> Score = 10 - 0.8 = 9.2
             "resource_id": team_a_id,
             "name": "Team A - Specialized Rescue",
             "agency_id": uuid.uuid4(),
@@ -141,7 +159,7 @@ def test_scoring_formula_and_ranking():
             "distance_km": 10.0,
         },
         {
-            # Overlap: 3 (boat, flood_rescue, water_rescue), Dist: 50 km -> Score = 30 - 2.5 = 27.5
+            # 1 group (water rescue, 3 synonym tags), Dist: 50 km -> Score = 10 - 4.0 = 6.0
             "resource_id": team_b_id,
             "name": "Team B - High Capability",
             "agency_id": uuid.uuid4(),
@@ -152,7 +170,7 @@ def test_scoring_formula_and_ranking():
             "distance_km": 50.0,
         },
         {
-            # Overlap: 0, Dist: 2 km -> Score = 0 - 0.1 = -0.1
+            # No primary match, Dist: 2 km -> Score = -0.16, ranked after every capable team
             "resource_id": team_c_id,
             "name": "Team C - Nearby General Unit",
             "agency_id": uuid.uuid4(),
@@ -188,17 +206,22 @@ def test_scoring_formula_and_ranking():
     )
 
     assert len(ranked) == 3
-    # Team B has highest score (27.5) -> Rank 1
-    assert ranked[0].resource_id == team_b_id
+    # Team A: same capability group, 40 km nearer -> Rank 1 (score 9.2)
+    assert ranked[0].resource_id == team_a_id
     assert ranked[0].rank == 1
-    assert "Partial capability match" in ranked[0].reasons or "Exact capability match" in ranked[0].reasons
-    assert ranked[0].distance_km == 50.0
+    assert ranked[0].score == 9.2
+    assert "Partial capability match" in ranked[0].reasons
+    assert "nearest capable team" in ranked[0].reasons
+    assert ranked[0].distance_km == 10.0
 
-    # Team A has second highest score (19.5) -> Rank 2
-    assert ranked[1].resource_id == team_a_id
+    # Team B (score 6.0) -> Rank 2; it is not described as the nearest
+    assert ranked[1].resource_id == team_b_id
     assert ranked[1].rank == 2
+    assert ranked[1].score == 6.0
+    assert ranked[1].matched_count == 3
+    assert "nearest" not in ranked[1].reasons
 
-    # Team C has lowest score (-0.1) -> Rank 3
+    # Team C has no primary match -> Rank 3 even though it is the closest
     assert ranked[2].resource_id == team_c_id
     assert ranked[2].rank == 3
     assert "Available proximity reserve team" in ranked[2].reasons
@@ -548,8 +571,33 @@ def test_decide_team_request_approve_autosuggests_by_required_capability(
         "status": "OPEN",
     }
 
+    hazmat_id, boat_id = uuid.uuid4(), uuid.uuid4()
+    available_teams = [
+        {  # nearer, but cannot handle hazmat
+            "resource_id": boat_id,
+            "name": "SDRF Flood Boat Team (Surat)",
+            "agency_id": uuid.uuid4(),
+            "agency_name": "SDRF",
+            "status": "AVAILABLE",
+            "quantity_available": 1,
+            "capabilities": {"boat": True, "flood_rescue": True},
+            "distance_km": 2.0,
+        },
+        {
+            "resource_id": hazmat_id,
+            "name": "Surat Hazira Chemical Hazard Team",
+            "agency_id": uuid.uuid4(),
+            "agency_name": "Gujarat Fire and Emergency Services",
+            "status": "AVAILABLE",
+            "quantity_available": 1,
+            "capabilities": {"hazmat": True, "chemical_foam": True},
+            "distance_km": 9.0,
+        },
+    ]
+
     mock_conn = MagicMock()
     mock_conn.execute.return_value.fetchone.return_value = mock_req_row
+    mock_conn.execute.return_value.fetchall.return_value = available_teams
 
     @contextmanager
     def mock_tx():
@@ -573,8 +621,48 @@ def test_decide_team_request_approve_autosuggests_by_required_capability(
     assert res.status == "APPROVED"
     assert res.dispatch_draft is not None
     assert res.dispatch_draft["required_capability"] == "hazmat"
-    # Should suggest the Hazmat team from seed fallback teams, NOT a boat team
-    assert "Hazmat" in res.dispatch_draft["suggested_resource_name"] or "Chemical" in res.dispatch_draft["suggested_resource_name"]
+    # Suggests the hazmat-capable team from the database, NOT the nearer boat team
+    assert res.dispatch_draft["suggested_resource_id"] == str(hazmat_id)
+    assert "Chemical" in res.dispatch_draft["suggested_resource_name"]
+
+
+def test_decide_team_request_approve_without_available_team_requires_manual_allocation(
+    dispatcher_principal: Principal,
+):
+    """When the database has no available team with the capability, nothing is invented."""
+    mock_req_row = {
+        "request_id": uuid.uuid4(),
+        "dispatch_id": uuid.uuid4(),
+        "dispatch_ref": "DISP-2026-000998",
+        "incident_id": uuid.uuid4(),
+        "incident_ref": "INC-2026-000998",
+        "scenario": "INDUSTRIAL_FIRE",
+        "priority": "HIGH",
+        "latitude": 21.10,
+        "longitude": 72.68,
+        "district": "Surat",
+        "requested_by": None,
+        "required_capability": "hazmat",
+        "status": "OPEN",
+    }
+    mock_conn = MagicMock()
+    mock_conn.execute.return_value.fetchone.return_value = mock_req_row
+    mock_conn.execute.return_value.fetchall.return_value = []  # every hazmat team is busy
+
+    @contextmanager
+    def mock_tx():
+        yield mock_conn
+
+    with patch("app.db.transaction", mock_tx), patch("app.audit.record"):
+        res = decide_team_request(
+            request_id=mock_req_row["request_id"],
+            body=TeamRequestDecisionRequest(action="APPROVE", rationale="Approve backup"),
+            principal=dispatcher_principal,
+        )
+
+    assert res.dispatch_draft is not None
+    assert res.dispatch_draft["suggested_resource_id"] is None
+    assert "manual allocation required" in res.dispatch_draft["instructions"]
 
 
 def test_decide_team_request_approve_mismatched_capability_raises_422(
