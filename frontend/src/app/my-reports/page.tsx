@@ -126,80 +126,108 @@ export default function MyReportsPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans overflow-y-auto">
       {/* Header */}
-      <header className="h-16 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between sticky top-0 z-20">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition">
-            <span className="text-xl">🛡️</span>
+      <header className="min-h-16 bg-slate-900 border-b border-slate-800 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-20">
+        <div className="flex items-center gap-2 sm:gap-3">
+          <Link href="/" className="flex items-center gap-2 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 rounded-lg p-1 transition">
+            <span className="text-xl" aria-hidden="true">🛡️</span>
             <span className="font-bold text-white text-base tracking-wide">ResQ Gujarat</span>
           </Link>
-          <span className="text-slate-600">/</span>
-          <span className="text-xs uppercase tracking-wider font-semibold text-sky-400 bg-sky-400/10 px-2 py-0.5 rounded border border-sky-400/20">
+          <span className="text-slate-600 hidden sm:inline">/</span>
+          <span className="text-[11px] sm:text-xs uppercase tracking-wider font-semibold text-sky-400 bg-sky-400/10 px-2 py-0.5 rounded border border-sky-400/20">
             My Incident Reports
           </span>
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="text-[11px] text-slate-500 font-mono hidden sm:flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+        <nav aria-label="Incident tracking navigation" className="flex items-center gap-2 sm:gap-4 flex-wrap">
+          <div aria-live="polite" className="text-[11px] text-slate-400 font-mono hidden md:flex items-center gap-1.5">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" aria-hidden="true" />
             Auto-refreshes every 15s • Updated {lastRefreshed.toLocaleTimeString()}
           </div>
           <Link
             href="/report"
-            className="bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-md shadow-sky-600/30 transition flex items-center gap-1.5"
+            className="min-h-[38px] bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-md shadow-sky-600/30 transition flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
           >
-            <span>+</span>
+            <span aria-hidden="true">+</span>
             <span>Report Incident</span>
           </Link>
-          <Link href="/citizen/dashboard" className="text-xs text-slate-400 hover:text-white transition">
+          <Link href="/citizen/dashboard" className="text-xs text-slate-300 hover:text-white px-2 py-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 transition">
             Dashboard
           </Link>
-        </div>
+        </nav>
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-5xl w-full mx-auto p-6 md:p-8">
+      <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 md:p-8">
         <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
           <div>
             <h1 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2">
-              <span>📋</span> Active Emergency Reports
+              <span aria-hidden="true">📋</span> Active Emergency Reports
             </h1>
-            <p className="text-slate-400 text-xs md:text-sm mt-0.5">
+            <p className="text-slate-300 text-xs md:text-sm mt-0.5">
               Live status progression and verification timeline from Gujarat Disaster Management operations.
             </p>
           </div>
           <button
             type="button"
             onClick={() => loadReports()}
-            className="text-xs text-slate-400 hover:text-white bg-slate-900 border border-slate-800 px-3 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer"
+            className="min-h-[38px] text-xs font-semibold text-slate-200 hover:text-white bg-slate-900 border border-slate-700 hover:border-slate-600 px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
           >
-            <span>🔄</span> Refresh Now
+            <span aria-hidden="true">🔄</span> Refresh Now
           </button>
         </div>
 
         {error && (
-          <div className="mb-6 p-4 bg-red-950/60 border border-red-700/60 rounded-xl text-red-200 text-sm flex items-center gap-3">
-            <span>⚠️</span>
-            <span>{error}</span>
+          <div role="alert" aria-live="assertive" className="mb-6 p-4 bg-red-950/60 border border-red-700/60 rounded-xl text-red-200 text-sm flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <span aria-hidden="true">⚠️</span>
+              <span>{error}</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => loadReports()}
+              className="text-xs font-semibold bg-red-900/80 hover:bg-red-800 text-white px-3 py-1.5 rounded-lg border border-red-700 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400"
+            >
+              Retry
+            </button>
           </div>
         )}
 
         {loading ? (
-          <div className="py-20 text-center text-slate-500 space-y-3">
-            <div className="w-8 h-8 border-2 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto" />
-            <div className="text-sm">Retrieving your reported incidents...</div>
+          <div role="status" aria-label="Loading incident reports" className="space-y-4">
+            <span className="sr-only">Loading your incident reports...</span>
+            {[1, 2, 3].map((skeletonId) => (
+              <div key={skeletonId} className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 md:p-6 animate-pulse space-y-4">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-2">
+                    <div className="h-5 w-36 bg-slate-800 rounded" />
+                    <div className="h-3 w-48 bg-slate-800/60 rounded" />
+                  </div>
+                  <div className="h-6 w-28 bg-slate-800 rounded-full" />
+                </div>
+                <div className="h-14 w-full bg-slate-950/60 rounded-xl border border-slate-800/40" />
+                <div className="grid grid-cols-4 gap-2 pt-2">
+                  {[1, 2, 3, 4].map((stepId) => (
+                    <div key={stepId} className="text-center space-y-1.5">
+                      <div className="w-7 h-7 rounded-full bg-slate-800 mx-auto" />
+                      <div className="h-3 w-12 bg-slate-800/60 rounded mx-auto" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
         ) : reports.length === 0 ? (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center shadow-lg">
-            <div className="text-4xl mb-3">📍</div>
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 sm:p-12 text-center shadow-lg">
+            <div className="text-4xl mb-3" aria-hidden="true">📍</div>
             <h2 className="text-lg font-bold text-white mb-1">No Incidents Reported</h2>
-            <p className="text-slate-400 text-sm max-w-md mx-auto mb-6">
+            <p className="text-slate-300 text-sm max-w-md mx-auto mb-6">
               You haven&apos;t filed any emergency incident reports yet. If you are experiencing a disaster in Gujarat, file a report directly with emergency operations.
             </p>
             <Link
               href="/report"
-              className="inline-flex items-center gap-2 bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-6 py-2.5 rounded-xl shadow-lg shadow-sky-600/30 transition"
+              className="inline-flex items-center gap-2 min-h-[44px] bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-6 py-2.5 rounded-xl shadow-lg shadow-sky-600/30 transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
             >
-              <span>🚨</span>
+              <span aria-hidden="true">🚨</span>
               <span>Report An Emergency</span>
             </Link>
           </div>
@@ -221,13 +249,13 @@ export default function MyReportsPage() {
                         <span className="font-mono font-bold text-sky-400 text-sm">
                           {report.incident_ref || report.id}
                         </span>
-                        <span className="text-xs uppercase tracking-wider font-semibold bg-slate-800 text-slate-300 px-2 py-0.5 rounded border border-slate-700">
+                        <span className="text-xs uppercase tracking-wider font-semibold bg-slate-800 text-slate-200 px-2 py-0.5 rounded border border-slate-700">
                           {report.category || "Incident"}
                         </span>
                       </div>
-                      <div className="text-xs text-slate-400 flex items-center gap-2">
+                      <div className="text-xs text-slate-300 flex flex-wrap items-center gap-2">
                         <span>📍 {report.location_name || `${report.lat.toFixed(4)}, ${report.lon.toFixed(4)}`}</span>
-                        <span>•</span>
+                        <span aria-hidden="true">•</span>
                         <span>
                           {report.submitted_at
                             ? new Date(report.submitted_at).toLocaleString()
@@ -236,7 +264,7 @@ export default function MyReportsPage() {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span
                         className={`text-xs font-semibold px-3 py-1 rounded-full border ${statusInfo.badgeClass}`}
                       >
@@ -245,14 +273,14 @@ export default function MyReportsPage() {
                       <button
                         type="button"
                         onClick={() => setSelectedReport(isSelected ? null : report)}
-                        className="text-xs text-slate-400 hover:text-slate-200 bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-700 transition cursor-pointer"
+                        className="min-h-[36px] text-xs font-medium text-slate-300 hover:text-white bg-slate-800/90 px-3 py-1 rounded-lg border border-slate-700 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 flex items-center justify-center"
                       >
                         {isSelected ? "Hide Details" : "Timeline View"}
                       </button>
                     </div>
                   </div>
 
-                  <p className="text-sm text-slate-300 mb-5 leading-relaxed bg-slate-950/50 p-3 rounded-xl border border-slate-800/60">
+                  <p className="text-sm text-slate-200 mb-5 leading-relaxed bg-slate-950/50 p-3.5 rounded-xl border border-slate-800/60">
                     {report.description}
                   </p>
 
@@ -260,14 +288,14 @@ export default function MyReportsPage() {
                   {currentStatus === "NEEDS_INFORMATION" && (
                     <div className="mb-5 p-4 rounded-xl border border-orange-700/60 bg-orange-950/40 text-orange-200">
                       <div className="flex items-center gap-2 mb-2 font-bold text-xs text-orange-300">
-                        <span>⚠️</span>
+                        <span aria-hidden="true">⚠️</span>
                         <span>Action Required: Command Center requested additional information</span>
                       </div>
-                      <p className="text-xs text-orange-200/80 mb-3">
+                      <p className="text-xs text-orange-200/90 mb-3">
                         Please clarify situation details, stranded counts, or nearby landmarks to assist response dispatchers.
                       </p>
                       {replySuccess === report.id ? (
-                        <div className="text-xs text-emerald-400 font-medium py-1">
+                        <div role="status" aria-live="polite" className="text-xs text-emerald-400 font-semibold py-1">
                           ✓ Your response has been submitted to dispatchers.
                         </div>
                       ) : (
@@ -290,22 +318,26 @@ export default function MyReportsPage() {
                           }}
                           className="space-y-2"
                         >
+                          <label htmlFor={`reply-text-${report.id}`} className="sr-only">
+                            Additional incident details for dispatchers
+                          </label>
                           <textarea
+                            id={`reply-text-${report.id}`}
                             value={replyText[report.id] || ""}
                             onChange={(e) => setReplyText((prev) => ({ ...prev, [report.id]: e.target.value }))}
                             placeholder="Provide additional details or landmark info..."
                             rows={2}
-                            className="w-full rounded-lg bg-slate-900 border border-orange-800/80 p-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
+                            className="w-full min-h-[60px] rounded-lg bg-slate-900 border border-orange-800/80 p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus-visible:ring-2 focus-visible:ring-orange-500"
                             required
                           />
                           {replyError?.id === report.id && (
-                            <div className="text-[11px] text-red-400 font-medium">{replyError.message}</div>
+                            <div role="alert" className="text-[11px] text-red-400 font-medium">{replyError.message}</div>
                           )}
                           <div className="flex justify-end">
                             <button
                               type="submit"
                               disabled={replyingId === report.id}
-                              className="px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold shadow transition disabled:opacity-50 cursor-pointer"
+                              className="min-h-[38px] px-4 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold shadow transition disabled:opacity-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
                             >
                               {replyingId === report.id ? "Submitting..." : "Send Response"}
                             </button>
@@ -317,19 +349,24 @@ export default function MyReportsPage() {
 
                   {/* Visual 4-Stage Progression Timeline */}
                   <div className="pt-2">
-                    <div className="grid grid-cols-4 gap-2 relative">
+                    <div className="grid grid-cols-4 gap-1.5 sm:gap-2 relative">
                       {STAGES.map((stage) => {
                         const isPast = statusInfo.step > stage.id;
                         const isCurrent = statusInfo.step === stage.id;
 
                         return (
-                          <div key={stage.id} className="text-center relative">
+                          <div
+                            key={stage.id}
+                            className="text-center relative"
+                            aria-current={isCurrent ? "step" : undefined}
+                          >
                             {/* Connector Bar */}
                             {stage.id < 4 && (
                               <div
                                 className={`hidden sm:block absolute top-3.5 left-1/2 w-full h-0.5 z-0 ${
                                   isPast ? "bg-sky-500" : "bg-slate-800"
                                 }`}
+                                aria-hidden="true"
                               />
                             )}
 
@@ -340,20 +377,20 @@ export default function MyReportsPage() {
                                   ? "bg-sky-500 text-white shadow-md shadow-sky-500/30"
                                   : isCurrent
                                   ? "bg-amber-500 text-slate-950 ring-4 ring-amber-500/20 shadow-md shadow-amber-500/30 font-extrabold"
-                                  : "bg-slate-800 text-slate-500 border border-slate-700"
+                                  : "bg-slate-800 text-slate-400 border border-slate-700"
                               }`}
                             >
                               {isPast ? "✓" : stage.id}
                             </div>
 
                             <div
-                              className={`text-xs font-semibold truncate ${
-                                isCurrent ? "text-amber-400 font-bold" : isPast ? "text-slate-200" : "text-slate-500"
+                              className={`text-[11px] sm:text-xs font-semibold truncate ${
+                                isCurrent ? "text-amber-300 font-bold" : isPast ? "text-slate-200" : "text-slate-400"
                               }`}
                             >
                               {stage.name}
                             </div>
-                            <div className="text-[10px] text-slate-500 hidden md:block">
+                            <div className="text-[10px] text-slate-400 hidden md:block">
                               {stage.desc}
                             </div>
                           </div>
@@ -365,27 +402,27 @@ export default function MyReportsPage() {
                   {/* Detailed Timeline Drawer */}
                   {isSelected && (
                     <div className="mt-5 pt-4 border-t border-slate-800 text-xs space-y-2">
-                      <div className="font-semibold text-slate-300 mb-2">Detailed Event Audit:</div>
-                      <div className="space-y-1.5 font-mono text-[11px] text-slate-400">
+                      <div className="font-semibold text-slate-200 mb-2">Detailed Event Audit:</div>
+                      <div className="space-y-1.5 font-mono text-[11px] text-slate-300">
                         <div className="flex items-center gap-2">
-                          <span className="text-emerald-400">●</span>
+                          <span className="text-emerald-400" aria-hidden="true">●</span>
                           <span>Report received by Gujarat Gateway:</span>
-                          <span className="text-slate-300">
+                          <span className="text-white font-medium">
                             {report.submitted_at || "Initial Timestamp recorded"}
                           </span>
                         </div>
                         {report.timeline &&
                           report.timeline.map((item, tIdx) => (
                             <div key={tIdx} className="flex items-center gap-2">
-                              <span className="text-sky-400">●</span>
+                              <span className="text-sky-400" aria-hidden="true">●</span>
                               <span>Status updated to {item.status}:</span>
-                              <span className="text-slate-300">
+                              <span className="text-white font-medium">
                                 {new Date(item.timestamp).toLocaleString()}
                               </span>
                             </div>
                           ))}
-                        <div className="flex items-center gap-2 text-slate-500">
-                          <span>ℹ️</span>
+                        <div className="flex items-center gap-2 text-slate-400">
+                          <span aria-hidden="true">ℹ️</span>
                           <span>Coordinates: {(report.lat ?? (report as unknown as { latitude?: number }).latitude ?? 22.2587).toFixed(4)}°N, {(report.lon ?? (report as unknown as { longitude?: number }).longitude ?? 71.1924).toFixed(4)}°E (Gujarat)</span>
                         </div>
                       </div>

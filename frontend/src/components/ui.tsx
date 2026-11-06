@@ -34,7 +34,7 @@ export function Button({ variant = "secondary", size = "md", busy, className, ch
       disabled={disabled || busy}
       aria-busy={busy || undefined}
       className={cx(
-        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 focus-visible:ring-offset-2 focus-visible:ring-offset-surface cursor-pointer",
         size === "sm" ? "h-8 px-3 text-xs" : "h-10 px-4 text-sm",
         variant === "primary" && "bg-sky-600 text-white shadow-lg shadow-sky-600/20 hover:bg-sky-500",
         variant === "secondary" && "border border-border bg-surface hover:bg-surface-muted",
@@ -167,7 +167,7 @@ export function Notice({ tone = "info", children }: { tone?: Tone; children: Rea
 // ------------------------------------------------------------------- forms
 
 const fieldBase =
-  "w-full rounded-lg border border-border bg-surface px-3 text-sm placeholder:text-muted focus:border-info focus:outline-none disabled:opacity-60";
+  "w-full rounded-lg border border-border bg-surface px-3 text-sm placeholder:text-muted focus:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-500/30 focus-visible:outline-none disabled:opacity-60";
 
 export function Field({ label, hint, error, children, id }: { label: string; hint?: string; error?: string; children: (id: string) => ReactNode; id?: string }) {
   const auto = useId();
@@ -230,7 +230,7 @@ export function Dialog({ open, onClose, title, children, footer, wide }: {
             <h2 id="dialog-title" className="font-semibold">
               {title}
             </h2>
-            <button type="button" onClick={onClose} className="rounded-md p-1 text-muted hover:bg-surface-muted" aria-label="Close">
+            <button type="button" onClick={onClose} className="rounded-md p-1.5 text-muted hover:bg-surface-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 cursor-pointer" aria-label="Close">
               ✕
             </button>
           </header>
