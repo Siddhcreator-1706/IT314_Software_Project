@@ -298,7 +298,7 @@ def decide_team_request(
             res_row = conn.execute(
                 """
                 SELECT resource_id, name, agency_id, status,
-                       COALESCE(capability_tags, capability, '{}'::jsonb) AS capabilities
+                       COALESCE(NULLIF(capability_tags, '{}'::jsonb), capability, '{}'::jsonb) AS capabilities
                 FROM resources
                 WHERE resource_id = %s
                 """,
