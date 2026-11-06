@@ -51,6 +51,7 @@ export default function PublicPortalPage() {
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [coordsText, setCoordsText] = useState("Gujarat, India");
+  const [mapReadyVersion, setMapReadyVersion] = useState(0);
   const [activeBaseLayer, setActiveBaseLayer] = useState<"streets" | "humanitarian">("streets");
   const [showAlertsLayer, setShowAlertsLayer] = useState(true);
   const [showAlertsDrawer, setShowAlertsDrawer] = useState(false);
@@ -151,6 +152,7 @@ export default function PublicPortalPage() {
         map.on("mousemove", (e: any) => {
           setCoordsText(`${e.latlng.lat.toFixed(4)}°N, ${e.latlng.lng.toFixed(4)}°E`);
         });
+        setMapReadyVersion((version) => version + 1);
       } catch (err) {
         console.error("Map initialization failed", err);
       }
@@ -200,7 +202,7 @@ export default function PublicPortalPage() {
       });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [incidents, districtFilter]);
+  }, [incidents, districtFilter, mapReadyVersion]);
 
   // 5. Update Public Alerts Layer (SRS Requirement S2-11)
   useEffect(() => {
@@ -252,23 +254,43 @@ export default function PublicPortalPage() {
 
       const marker = L.marker([lat, lon], { icon }).addTo(layer);
 
-      marker.bindPopup(`
-        <div style="color: #0f172a; font-family: sans-serif; font-size: 12px; min-width: 220px; padding: 4px;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px;">
-            <strong style="color: ${bg}; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;">${alert.severity} ALERT</strong>
-            ${
-              alert.is_fallback
-                ? '<span style="background: #fef3c7; color: #92400e; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px; border: 1px solid #fde68a;">SAMPLE DATA</span>'
-                : '<span style="background: #dbeafe; color: #1e40af; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px;">OFFICIAL</span>'
-            }
-          </div>
-          <div style="font-weight: 700; font-size: 13px; margin-bottom: 4px; color: #0f172a;">${alert.title}</div>
-          <div style="color: #475569; margin-bottom: 6px; line-height: 1.4;">${alert.description}</div>
-          <div style="font-size: 10px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 4px;">Source: ${alert.source}</div>
-        </div>
-      `);
+      const popup = document.createElement("div");
+      popup.style.cssText = "color: #0f172a; font-family: sans-serif; font-size: 12px; min-width: 220px; padding: 4px;";
+
+      const header = document.createElement("div");
+      header.style.cssText = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px; gap: 8px;";
+
+      const severity = document.createElement("strong");
+      severity.textContent = `${alert.severity} ALERT`;
+      severity.style.cssText = `color: ${bg}; text-transform: uppercase; font-size: 11px; letter-spacing: 0.5px;`;
+      header.appendChild(severity);
+
+      const badge = document.createElement("span");
+      badge.textContent = alert.is_fallback ? "SAMPLE DATA" : "OFFICIAL";
+      badge.style.cssText = alert.is_fallback
+        ? "background: #fef3c7; color: #92400e; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px; border: 1px solid #fde68a;"
+        : "background: #dbeafe; color: #1e40af; font-size: 9px; font-weight: bold; padding: 2px 6px; border-radius: 4px;";
+      header.appendChild(badge);
+      popup.appendChild(header);
+
+      const title = document.createElement("div");
+      title.textContent = alert.title;
+      title.style.cssText = "font-weight: 700; font-size: 13px; margin-bottom: 4px; color: #0f172a;";
+      popup.appendChild(title);
+
+      const description = document.createElement("div");
+      description.textContent = alert.description;
+      description.style.cssText = "color: #475569; margin-bottom: 6px; line-height: 1.4;";
+      popup.appendChild(description);
+
+      const source = document.createElement("div");
+      source.textContent = `Source: ${alert.source}`;
+      source.style.cssText = "font-size: 10px; color: #64748b; border-top: 1px solid #e2e8f0; padding-top: 4px;";
+      popup.appendChild(source);
+
+      marker.bindPopup(popup);
     });
-  }, [alerts, showAlertsLayer]);
+  }, [alerts, showAlertsLayer, mapReadyVersion]);
 
   return (
     <div className="relative h-screen w-screen overflow-hidden bg-slate-900 font-sans flex flex-col">
