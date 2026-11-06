@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
+import hmac
+import json
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -24,13 +27,36 @@ class ModelCompatibilityError(RuntimeError):
     """Raised when a serialized scikit-learn model is loaded by another version."""
 
 
+class ModelIntegrityError(RuntimeError):
+    """Raised when the model file does not match the SHA-256 recorded by the trainer."""
+
+
+def _verify_artifact_hash(path: Path) -> None:
+    """joblib.load unpickles, which can run code, so check the file against metadata.json first.
+
+    The trainer writes the SHA-256 of model.joblib into metadata.json. When that file is present the
+    hash must match; a missing metadata.json is allowed only for hand-built local artifacts.
+    """
+    metadata_path = path.parent / "metadata.json"
+    if not metadata_path.is_file():
+        return
+    try:
+        expected = json.loads(metadata_path.read_text(encoding="utf-8"))["artifact"]["sha256"]
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise ModelIntegrityError(f"Cannot read the model checksum from {metadata_path}") from exc
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if not hmac.compare_digest(str(expected), actual):
+        raise ModelIntegrityError(f"{path.name} does not match the checksum in metadata.json")
+
+
 @lru_cache(maxsize=2)
 def load_bundle(model_dir: str = str(DEFAULT_MODEL_DIR)) -> dict[str, Any]:
     """Load a local model artifact once per process."""
     path = Path(model_dir) / "model.joblib"
     if not path.is_file():
         raise FileNotFoundError(f"No text model artifact found at {path}")
-    bundle = joblib.load(path)
+    _verify_artifact_hash(path)
+    bundle = joblib.load(path)  # nosec B301 - file verified against the trainer's SHA-256 above
     trained_version = bundle.get("scikit_learn_version")
     if trained_version != sklearn.__version__:
         raise ModelCompatibilityError(

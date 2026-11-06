@@ -71,7 +71,7 @@ def analyze_text_endpoint(
         if not hmac.compare_digest(supplied, expected):
             raise HTTPException(status_code=401, detail="invalid or missing token")
 
-    from text_model.inference import ModelCompatibilityError, predict_text
+    from text_model.inference import ModelCompatibilityError, ModelIntegrityError, predict_text
 
     model_dir = os.getenv("TEXT_MODEL_DIR", str(Path(__file__).resolve().parent / "text_model" / "artifacts"))
     try:
@@ -80,6 +80,8 @@ def analyze_text_endpoint(
         raise HTTPException(status_code=503, detail="text model artifact is not configured") from exc
     except ModelCompatibilityError as exc:
         raise HTTPException(status_code=503, detail="text model artifact is incompatible with this runtime") from exc
+    except ModelIntegrityError as exc:
+        raise HTTPException(status_code=503, detail="text model artifact failed its integrity check") from exc
 
     metadata_provided = any(
         value is not None
