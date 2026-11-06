@@ -33,7 +33,7 @@ set -euo pipefail
 # ==============================================================================
 # CONFIGURATION & ENVIRONMENT VARIABLES (Single Variable Block)
 # All secrets and credentials must be supplied via environment variables.
-# No secrets or passwords have hardcoded defaults.
+# Credentials have no defaults; the only fallback is a dummy mock-gateway secret for local compose.
 # ==============================================================================
 SMOKE_BASE_URL="${STAGING_URL:-${SMOKE_BASE_URL:-${API_URL:-http://localhost:8000}}}"
 SMOKE_COLD_START_TIMEOUT="${SMOKE_COLD_START_TIMEOUT:-90}"
