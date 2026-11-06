@@ -9,8 +9,9 @@ services:
     autoDeploy: false
 
     healthCheckPath: /api/v1/health   # also reports database reachability
-    # Names and non-secret values only. Every `sync: false` key is entered in the Render
-    # dashboard; see docs/env-variables.md for what each one does.
+    # Only keys without a built-in default are listed. Every `sync: false` key is entered in the
+    # Render dashboard; see docs/env-variables.md for the rest (SMTP_PORT, PAYMENT_GATEWAY, USGS_FEED_URL,
+    # INGEST_INTERVAL_SECONDS, NEWS_RSS_ENABLED and BLUESKY_SEARCH_ENABLED all default correctly).
     envVars:
       # staging keeps every startup secret check but allows the sandbox (mock) donation flow,
       # which APP_ENV=production refuses. Switch to production only with a real gateway.
@@ -38,26 +39,13 @@ services:
         sync: false          # same value as NEXT_PUBLIC_GOOGLE_CLIENT_ID on Vercel; empty = Google sign-in off
       - key: SMTP_HOST
         sync: false          # empty = emails are only logged, not sent
-      - key: SMTP_PORT
-        value: "587"
       - key: SMTP_USERNAME
         sync: false
       - key: SMTP_PASSWORD
         sync: false
       - key: EMAIL_FROM
         sync: false
-      - key: PAYMENT_GATEWAY
-        value: mock
       - key: MOCK_GATEWAY_SECRET
         sync: false
       - key: SACHET_FEED_URL
-        value: https://sachet.ndma.gov.in/cap_public_website/rss/rss_india.xml
-      - key: USGS_FEED_URL
-        value: https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minmagnitude=2.5&minlatitude=20.0&maxlatitude=24.7&minlongitude=68.1&maxlongitude=74.6&orderby=time
-      # Live text signals stay off until the team approves live collection (docs/ingestion-sources.md).
-      - key: NEWS_RSS_ENABLED
-        value: "false"
-      - key: BLUESKY_SEARCH_ENABLED
-        value: "false"
-      - key: INGEST_INTERVAL_SECONDS
-        value: "600"
+        value: https://sachet.ndma.gov.in/cap_public_website/rss/rss_gujarat.xml

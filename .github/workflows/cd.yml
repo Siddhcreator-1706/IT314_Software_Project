@@ -247,7 +247,7 @@ jobs:
       - name: Verify Backend Health
         if: ${{ (needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch') }}
         env:
-          BACKEND_URL: ${{ secrets.STAGING_BACKEND_URL }}
+          BACKEND_URL: ${{ secrets.PROD_BACKEND_URL }}
         run: |
           if [ -n "$BACKEND_URL" ]; then
             BACKEND_URL="${BACKEND_URL%/}"
@@ -268,7 +268,7 @@ jobs:
             done
             echo "⚠️ Health check timed out or failed on $BACKEND_URL"
           else
-            echo "ℹ️ STAGING_BACKEND_URL secret not set. Skipping live health verification."
+            echo "ℹ️ PROD_BACKEND_URL secret not set. Skipping live health verification."
           fi
 
   # ============================================================================
@@ -301,10 +301,10 @@ jobs:
       - name: Wait until this commit is live
         id: wait_live
         env:
-          STAGING_URL: ${{ secrets.STAGING_BACKEND_URL }}
+          STAGING_URL: ${{ secrets.PROD_BACKEND_URL }}
         run: |
           if [ -z "$STAGING_URL" ]; then
-            echo "::notice::STAGING_BACKEND_URL secret not set in GitHub Secrets. Skipping staging live version verification."
+            echo "::notice::PROD_BACKEND_URL secret not set in GitHub Secrets. Skipping staging live version verification."
             echo "is_live=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
