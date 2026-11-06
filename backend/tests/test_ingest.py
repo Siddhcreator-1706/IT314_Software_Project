@@ -91,6 +91,7 @@ def test_sachet_ingest_idempotency(client, sample_xml_path, monkeypatch, sql):
     assert count == 1
 
 
+@pytest.mark.db
 def test_sachet_ingest_malformed_xml(client, tmp_path, monkeypatch):
     """Malformed XML results in FAILED run status without storing alerts."""
     test_token = "secret_ingest_token_48_chars_long_for_sachet_tests"
