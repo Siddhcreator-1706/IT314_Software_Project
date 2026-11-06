@@ -46,3 +46,4 @@
 - **Append-Only Audit:** State transitions must write to `audit_logs` and maintain SHA-256 hash chains.
 - **Strict Scenarios:** Only `cyclone`, `industrial_fire`, and `urban_flooding` are supported.
 - **Git Restrictions:** You are explicitly forbidden from running `git commit`, `git push`, `git merge`, `git reset`, `git clean`, or `gh pr merge`.
+- **GitHub CLI Restrictions:** You must not run any `gh` command at all (`gh issue`, `gh pr`, `gh label`, `gh run`, `gh api`, `gh repo`). When GitHub work is needed, write the exact command (put long bodies in a file inside the repo or give the full text) in a fenced `bash` block and ask the user to run it. A one-time permission for a task does not carry over to later tasks.

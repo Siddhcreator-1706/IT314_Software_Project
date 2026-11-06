@@ -9,6 +9,7 @@
 - **Verify & Test:** Run relevant unit, integration, and lint checks after changes.
 - **Review Diff:** Inspect the final `git diff` before reporting completion.
 - **Git Restrictions:** NEVER automatically commit, push, merge, reset, or rewrite Git history.
+- **GitHub CLI Restrictions:** NEVER run any `gh` command (issues, PRs, labels, checkout, API, workflow runs, merges). Give the exact command to the user in a fenced `bash` block and let them run it. Reading from the local repository with `git` (status, log, diff, show) is fine.
 
 ## DRCH Technical Constraints
 - **Database:** Neon PostgreSQL 16 with PostGIS. Never introduce Supabase Auth, `auth.users`, `auth.uid()`, or Supabase-specific SQL/triggers.

@@ -72,6 +72,9 @@ class Settings:
     sachet_feed_url: str = ""
     usgs_feed_url: str = ""
     social_replay_file: str = ""
+    news_rss_enabled: bool = False
+    bluesky_search_enabled: bool = False
+    bluesky_search_url: str = ""
     ingest_interval_seconds: int = 600
 
     def require(self, name: str) -> str:
@@ -130,6 +133,9 @@ def get_settings() -> Settings:
             "https://earthquake.usgs.gov/fdsnws/event/1/query?format=geojson&minmagnitude=2.5&minlatitude=20.0&maxlatitude=24.7&minlongitude=68.1&maxlongitude=74.6&orderby=time",
         ).strip(),
         social_replay_file=os.getenv("SOCIAL_REPLAY_FILE", "").strip(),
+        news_rss_enabled=_bool("NEWS_RSS_ENABLED", False),
+        bluesky_search_enabled=_bool("BLUESKY_SEARCH_ENABLED", False),
+        bluesky_search_url=os.getenv("BLUESKY_SEARCH_URL", "").strip(),
         ingest_interval_seconds=max(1, _int("INGEST_INTERVAL_SECONDS", 600)),
     )
 

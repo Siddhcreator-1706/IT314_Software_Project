@@ -32,7 +32,10 @@ When `APP_ENV` is `staging` or `production` the backend refuses to start unless 
 | `GEOJSON_GUJARAT_DISTRICTS_URL` | no | empty | GeoJSON FeatureCollection of Gujarat districts. Empty = sync disabled (packaged state polygon + PostGIS data are used). |
 | `PAYMENT_GATEWAY` | no | `mock` | Only `mock` is implemented. |
 | `MOCK_GATEWAY_SECRET` (S) | when donations are used | - | HMAC key for the sandbox gateway. |
-| `SACHET_FEED_URL` | no | empty | SACHET RSS feed URL; the adapter fetches linked CAP XML and honors ETags. Empty = adapter disabled. |
+| `SACHET_FEED_URL` | no | empty | SACHET RSS feed URL (public all-India feed: `https://sachet.ndma.gov.in/cap_public_website/rss/rss_india.xml`); the adapter fetches linked CAP XML and honors ETags. Empty = adapter disabled. |
+| `NEWS_RSS_ENABLED` | no | `false` | Turns on the `GNEWS` signal adapter: Google News RSS search for Gujarat hazard headlines in English, Gujarati and Hindi. Stores headline, publisher, time and link only. |
+| `BLUESKY_SEARCH_ENABLED` | no | `false` | Turns on the `BLUESKY` signal adapter: public post search for Gujarat hazard posts. Author identity is never stored. |
+| `BLUESKY_SEARCH_URL` | no | `https://api.bsky.app/xrpc/app.bsky.feed.searchPosts` | Bluesky AppView search endpoint; only `api.bsky.app` and `public.api.bsky.app` over https are accepted. |
 | `USGS_FEED_URL` | no | Gujarat GeoJSON query | USGS earthquake GeoJSON feed; results are checked against the Gujarat boundary before storage. |
 | `SOCIAL_REPLAY_FILE` | no | packaged JSONL replay | Path to the team-authored, sanitised social replay fixture. Replay records are always marked simulated. |
 | `INGEST_INTERVAL_SECONDS` | no | `600` | In-process adapter polling interval. Use a shorter value only for local scheduler checks. |
