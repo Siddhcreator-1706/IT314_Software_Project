@@ -142,15 +142,18 @@ def test_cli_load_fallback_alerts(monkeypatch, sql):
     mock_dev.app_env = "development"
     monkeypatch.setattr("app.config.get_settings", lambda: mock_dev)
 
-    load_fallback_alerts(argparse_dummy())
+    try:
+        load_fallback_alerts(argparse_dummy())
 
-    with db.transaction() as conn:
-        fallbacks = conn.execute(
-            "SELECT source_uid, is_fallback, event_type FROM external_alerts WHERE source_uid LIKE 'FALLBACK-%'"
-        ).fetchall()
-    assert len(fallbacks) == 3
-    for f in fallbacks:
-        assert f["is_fallback"] is True
+        with db.transaction() as conn:
+            fallbacks = conn.execute(
+                "SELECT source_uid, is_fallback, event_type FROM external_alerts WHERE source_uid LIKE 'FALLBACK-%'"
+            ).fetchall()
+        assert len(fallbacks) == 3
+        for f in fallbacks:
+            assert f["is_fallback"] is True
+    finally:
+        sql.execute("DELETE FROM external_alerts WHERE source_uid LIKE 'FALLBACK-%'")
 
 
 @pytest.mark.db

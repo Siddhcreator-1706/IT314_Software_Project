@@ -5,6 +5,18 @@ Integration tests run against an isolated database whose name must end in
 touches the application database and never deletes rows: each test creates
 its own uniquely named data. When no database is reachable, DB-backed tests
 are skipped and only the unit tests run (e.g. in CI without Postgres).
+
+Fixtures:
+- client: Session-scoped FastAPI TestClient.
+- sql: Autocommit psycopg connection (dict_row factory) for DB state setup & assertions.
+- make: Factory instance providing helpers for creating users, incidents, agencies,
+  resources, field users, assigned field dispatches, source signals, and donation campaigns.
+- citizen_user: Authenticated NORMAL_USER account.
+- staff_user: Authenticated DISASTER_MGMT staff account with DISPATCH and SUPERVISOR permissions.
+- field_user: Authenticated FIELD_TEAM user bound to a real team resource and field_team_members record.
+- field_dispatch: A realistic dispatch order (REQUESTED) assigned to field_user's team.
+- source_signal: A realistic raw ingested signal (PENDING) in source_signals.
+- campaign: An active donation campaign (ACTIVE) in donation_campaigns.
 """
 
 import os
@@ -78,7 +90,16 @@ def _ensure_schema() -> None:
             conn.execute(s.read_text(encoding="utf-8"))
 
 
-DB_FIXTURE_NAMES = {"sql", "make", "citizen_user", "staff_user", "field_user"}
+DB_FIXTURE_NAMES = {
+    "sql",
+    "make",
+    "citizen_user",
+    "staff_user",
+    "field_user",
+    "field_dispatch",
+    "source_signal",
+    "campaign",
+}
 
 
 def pytest_collection_modifyitems(config, items):
@@ -283,6 +304,143 @@ class Factory:
         )
         return {**user, "headers": self.token(user, mfa=True), "resource_id": resource_id}
 
+    def field_dispatch(
+        self,
+        field_user: dict,
+        status: str = "REQUESTED",
+        instructions: str = "Deploy team immediately to scene",
+        priority: str = "HIGH",
+        incident: dict | None = None,
+    ) -> dict:
+        """Create a dispatch order assigned to the field user's team resource with realistic reservation."""
+        if incident is None:
+            incident = self.incident(
+                status="VERIFIED",
+                verified_priority=priority,
+                address_text="Near S.G. Highway Junction, Ahmedabad",
+                district="Ahmedabad",
+                latitude=23.0225,
+                longitude=72.5714,
+            )
+        staff = self.user("DISASTER_MGMT", ("DISPATCH",))
+
+        res_id = field_user["resource_id"]
+        res = self.conn.execute("SELECT agency_id FROM resources WHERE resource_id = %s", (res_id,)).fetchone()
+        if res and res["agency_id"]:
+            agency_id = res["agency_id"]
+        else:
+            agency = self.agency()
+            agency_id = agency["agency_id"]
+            self.conn.execute("UPDATE resources SET agency_id = %s WHERE resource_id = %s", (agency_id, res_id))
+
+        ref = self.conn.execute(
+            "SELECT 'DISP-' || to_char(now(), 'YYYY') || '-' || lpad(nextval('dispatch_ref_seq')::text, 6, '0') AS ref"
+        ).fetchone()["ref"]
+
+        dispatch = self.conn.execute(
+            """
+            INSERT INTO dispatch_orders
+                (dispatch_ref, incident_id, created_by, receiving_agency_id, status, instructions, priority)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING *
+            """,
+            (ref, incident["incident_id"], staff["user_id"], agency_id, status, instructions, priority),
+        ).fetchone()
+
+        self.conn.execute(
+            """
+            UPDATE resources
+            SET quantity_available = GREATEST(quantity_available - 1, 0),
+                status = 'ASSIGNED',
+                version = version + 1
+            WHERE resource_id = %s
+            """,
+            (res_id,),
+        )
+        self.conn.execute(
+            """
+            INSERT INTO resource_assignments (dispatch_id, resource_id, quantity, assigned_by)
+            VALUES (%s, %s, 1, %s)
+            """,
+            (dispatch["dispatch_id"], res_id, staff["user_id"]),
+        )
+
+        if status in ("ACKNOWLEDGED", "DISPATCHED", "COMPLETED"):
+            self.conn.execute(
+                """
+                UPDATE dispatch_orders
+                SET acknowledged_by = %s, acknowledged_at = now()
+                WHERE dispatch_id = %s
+                """,
+                (field_user["email"], dispatch["dispatch_id"]),
+            )
+
+        return {**dict(dispatch), "incident": incident, "resource_id": res_id, "staff": staff}
+
+    def signal(
+        self,
+        source: str = "REPLAY",
+        content_text: str | None = None,
+        language: str = "en",
+        latitude: float | None = 23.045,
+        longitude: float | None = 72.568,
+        location_text: str = "Ashram Road, Ahmedabad",
+        ai_label: str = "URBAN_FLOODING",
+        ai_confidence: float = 0.88,
+        status: str = "PENDING",
+        is_simulated: bool = True,
+        **kwargs,
+    ) -> dict:
+        """Insert a source_signals row using real database columns."""
+        values = {
+            "source": source,
+            "source_uid": kwargs.get("source_uid") or unique("sig-uid"),
+            "content_text": content_text or unique("Water rising rapidly near Ashram Road underpass"),
+            "language": language,
+            "location_text": location_text,
+            "latitude": latitude,
+            "longitude": longitude,
+            "ai_label": ai_label,
+            "ai_confidence": ai_confidence,
+            "status": status,
+            "is_simulated": is_simulated,
+        }
+        for k, v in kwargs.items():
+            if k != "source_uid":
+                values[k] = v
+
+        query = pgsql.SQL("INSERT INTO source_signals ({}) VALUES ({}) RETURNING *").format(
+            pgsql.SQL(", ").join(pgsql.Identifier(k) for k in values),
+            pgsql.SQL(", ").join(pgsql.Placeholder() for _ in values),
+        )
+        return self.conn.execute(query, list(values.values())).fetchone()
+
+    def campaign(
+        self,
+        title: str | None = None,
+        purpose: str = "Emergency Disaster Relief",
+        scenario: str = "URBAN_FLOODING",
+        status: str = "ACTIVE",
+        target_amount: float = 1_000_000.0,
+        currency: str = "INR",
+        **kwargs,
+    ) -> dict:
+        """Insert a donation_campaigns row using real database columns."""
+        values = {
+            "title": title or unique("Relief Campaign"),
+            "purpose": purpose,
+            "scenario": scenario,
+            "status": status,
+            "target_amount": target_amount,
+            "currency": currency,
+        }
+        values.update(kwargs)
+        query = pgsql.SQL("INSERT INTO donation_campaigns ({}) VALUES ({}) RETURNING *").format(
+            pgsql.SQL(", ").join(pgsql.Identifier(k) for k in values),
+            pgsql.SQL(", ").join(pgsql.Placeholder() for _ in values),
+        )
+        return self.conn.execute(query, list(values.values())).fetchone()
+
 
 @pytest.fixture
 def make(sql):
@@ -300,11 +458,21 @@ def staff_user(make):
 
 
 @pytest.fixture
-def field_user(sql, make):
-    has_role = sql.execute("SELECT 1 FROM roles WHERE code = 'FIELD_TEAM'").fetchone()
-    row = sql.execute("SELECT to_regclass('public.field_team_members') AS tbl").fetchone()
-    has_table = row and row["tbl"]
-    if not has_role or not has_table:
-        pytest.skip("field_team_members table or FIELD_TEAM role does not exist yet")
+def field_user(make):
     return make.field_team_user()
+
+
+@pytest.fixture
+def field_dispatch(make, field_user):
+    return make.field_dispatch(field_user)
+
+
+@pytest.fixture
+def source_signal(make):
+    return make.signal()
+
+
+@pytest.fixture
+def campaign(make):
+    return make.campaign()
 

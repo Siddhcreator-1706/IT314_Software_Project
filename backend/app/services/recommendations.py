@@ -451,7 +451,7 @@ SELECT r.resource_id,
        a.name AS agency_name,
        r.status,
        r.quantity_available,
-       COALESCE(r.capability_tags, r.capability, '{}'::jsonb) AS capabilities,
+       COALESCE(NULLIF(r.capability_tags, '{}'::jsonb), r.capability, '{}'::jsonb) AS capabilities,
        ROUND((ST_Distance(r.current_geom::geography, ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography) / 1000.0)::numeric, 1) AS distance_km
 FROM resources r
 JOIN agencies a ON a.agency_id = r.agency_id
