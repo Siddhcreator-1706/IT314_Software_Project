@@ -188,7 +188,7 @@ def decide_team_request(
     with db.transaction() as conn:
         row = conn.execute(
             """
-            SELECT tr.*, d.dispatch_ref, d.incident_id, i.incident_ref, i.scenario, i.priority,
+            SELECT tr.*, d.dispatch_ref, d.incident_id, i.incident_ref, i.scenario, i.verified_priority AS priority,
                    ST_Y(i.geom::geometry) AS latitude, ST_X(i.geom::geometry) AS longitude
             FROM team_requests tr
             JOIN dispatch_orders d ON d.dispatch_id = tr.dispatch_id
@@ -297,7 +297,7 @@ def decide_team_request(
             res_row = conn.execute(
                 """
                 SELECT resource_id, name, agency_id, status,
-                       COALESCE(capability_tags, capability, '{}'::jsonb) AS capabilities
+                       COALESCE(NULLIF(capability_tags, '{}'::jsonb), capability, '{}'::jsonb) AS capabilities
                 FROM resources
                 WHERE resource_id = %s
                 """,

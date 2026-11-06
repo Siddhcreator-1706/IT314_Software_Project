@@ -330,19 +330,12 @@ def test_ai_gate_human_decision_recorded_separately_and_only_once(
 # ── Part C: Top-Up Acceptance Tests ───────────────────────────────────────
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT-S2-18-TEAM-REQUEST-COLUMN-500: POST /api/v1/dm/team-requests/{id}/decision fails with SQL undefined column i.priority",
-)
 def test_team_request_approve_creates_draft_only_and_leaves_dispatch_uncreated(
     client, make, sql
 ):
-    """Defect Note:
-    Route: POST /api/v1/dm/team-requests/{id}/decision
-    Input: {"action": "APPROVE", "target_resource_id": "...", "rationale": "..."}
-    Expected: 200 OK with TeamRequestDecisionResponse and dispatch_draft, no dispatch order inserted
-    Actual: 500 Internal Server Error (psycopg.errors.UndefinedColumn: column i.priority does not exist in incidents)
-    Owner: Nisarg
+    """POST /api/v1/dm/team-requests/{id}/decision with APPROVE returns a dispatch draft, never a dispatch.
+
+    Regression: the decision query selected the non-existent column i.priority and returned 500.
     """
     dispatcher = make.staff("DISPATCH")
     field_resp = make.field_team_user(callsign="Rescue-1")
@@ -363,6 +356,10 @@ def test_team_request_approve_creates_draft_only_and_leaves_dispatch_uncreated(
     # Target resource for backup
     backup_team = make.field_team_user(callsign="Boat-Unit-3")
     target_res_id = backup_team["resource_id"]
+    sql.execute(
+        "UPDATE resources SET capability = %s::jsonb WHERE resource_id = %s",
+        ('{"boat": true}', target_res_id),
+    )
 
     # Count dispatches before approval
     disp_count_before = sql.execute("SELECT count(*) AS n FROM dispatch_orders").fetchone()["n"]
@@ -385,25 +382,20 @@ def test_team_request_approve_creates_draft_only_and_leaves_dispatch_uncreated(
     # Draft provides parameters for dispatch, but dispatch is NOT yet inserted into DB
     draft = body["dispatch_draft"]
     assert draft["incident_id"] == str(disp["incident_id"])
-    assert any(r["resource_id"] == str(target_res_id) for r in draft["resources"])
+    assert draft["suggested_resource_id"] == str(target_res_id)
+    assert draft["required_capability"] == "boat"
+    assert draft["priority"] == "HIGH"
 
     disp_count_after = sql.execute("SELECT count(*) AS n FROM dispatch_orders").fetchone()["n"]
     assert disp_count_after == disp_count_before, "Approving team request must NOT create a dispatch order!"
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="DEFECT-S2-18-TEAM-REQUEST-COLUMN-500: POST /api/v1/dm/team-requests/{id}/decision fails with SQL undefined column i.priority",
-)
 def test_team_request_decline_stores_mandatory_rationale_and_rejects_empty(
     client, make, sql
 ):
-    """Defect Note:
-    Route: POST /api/v1/dm/team-requests/{id}/decision
-    Input: {"action": "DECLINE", "rationale": "..."}
-    Expected: 422 RATIONALE_REQUIRED when empty, 200 DECLINED with rationale when valid
-    Actual: 500 Internal Server Error (psycopg.errors.UndefinedColumn: column i.priority does not exist in incidents)
-    Owner: Nisarg
+    """DECLINE needs a rationale (422 RATIONALE_REQUIRED when empty) and stores it when valid.
+
+    Regression: the decision query selected the non-existent column i.priority and returned 500.
     """
     dispatcher = make.staff("DISPATCH")
     field_resp = make.field_team_user()
