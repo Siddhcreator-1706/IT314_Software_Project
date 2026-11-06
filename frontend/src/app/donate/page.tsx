@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { fetchPublicCampaigns, PublicCampaign } from "@/services/citizenApi";
 
-type DonationStep = "select" | "order_created" | "confirmed";
+type DonationStep = "select" | "order_created" | "confirmed" | "declined" | "abandoned" | "timed_out";
 
 interface CreatedOrder {
   donation_id: string;
@@ -38,10 +38,11 @@ export default function DonatePage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Flow state
+  // Flow state (SRS Requirement S3-11: covers confirmed, declined, abandoned, timed_out)
   const [step, setStep] = useState<DonationStep>("select");
   const [createdOrder, setCreatedOrder] = useState<CreatedOrder | null>(null);
   const [confirmed, setConfirmed] = useState<ConfirmedDonation | null>(null);
+  const [failureReason, setFailureReason] = useState<string>("");
   const [sandboxBusy, setSandboxBusy] = useState(false);
 
   useEffect(() => {
@@ -460,12 +461,206 @@ export default function DonatePage() {
                       </div>
                     )}
 
+                    {/* Simulation Controls (SRS S3-11: Testing all payment ending states) */}
+                    {isSandbox && (
+                      <div className="pt-2 border-t border-slate-200">
+                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 text-center">
+                          Simulate Gateway Edge Cases (SRS S3-11)
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            disabled={sandboxBusy}
+                            onClick={() => {
+                              setFailureReason("Transaction declined by the card issuer (INSUFFICIENT_FUNDS / GATEWAY_DECLINED).");
+                              setStep("declined");
+                            }}
+                            className="rounded-lg border border-red-200 bg-red-50/70 hover:bg-red-100/80 px-2.5 py-1.5 text-xs font-semibold text-red-700 transition cursor-pointer text-center"
+                          >
+                            Simulate Decline
+                          </button>
+                          <button
+                            type="button"
+                            disabled={sandboxBusy}
+                            onClick={() => {
+                              setStep("timed_out");
+                            }}
+                            className="rounded-lg border border-amber-200 bg-amber-50/70 hover:bg-amber-100/80 px-2.5 py-1.5 text-xs font-semibold text-amber-700 transition cursor-pointer text-center"
+                          >
+                            Simulate Timeout
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={() => setStep("abandoned")}
+                      className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                    >
+                      Cancel & Abandon Order
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* S3-11: Declined Payment State */}
+              {step === "declined" && createdOrder && (
+                <div className="rounded-2xl border border-red-200 bg-white p-6 shadow-sm">
+                  <div className="text-center">
+                    <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-red-100 text-red-700 text-xl font-bold">
+                      ✕
+                    </span>
+                    <h2 className="mt-3 text-lg font-bold text-slate-900">Contribution Declined</h2>
+                    <p className="mt-1 text-xs text-slate-500">
+                      The payment gateway was unable to authorize this transaction.
+                    </p>
+                  </div>
+
+                  <div className="mt-6 rounded-xl border border-red-100 bg-red-50/50 p-4 space-y-3">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">Order Reference</span>
+                      <span className="font-mono font-bold text-slate-800">{createdOrder.gateway_order_id}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">Amount Attempted</span>
+                      <span className="font-bold text-slate-900">₹{Number(createdOrder.amount).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between text-xs">
+                      <span className="text-slate-500">Status</span>
+                      <span className="font-bold text-red-700">FAILED / DECLINED</span>
+                    </div>
+                    <div className="pt-2 border-t border-red-100 text-xs text-red-800">
+                      <strong>Reason:</strong> {failureReason || "Gateway authorization failed. Please check payment details and retry."}
+                    </div>
+                  </div>
+
+                  <div className="mt-3 rounded-lg bg-amber-50 p-2 text-center text-[11px] font-medium text-amber-800 border border-amber-200">
+                    ⚠️ SANDBOX SIMULATION — No real money was charged to your card or account.
+                  </div>
+
+                  <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => setStep("order_created")}
+                      className="flex-1 rounded-lg bg-sky-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-sky-500 transition cursor-pointer text-center"
+                    >
+                      Retry Payment
+                    </button>
                     <button
                       type="button"
                       onClick={() => setStep("select")}
-                      className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                      className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition cursor-pointer text-center"
                     >
-                      Cancel & Return
+                      Change Details
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* S3-11: Abandoned / Cancelled Payment State */}
+              {step === "abandoned" && createdOrder && (
+                <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+                  <div className="text-center">
+                    <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-slate-100 text-slate-600 text-xl font-bold">
+                      ⊘
+                    </span>
+                    <h2 className="mt-3 text-lg font-bold text-slate-900">Contribution Cancelled</h2>
+                    <p className="mt-1 text-xs text-slate-500">
+                      You cancelled this payment request before authorization completed.
+                    </p>
+                  </div>
+
+                  <div className="mt-6 rounded-xl border border-slate-100 bg-slate-50 p-4 space-y-2 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Order ID</span>
+                      <span className="font-mono text-slate-700">{createdOrder.gateway_order_id}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Amount</span>
+                      <span className="font-semibold text-slate-800">₹{Number(createdOrder.amount).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Status</span>
+                      <span className="font-medium text-slate-600">ABANDONED</span>
+                    </div>
+                    <p className="text-[11px] text-slate-500 pt-1 border-t border-slate-200">
+                      No funds were captured. Your account has not been charged.
+                    </p>
+                  </div>
+
+                  <div className="mt-3 rounded-lg bg-amber-50 p-2 text-center text-[11px] font-medium text-amber-800 border border-amber-200">
+                    ⚠️ SANDBOX SIMULATION — Safe testing mode.
+                  </div>
+
+                  <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => setStep("select")}
+                      className="flex-1 rounded-lg bg-sky-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-sky-500 transition cursor-pointer text-center"
+                    >
+                      Resume Contribution
+                    </button>
+                    <Link
+                      href="/"
+                      className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition cursor-pointer text-center"
+                    >
+                      Return to Map
+                    </Link>
+                  </div>
+                </div>
+              )}
+
+              {/* S3-11: Timed Out Payment State */}
+              {step === "timed_out" && createdOrder && (
+                <div className="rounded-2xl border border-amber-200 bg-white p-6 shadow-sm">
+                  <div className="text-center">
+                    <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-xl font-bold">
+                      ⏱
+                    </span>
+                    <h2 className="mt-3 text-lg font-bold text-slate-900">Payment Session Timed Out</h2>
+                    <p className="mt-1 text-xs text-slate-500">
+                      The authorization window expired before a confirmation signal was received from the gateway.
+                    </p>
+                  </div>
+
+                  <div className="mt-6 rounded-xl border border-amber-100 bg-amber-50/60 p-4 space-y-2 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Order ID</span>
+                      <span className="font-mono text-slate-700">{createdOrder.gateway_order_id}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Amount</span>
+                      <span className="font-semibold text-slate-800">₹{Number(createdOrder.amount).toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">State</span>
+                      <span className="font-bold text-amber-800">SESSION_TIMEOUT</span>
+                    </div>
+                    <p className="text-[11px] text-amber-900/80 pt-1 border-t border-amber-200">
+                      If your bank account was debited, the transaction will automatically reverse within 3–5 business days.
+                    </p>
+                  </div>
+
+                  <div className="mt-3 rounded-lg bg-amber-50 p-2 text-center text-[11px] font-medium text-amber-800 border border-amber-200">
+                    ⚠️ SANDBOX SIMULATION — Safe testing mode.
+                  </div>
+
+                  <div className="mt-6 flex flex-col gap-2 sm:flex-row">
+                    <button
+                      type="button"
+                      disabled={sandboxBusy}
+                      onClick={handleSandboxPayment}
+                      className="flex-1 rounded-lg bg-amber-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-amber-500 transition cursor-pointer text-center"
+                    >
+                      {sandboxBusy ? "Verifying..." : "Check Status & Re-verify"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setStep("select")}
+                      className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition cursor-pointer text-center"
+                    >
+                      Start New Contribution
                     </button>
                   </div>
                 </div>
