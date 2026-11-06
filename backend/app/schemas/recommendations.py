@@ -20,6 +20,11 @@ class CandidateTeam(BaseModel):
     agency: str
     distance_km: float = Field(..., ge=0.0, description="Straight-line or road distance from incident in km")
     capability_match: list[str] = Field(default_factory=list, description="Matched capability tags")
+    secondary_match: list[str] = Field(
+        default_factory=list, description="Matched supporting (secondary) capability tags"
+    )
+    matched_count: int = Field(0, ge=0, description="Number of primary capabilities matched")
+    score: float | None = Field(None, description="Ranking score; higher is better (advisory only)")
     rank: int = Field(..., ge=1, description="Recommendation priority rank")
     reasons: str = Field(..., description="Human-readable justification for the rank")
     status: str = Field(..., description="Current operational status of resource")

@@ -188,7 +188,8 @@ def decide_team_request(
     with db.transaction() as conn:
         row = conn.execute(
             """
-            SELECT tr.*, d.dispatch_ref, d.incident_id, i.incident_ref, i.scenario, i.priority,
+            SELECT tr.*, d.dispatch_ref, d.incident_id, i.incident_ref, i.scenario,
+                   COALESCE(i.verified_priority, d.priority) AS priority,
                    ST_Y(i.geom::geometry) AS latitude, ST_X(i.geom::geometry) AS longitude
             FROM team_requests tr
             JOIN dispatch_orders d ON d.dispatch_id = tr.dispatch_id
