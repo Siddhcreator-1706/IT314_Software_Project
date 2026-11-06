@@ -55,6 +55,12 @@ When `APP_ENV` is `staging` or `production` the backend refuses to start unless 
 | `GOOGLE_CLIENT_ID` | no | - | Google OAuth web client id. `POST /auth/google` returns 503 until it is set; tokens for any other audience are rejected. |
 | `GOOGLE_CLIENT_SECRET` (S) | no | - | Google OAuth client secret (reserved; the ID-token flow does not need it yet). |
 
+## AI text model (`ai-workers/`, optional)
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `TEXT_MODEL_DIR` | no | `ai-workers/text_model/artifacts` | Directory holding `model.joblib` (and `metadata.json`) for `POST /analyze-text`. The endpoint returns 503 when it is missing, incompatible, or its SHA-256 does not match `metadata.json`. |
+
 ## Frontend (Next.js)
 
 | Variable | Required | Default | Purpose |
