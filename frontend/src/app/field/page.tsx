@@ -59,9 +59,10 @@ export default function FieldPage() {
     }
   }, []);
 
+  // Initial load and auto-refresh every 15 seconds (SRS Requirement S2-04)
   useEffect(() => {
     let ignore = false;
-    const init = async () => {
+    const fetchAssignments = async () => {
       try {
         const res = await fetch("/api/field/assignments", { cache: "no-store" });
         if (!res.ok) {
@@ -83,9 +84,12 @@ export default function FieldPage() {
         }
       }
     };
-    init();
+
+    fetchAssignments();
+    const interval = setInterval(fetchAssignments, 15000);
     return () => {
       ignore = true;
+      clearInterval(interval);
     };
   }, []);
 
