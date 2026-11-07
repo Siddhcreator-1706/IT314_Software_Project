@@ -63,7 +63,8 @@ export default function MyReportsPage() {
   const [reports, setReports] = useState<ReportData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [lastRefreshed, setLastRefreshed] = useState<Date>(new Date());
+  // Null until the first load finishes: a time rendered on the server never matches the browser locale (hydration error).
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [selectedReport, setSelectedReport] = useState<ReportData | null>(null);
 
   // Information response state (SRS Requirement S2-13)
@@ -141,16 +142,16 @@ export default function MyReportsPage() {
         <nav aria-label="Incident tracking navigation" className="flex items-center gap-2 sm:gap-4 flex-wrap">
           <div aria-live="polite" className="text-[11px] text-slate-400 font-mono hidden md:flex items-center gap-1.5">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" aria-hidden="true" />
-            Auto-refreshes every 15s • Updated {lastRefreshed.toLocaleTimeString()}
+            Auto-refreshes every 15s • Updated {lastRefreshed ? lastRefreshed.toLocaleTimeString() : "…"}
           </div>
           <Link
             href="/report"
-            className="min-h-[38px] bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-md shadow-sky-600/30 transition flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+            className="min-h-[44px] bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-md shadow-sky-600/30 transition flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
           >
             <span aria-hidden="true">+</span>
             <span>Report Incident</span>
           </Link>
-          <Link href="/citizen/dashboard" className="text-xs text-slate-300 hover:text-white px-2 py-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 transition">
+          <Link href="/citizen/dashboard" className="inline-flex min-h-[44px] items-center text-xs text-slate-300 hover:text-white px-2 py-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 transition">
             Dashboard
           </Link>
         </nav>
@@ -170,7 +171,7 @@ export default function MyReportsPage() {
           <button
             type="button"
             onClick={() => loadReports()}
-            className="min-h-[38px] text-xs font-semibold text-slate-200 hover:text-white bg-slate-900 border border-slate-700 hover:border-slate-600 px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+            className="min-h-[44px] text-xs font-semibold text-slate-200 hover:text-white bg-slate-900 border border-slate-700 hover:border-slate-600 px-3.5 py-1.5 rounded-lg transition flex items-center gap-1.5 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
           >
             <span aria-hidden="true">🔄</span> Refresh Now
           </button>
@@ -273,7 +274,7 @@ export default function MyReportsPage() {
                       <button
                         type="button"
                         onClick={() => setSelectedReport(isSelected ? null : report)}
-                        className="min-h-[36px] text-xs font-medium text-slate-300 hover:text-white bg-slate-800/90 px-3 py-1 rounded-lg border border-slate-700 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 flex items-center justify-center"
+                        className="min-h-[44px] text-xs font-medium text-slate-300 hover:text-white bg-slate-800/90 px-3 py-1 rounded-lg border border-slate-700 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 flex items-center justify-center"
                       >
                         {isSelected ? "Hide Details" : "Timeline View"}
                       </button>
@@ -337,7 +338,7 @@ export default function MyReportsPage() {
                             <button
                               type="submit"
                               disabled={replyingId === report.id}
-                              className="min-h-[38px] px-4 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold shadow transition disabled:opacity-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
+                              className="min-h-[44px] px-4 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold shadow transition disabled:opacity-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
                             >
                               {replyingId === report.id ? "Submitting..." : "Send Response"}
                             </button>

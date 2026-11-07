@@ -207,12 +207,41 @@ export function Dialog({ open, onClose, title, children, footer, wide }: {
   wide?: boolean;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  // The control that opened the dialog, so keyboard users land back on it when it closes.
+  const opener = useRef<HTMLElement | null>(null);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    if (open && !el.open) el.showModal();
-    if (!open && el.open) el.close();
+    if (open && !el.open) {
+      opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      el.showModal();
+    }
+    if (!open) {
+      if (el.open) el.close();
+      const target = opener.current;
+      opener.current = null;
+      if (target?.isConnected) target.focus();
+    }
   }, [open]);
+  // Callers that unmount the dialog on close never see open=false, so restore focus here as well.
+  // Wait until the modal is really gone: while it is open the rest of the page is inert and cannot take focus.
+  useEffect(() => {
+    const el = ref.current;
+    return () => {
+      const target = opener.current;
+      opener.current = null;
+      if (!target) return;
+      const restore = (attempt: number) => {
+        if (!target.isConnected) return;
+        if (el?.isConnected && el.open && attempt < 30) {
+          requestAnimationFrame(() => restore(attempt + 1));
+          return;
+        }
+        target.focus();
+      };
+      requestAnimationFrame(() => restore(0));
+    };
+  }, []);
   return (
     <dialog
       ref={ref}

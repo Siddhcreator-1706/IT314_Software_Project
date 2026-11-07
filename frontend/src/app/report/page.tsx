@@ -7,6 +7,23 @@ import { createReport, fetchPublicIncidents, type PublicIncident, type Scenario 
 import { findNearbyIncidents } from "@/services/duplicateDetection";
 import { URGENT_NEEDS, preTriage } from "@/services/preTriage";
 
+/** ARIA radio pattern: arrow keys move the selection and focus inside a group; only one option is a tab stop. */
+function moveRadioSelection(
+  event: React.KeyboardEvent<HTMLElement>,
+  ids: readonly string[],
+  current: string,
+  select: (id: string) => void,
+) {
+  const forward = event.key === "ArrowRight" || event.key === "ArrowDown";
+  const backward = event.key === "ArrowLeft" || event.key === "ArrowUp";
+  if (!forward && !backward) return;
+  event.preventDefault();
+  const index = Math.max(ids.indexOf(current), 0);
+  const next = ids[(index + (forward ? 1 : -1) + ids.length) % ids.length];
+  select(next);
+  event.currentTarget.querySelector<HTMLElement>(`[data-radio-id="${next}"]`)?.focus();
+}
+
 const SCENARIOS = [
   { id: "urban_flooding", label: "Urban Flooding", icon: "🌊", desc: "Waterlogging, rising flood water, stranded residents" },
   { id: "cyclone", label: "Cyclone / Storm", icon: "🌀", desc: "High winds, structural damage, coastal surges" },
@@ -304,7 +321,17 @@ Urgent needs: ${needs.join(", ")}` : description.trim(),
                 <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-2.5">
                   1. Disaster Scenario
                 </label>
-                <div role="radiogroup" aria-label="Disaster Scenario" className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div
+                  role="radiogroup"
+                  aria-label="Disaster Scenario"
+                  onKeyDown={(e) =>
+                    moveRadioSelection(e, SCENARIOS.map((x) => x.id), scenario, (id) => {
+                      setScenario(id as typeof scenario);
+                      setNeeds([]);
+                    })
+                  }
+                  className="grid grid-cols-1 sm:grid-cols-2 gap-3"
+                >
                   {SCENARIOS.map((item) => {
                     const isSelected = scenario === item.id;
                     return (
@@ -312,6 +339,8 @@ Urgent needs: ${needs.join(", ")}` : description.trim(),
                         key={item.id}
                         type="button"
                         role="radio"
+                        data-radio-id={item.id}
+                        tabIndex={isSelected ? 0 : -1}
                         aria-checked={isSelected}
                         onClick={() => { setScenario(item.id); setNeeds([]); }}
                         className={`min-h-[56px] p-3.5 rounded-xl border text-left flex items-start gap-3 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
@@ -339,12 +368,19 @@ Urgent needs: ${needs.join(", ")}` : description.trim(),
                   <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-2">
                     2. Urgency Level
                   </label>
-                  <div role="radiogroup" aria-label="Urgency Level" className="grid grid-cols-2 gap-2">
+                  <div
+                    role="radiogroup"
+                    aria-label="Urgency Level"
+                    onKeyDown={(e) => moveRadioSelection(e, URGENCIES.map((x) => x.id), urgency, (id) => setUrgency(id as typeof urgency))}
+                    className="grid grid-cols-2 gap-2"
+                  >
                     {URGENCIES.map((item) => (
                       <button
                         key={item.id}
                         type="button"
                         role="radio"
+                        data-radio-id={item.id}
+                        tabIndex={urgency === item.id ? 0 : -1}
                         aria-checked={urgency === item.id}
                         onClick={() => setUrgency(item.id)}
                         className={`min-h-[44px] px-3 py-2 rounded-lg text-xs font-semibold border text-center transition flex items-center justify-center cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-950 ${

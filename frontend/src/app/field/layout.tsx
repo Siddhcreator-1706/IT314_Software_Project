@@ -41,7 +41,7 @@ export default async function FieldLayout({ children }: { children: ReactNode })
             </div>
           </div>
           <form action={signOut}>
-            <button className="min-h-10 rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface-muted transition-colors">
+            <button className="min-h-11 rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface-muted transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-500 cursor-pointer">
               Sign out
             </button>
           </form>
