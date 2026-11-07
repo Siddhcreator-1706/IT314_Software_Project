@@ -124,6 +124,7 @@ export function AiPanel({ incident, reload }: { incident: IncidentDetail; reload
           </li>
         ))}
       </ul>
+      <PhotoAnalyseSection incidentId={incident.incident_id} />
       {deciding && (
         <DecisionDialog
           rec={deciding}
@@ -227,5 +228,128 @@ function DecisionDialog({ rec, incident, onClose, onDone }: { rec: Rec; incident
         )}
       </div>
     </Dialog>
+  );
+}
+
+type PhotoAnalyseResult = {
+  filename: string;
+  prediction: string;
+  suggested_scenario: string | null;
+  confidence: number;
+  is_out_of_scope: boolean;
+  needs_review: boolean;
+  advisory_notice: string;
+};
+
+function PhotoAnalyseSection({ incidentId }: { incidentId: string }) {
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [result, setResult] = useState<PhotoAnalyseResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const onSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    setError(null);
+    setResult(null);
+    setFile(f);
+    const url = URL.createObjectURL(f);
+    setPreview(url);
+  };
+
+  const clear = () => {
+    if (preview) URL.revokeObjectURL(preview);
+    setFile(null);
+    setPreview(null);
+    setResult(null);
+    setError(null);
+  };
+
+  const analyze = async () => {
+    if (!file) return;
+    setAnalyzing(true);
+    setError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await api<PhotoAnalyseResult>(`incidents/${incidentId}/photo-analyse`, {
+        method: "POST",
+        body: formData,
+      });
+      setResult(res);
+    } catch (err: unknown) {
+      if (err instanceof ApiError && err.code === "AI_PHOTO_UNAVAILABLE") {
+        setError("Photo analysis model is currently unavailable.");
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to analyse photo.");
+      }
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  return (
+    <div className="mt-4 border-t border-border pt-4">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted">
+          Advisory photo analysis (S3-08)
+        </span>
+        <span className="text-[11px] text-muted italic">Never stored as verification</span>
+      </div>
+
+      {!result && !preview && (
+        <div className="mt-2">
+          <label className="flex cursor-pointer items-center justify-center rounded-lg border-2 border-dashed border-border p-3 text-center text-xs hover:border-info focus-within:ring-2 focus-within:ring-info">
+            <span className="text-muted">Choose a disaster scene photo (JPG/PNG/WebP, max 10MB)</span>
+            <input type="file" accept="image/jpeg,image/png,image/webp" onChange={onSelect} className="sr-only" />
+          </label>
+        </div>
+      )}
+
+      {preview && !result && (
+        <div className="mt-3 space-y-2">
+          <div className="flex items-center gap-3">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={preview} alt="Selected photo" className="h-16 w-16 rounded object-cover border border-border" />
+            <div className="min-w-0 flex-1 text-xs">
+              <p className="truncate font-medium">{file?.name}</p>
+              <p className="text-muted">{file ? Math.round(file.size / 1024) : 0} KB</p>
+            </div>
+            <Button size="sm" variant="ghost" onClick={clear} disabled={analyzing}>Cancel</Button>
+            <Button size="sm" variant="primary" onClick={analyze} busy={analyzing}>Analyse</Button>
+          </div>
+        </div>
+      )}
+
+      {error && (
+        <div className="mt-2">
+          <Notice tone="medium">{error}</Notice>
+        </div>
+      )}
+
+      {result && (
+        <div className="mt-3 rounded-lg border border-ai/30 bg-ai-soft/30 p-3 text-xs space-y-1.5">
+          <div className="flex items-center justify-between">
+            <span className="font-semibold text-foreground">
+              Detected: {result.suggested_scenario ? scenarioLabel[result.suggested_scenario] ?? label(result.prediction) : label(result.prediction)}
+            </span>
+            <span className="font-mono font-bold text-info">
+              {Math.round(result.confidence * 100)}% confidence
+            </span>
+          </div>
+          {result.is_out_of_scope && (
+            <p className="text-amber-500">Out-of-scope disaster type. Verify manually.</p>
+          )}
+          {result.needs_review && (
+            <p className="text-amber-500">Confidence below threshold — human review advised.</p>
+          )}
+          <p className="text-[11px] text-muted">{result.advisory_notice}</p>
+          <div className="pt-1 text-right">
+            <Button size="sm" variant="secondary" onClick={clear}>Analyse another</Button>
+          </div>
+        </div>
+      )}
+    </div>
   );
 }

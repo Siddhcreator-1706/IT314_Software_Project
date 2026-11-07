@@ -1,10 +1,12 @@
 """AI-assisted triage (DM-FR-05): advisory recommendations and the separate human decision."""
 
+import os
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends
+import httpx
+from fastapi import APIRouter, Depends, File, UploadFile
 from fastapi.responses import JSONResponse
 from psycopg import sql
 from psycopg.types.json import Jsonb
@@ -252,3 +254,107 @@ def decide_recommendation(
             )
             result.update(applied=True, version=updated["version"])
     return result
+
+
+_IMAGE_CLASS_MAPPING: dict[str, str | None] = {
+    "fire": "industrial_fire",
+    "flood": "urban_flooding",
+    "hurricane": "cyclone",
+    "earthquake": "earthquake",
+    "landslide": None,
+    "other_disaster": None,
+    "not_disaster": None,
+}
+
+
+@router.post("/incidents/{incident_id}/photo-analyse")
+async def analyze_incident_photo(
+    incident_id: uuid.UUID,
+    file: Annotated[UploadFile, File(description="Disaster photo")],
+    principal: DMUser,
+):
+    ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+    if file.content_type not in ALLOWED_IMAGE_TYPES:
+        raise ApiError(
+            415,
+            "UNSUPPORTED_MEDIA_TYPE",
+            f"Unsupported image type '{file.content_type}'. Use JPEG, PNG or WebP.",
+        )
+    with db.transaction() as conn:
+        row = conn.execute(
+            "SELECT * FROM incidents WHERE incident_id = %s", (incident_id,)
+        ).fetchone()
+        if row is None:
+            raise not_found("Incident")
+        ensure_open(row)
+
+    content = await file.read()
+    if len(content) > 10 * 1024 * 1024:
+        raise ApiError(413, "FILE_TOO_LARGE", "Image file exceeds 10 MB limit.")
+
+    ai_image_url = os.getenv("AI_IMAGE_SERVICE_URL")
+    prediction = None
+    confidence = 0.0
+    needs_review = False
+    top3 = []
+
+    if ai_image_url:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(
+                    f"{ai_image_url.rstrip('/')}/predict",
+                    files={"file": (file.filename, content, file.content_type)},
+                )
+                if resp.status_code == 200:
+                    data = resp.json()
+                    prediction = data.get("prediction")
+                    confidence = float(data.get("confidence", 0.0))
+                    needs_review = bool(data.get("needs_review", False))
+                    top3 = data.get("top3", [])
+        except Exception:
+            prediction = None
+
+    if prediction is None:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "error": {
+                    "code": "AI_PHOTO_UNAVAILABLE",
+                    "message": "Image analysis model is currently unavailable.",
+                    "details": None,
+                }
+            },
+        )
+
+    mapped_scenario = _IMAGE_CLASS_MAPPING.get(str(prediction).lower())
+    is_out_of_scope = str(prediction).lower() in ("landslide", "other_disaster")
+
+    with db.transaction() as conn:
+        audit.record(
+            conn,
+            actor=principal,
+            action="AI_PHOTO_ANALYSED",
+            entity_type="incident",
+            entity_id=incident_id,
+            result="SUCCESS",
+            rationale=f"Photo analysed: {prediction} ({confidence:.2f})",
+            after={
+                "filename": file.filename,
+                "prediction": prediction,
+                "suggested_scenario": mapped_scenario,
+                "confidence": confidence,
+            },
+            ip=principal.ip,
+        )
+
+    return {
+        "status": "ANALYZED",
+        "filename": file.filename,
+        "prediction": prediction,
+        "suggested_scenario": mapped_scenario,
+        "confidence": confidence,
+        "is_out_of_scope": is_out_of_scope,
+        "needs_review": needs_review,
+        "top3": top3,
+        "advisory_notice": "Advisory suggestion only — never stored as incident verification (S3-08).",
+    }

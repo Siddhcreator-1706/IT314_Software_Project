@@ -48,10 +48,16 @@ async function forward(request: NextRequest, ctx: RouteContext<"/api/dm/[...path
 
   let upstream: Response;
   try {
+    const isMultipart = request.headers.get("content-type")?.includes("multipart/form-data");
+    const body = ["GET", "HEAD"].includes(request.method)
+      ? undefined
+      : isMultipart
+        ? await request.arrayBuffer()
+        : await request.text();
     upstream = await fetch(target, {
       method: request.method,
       headers,
-      body: ["GET", "HEAD"].includes(request.method) ? undefined : await request.text(),
+      body,
       cache: "no-store",
       signal: AbortSignal.timeout(20000),
     });
