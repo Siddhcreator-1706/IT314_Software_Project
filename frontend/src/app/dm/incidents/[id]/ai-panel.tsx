@@ -271,11 +271,13 @@ function PhotoAnalyseSection({ incidentId }: { incidentId: string }) {
     setAnalyzing(true);
     setError(null);
     try {
-      const formData = new FormData();
-      formData.append("file", file);
       const res = await api<PhotoAnalyseResult>(`incidents/${incidentId}/photo-analyse`, {
         method: "POST",
-        body: formData,
+        headers: {
+          "content-type": file.type || "image/jpeg",
+          "x-filename": file.name,
+        },
+        body: file,
       });
       setResult(res);
     } catch (err: unknown) {

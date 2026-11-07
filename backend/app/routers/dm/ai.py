@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 import httpx
-from fastapi import APIRouter, Depends, File, UploadFile
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from psycopg import sql
 from psycopg.types.json import Jsonb
@@ -270,15 +270,19 @@ _IMAGE_CLASS_MAPPING: dict[str, str | None] = {
 @router.post("/incidents/{incident_id}/photo-analyse")
 async def analyze_incident_photo(
     incident_id: uuid.UUID,
-    file: Annotated[UploadFile, File(description="Disaster photo")],
+    request: Request,
     principal: DMUser,
 ):
+    content_type = request.headers.get("content-type", "")
     ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
-    if file.content_type not in ALLOWED_IMAGE_TYPES:
+    base_type = content_type.split(";")[0].strip().lower()
+    filename = request.headers.get("x-filename", "photo.jpg")
+
+    if base_type not in ALLOWED_IMAGE_TYPES and not base_type.startswith("multipart/form-data"):
         raise ApiError(
             415,
             "UNSUPPORTED_MEDIA_TYPE",
-            f"Unsupported image type '{file.content_type}'. Use JPEG, PNG or WebP.",
+            f"Unsupported image type '{content_type}'. Use JPEG, PNG or WebP.",
         )
     with db.transaction() as conn:
         row = conn.execute(
@@ -288,7 +292,7 @@ async def analyze_incident_photo(
             raise not_found("Incident")
         ensure_open(row)
 
-    content = await file.read()
+    content = await request.body()
     if len(content) > 10 * 1024 * 1024:
         raise ApiError(413, "FILE_TOO_LARGE", "Image file exceeds 10 MB limit.")
 
@@ -303,7 +307,7 @@ async def analyze_incident_photo(
             async with httpx.AsyncClient(timeout=10.0) as client:
                 resp = await client.post(
                     f"{ai_image_url.rstrip('/')}/predict",
-                    files={"file": (file.filename, content, file.content_type)},
+                    files={"file": (filename, content, base_type)},
                 )
                 if resp.status_code == 200:
                     data = resp.json()
@@ -311,7 +315,7 @@ async def analyze_incident_photo(
                     confidence = float(data.get("confidence", 0.0))
                     needs_review = bool(data.get("needs_review", False))
                     top3 = data.get("top3", [])
-        except Exception:
+        except (httpx.HTTPError, OSError):
             prediction = None
 
     if prediction is None:
@@ -339,7 +343,7 @@ async def analyze_incident_photo(
             result="SUCCESS",
             rationale=f"Photo analysed: {prediction} ({confidence:.2f})",
             after={
-                "filename": file.filename,
+                "filename": filename,
                 "prediction": prediction,
                 "suggested_scenario": mapped_scenario,
                 "confidence": confidence,
@@ -349,7 +353,7 @@ async def analyze_incident_photo(
 
     return {
         "status": "ANALYZED",
-        "filename": file.filename,
+        "filename": filename,
         "prediction": prediction,
         "suggested_scenario": mapped_scenario,
         "confidence": confidence,

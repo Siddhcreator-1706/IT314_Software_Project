@@ -10,7 +10,7 @@ import { API_URL, sessionToken } from "@/lib/session";
  * the backend on every request - this layer adds no permissions of its own.
  */
 
-const FORWARDED_HEADERS = ["content-type", "idempotency-key"];
+const FORWARDED_HEADERS = ["content-type", "idempotency-key", "x-filename"];
 
 function sameOrigin(request: NextRequest): boolean {
   // Cookie-authenticated writes must come from this site (CSRF defence alongside SameSite=Lax).

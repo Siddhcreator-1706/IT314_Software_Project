@@ -215,6 +215,7 @@ export async function backendSignup(
       };
     }
 
+    const token = data.access_token || data.token;
     const user: UserProfile = {
       id: data.user?.id || (data.user_id ? String(data.user_id) : `user_${Date.now()}`),
       name: data.user?.name || userData.name,
