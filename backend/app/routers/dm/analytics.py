@@ -73,6 +73,19 @@ def analytics(
             "FROM ai_recommendations r JOIN incidents i ON i.incident_id = r.incident_id {where} "
             "GROUP BY 1, 2 ORDER BY 1, 2"
         )
+        ai_by_decision = run(
+            "SELECT lower(i.scenario::text) AS scenario, "
+            "COALESCE(r.human_action::text, 'UNDECIDED') AS human_action, "
+            "CASE "
+            "  WHEN r.confidence >= 0.80 THEN 'HIGH' "
+            "  WHEN r.confidence >= 0.60 THEN 'MEDIUM' "
+            "  WHEN r.confidence IS NOT NULL THEN 'LOW' "
+            "  ELSE 'UNKNOWN' "
+            "END AS confidence_band, "
+            "COUNT(*) AS n "
+            "FROM ai_recommendations r JOIN incidents i ON i.incident_id = r.incident_id {where} "
+            "GROUP BY 1, 2, 3 ORDER BY 1, 2, 3"
+        )
         # Contribution figures are not tied to incidents, so the incident filters do not apply.
         donations = conn.execute(
             "SELECT COALESCE(SUM(confirmed_amount), 0) AS confirmed, COALESCE(SUM(pending_amount), 0) AS pending, "
@@ -99,6 +112,7 @@ def analytics(
         },
         "dispatches": dispatch,
         "ai_recommendations": ai,
+        "ai_by_decision": ai_by_decision,
         "donations": donations,
         "aid": aid,
         "resources": resources,

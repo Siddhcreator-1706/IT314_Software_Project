@@ -10,7 +10,7 @@ import { API_URL, sessionToken } from "@/lib/session";
  * the backend on every request - this layer adds no permissions of its own.
  */
 
-const FORWARDED_HEADERS = ["content-type", "idempotency-key"];
+const FORWARDED_HEADERS = ["content-type", "idempotency-key", "x-filename"];
 
 function sameOrigin(request: NextRequest): boolean {
   // Cookie-authenticated writes must come from this site (CSRF defence alongside SameSite=Lax).
@@ -48,10 +48,16 @@ async function forward(request: NextRequest, ctx: RouteContext<"/api/dm/[...path
 
   let upstream: Response;
   try {
+    const isMultipart = request.headers.get("content-type")?.includes("multipart/form-data");
+    const body = ["GET", "HEAD"].includes(request.method)
+      ? undefined
+      : isMultipart
+        ? await request.arrayBuffer()
+        : await request.text();
     upstream = await fetch(target, {
       method: request.method,
       headers,
-      body: ["GET", "HEAD"].includes(request.method) ? undefined : await request.text(),
+      body,
       cache: "no-store",
       signal: AbortSignal.timeout(20000),
     });
