@@ -15,8 +15,8 @@ const GUIDES: Guide[] = [
     during: ["Stay indoors, away from windows.", "Do not go out until authorities declare it safe, even if the wind drops (the eye of the storm)."],
     after: ["Avoid fallen power lines and flooded roads.", "Drink only safe water and report damage to local authorities."],
     sources: [
-      { name: "India Meteorological Department", url: "https://mausam.imd.gov.in" },
-      { name: "NDMA – Cyclone guidelines", url: "https://ndma.gov.in" },
+      { name: "India Meteorological Department (IMD)", url: "https://mausam.imd.gov.in" },
+      { name: "NDMA – Cyclone Do's and Don'ts", url: "https://ndma.gov.in/Natural-Hazards/Cyclone/Dos-Donts" },
     ],
   },
   {
@@ -25,8 +25,9 @@ const GUIDES: Guide[] = [
     during: ["Move to higher ground early. Do not walk or drive through floodwater.", "Switch off electricity at the mains if safe to do so."],
     after: ["Return only when authorities say it is safe.", "Treat all floodwater as contaminated and boil drinking water."],
     sources: [
-      { name: "NDMA – Flood guidelines", url: "https://ndma.gov.in" },
-      { name: "Gujarat State Disaster Management Authority", url: "https://gsdma.gujarat.gov.in" },
+      { name: "NDMA – Flood Do's and Don'ts", url: "https://ndma.gov.in/Natural-Hazards/Floods/Do-Donts" },
+      { name: "NDMA – Urban Flooding Do's and Don'ts", url: "https://ndma.gov.in/Natural-Hazards/Urban-Floods/Dos-Donts" },
+      { name: "Gujarat State Disaster Management Authority (GSDMA)", url: "https://gsdma.gujarat.gov.in" },
     ],
   },
   {
@@ -35,16 +36,19 @@ const GUIDES: Guide[] = [
     during: ["Drop, cover your head and hold on. Stay away from windows and heavy objects.", "If outdoors, move to an open area away from buildings and wires."],
     after: ["Expect aftershocks. Check for injuries and gas leaks.", "Use stairs, not lifts, and follow official instructions."],
     sources: [
-      { name: "NDMA – Earthquake guidelines", url: "https://ndma.gov.in" },
-      { name: "Gujarat State Disaster Management Authority", url: "https://gsdma.gujarat.gov.in" },
+      { name: "NDMA – Earthquake Do's and Don'ts", url: "https://ndma.gov.in/Natural-Hazards/Earthquakes/Dos-Donts" },
+      { name: "Gujarat State Disaster Management Authority (GSDMA)", url: "https://gsdma.gujarat.gov.in" },
     ],
   },
   {
     title: "Fire",
-    before: ["Know two exits from every room and where extinguishers are.", "Do not overload electrical sockets."],
-    during: ["Raise the alarm and leave immediately. Crawl low under smoke.", "Do not use lifts. Call 101 (Fire) or 112 once you are safe."],
+    before: ["Know two exits from every room and where extinguishers are.", "Keep cords out from under rugs and do not overload sockets."],
+    during: ["Raise the alarm and leave immediately. Crawl low under smoke.", "Do not use lifts. Call 101 (Fire) or 112 (ERSS) once you are safe."],
     after: ["Do not re-enter until the fire service says it is safe.", "Seek medical help for burns or smoke inhalation."],
-    sources: [{ name: "NDMA – Fire safety guidance", url: "https://ndma.gov.in" }],
+    sources: [
+      { name: "NDMA – Fire Safety Guidance", url: "https://ndma.gov.in/Resources/awareness/fire-safety" },
+      { name: "Emergency Response Support System (ERSS 112)", url: "https://112.gov.in" },
+    ],
   },
 ];
 
