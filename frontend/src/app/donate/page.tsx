@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { fetchPublicCampaigns, PublicCampaign } from "@/services/citizenApi";
 
@@ -24,6 +24,61 @@ interface ConfirmedDonation {
 
 const isSandbox = process.env.NEXT_PUBLIC_PAYMENT_SANDBOX === "true";
 
+/** A gateway call that gets no answer in this time is treated as a timed-out payment. */
+const REQUEST_TIMEOUT_MS = 20_000;
+
+class PaymentStepError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+    readonly code: string,
+  ) {
+    super(message);
+  }
+}
+
+async function postJson(url: string, body?: unknown): Promise<Record<string, unknown>> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown> & {
+      error?: { code?: string; message?: string };
+    };
+    if (!res.ok) {
+      throw new PaymentStepError(data.error?.message ?? `Request failed (${res.status})`, res.status, data.error?.code ?? "");
+    }
+    return data;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+type PaymentFailure = { kind: "declined" | "timed_out" | "error"; message: string };
+
+/** Map a failed payment call onto one of the payment ending states. */
+function classifyFailure(err: unknown): PaymentFailure {
+  if (err instanceof PaymentStepError) {
+    if (err.code === "INVALID_SIGNATURE" || err.status === 400 || err.status === 402) {
+      return { kind: "declined", message: err.message };
+    }
+    return { kind: "error", message: err.message };
+  }
+  // fetch rejects with AbortError on our timeout and with TypeError when the network is unreachable.
+  if (err instanceof DOMException && err.name === "AbortError") {
+    return { kind: "timed_out", message: "The gateway did not answer in time." };
+  }
+  if (err instanceof TypeError) {
+    return { kind: "timed_out", message: "The connection to the payment gateway was lost." };
+  }
+  return { kind: "error", message: err instanceof Error ? err.message : "Payment processing failed" };
+}
+
 export default function DonatePage() {
   const [campaigns, setCampaigns] = useState<PublicCampaign[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,11 +93,24 @@ export default function DonatePage() {
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
-  // Flow state (SRS Requirement S3-11: covers confirmed, declined, abandoned, timed_out)
+  // Flow state: confirmed plus the declined, abandoned and timed-out endings
   const [step, setStep] = useState<DonationStep>("select");
   const [createdOrder, setCreatedOrder] = useState<CreatedOrder | null>(null);
   const [confirmed, setConfirmed] = useState<ConfirmedDonation | null>(null);
   const [failureReason, setFailureReason] = useState<string>("");
+  // True when an ending was triggered by the sandbox buttons, so nothing was sent to the gateway.
+  const [simulated, setSimulated] = useState(false);
+  const outcomeHeadingRef = useRef<HTMLHeadingElement>(null);
+
+  // Move keyboard and screen-reader focus to the result when the flow ends in a failure state.
+  useEffect(() => {
+    if (step === "declined" || step === "abandoned" || step === "timed_out") outcomeHeadingRef.current?.focus();
+  }, [step]);
+
+  const goTo = (next: DonationStep) => {
+    setFormError(null);
+    setStep(next);
+  };
   const [sandboxBusy, setSandboxBusy] = useState(false);
 
   useEffect(() => {
@@ -134,35 +202,29 @@ export default function DonatePage() {
     if (!createdOrder) return;
     setSandboxBusy(true);
     setFormError(null);
+    setSimulated(false);
 
     try {
       // 1. Request sandbox payment credentials
-      const payRes = await fetch(`/api/citizen/donations/${createdOrder.donation_id}/sandbox-payment`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-      });
-      const payBody = await payRes.json().catch(() => ({}));
-      if (!payRes.ok) {
-        throw new Error(payBody?.error?.message ?? "Sandbox payment failed");
-      }
-
-      const { gateway_payment_id, signature } = payBody;
+      const pay = await postJson(`/api/citizen/donations/${createdOrder.donation_id}/sandbox-payment`);
+      const { gateway_payment_id, signature } = pay;
 
       // 2. Verify signature to confirm donation and generate official receipt
-      const verifyRes = await fetch(`/api/citizen/donations/${createdOrder.donation_id}/verify`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ gateway_payment_id, signature }),
+      const verified = await postJson(`/api/citizen/donations/${createdOrder.donation_id}/verify`, {
+        gateway_payment_id,
+        signature,
       });
-      const verifyBody = await verifyRes.json().catch(() => ({}));
-      if (!verifyRes.ok) {
-        throw new Error(verifyBody?.error?.message ?? "Payment verification failed");
-      }
 
-      setConfirmed(verifyBody);
+      setConfirmed(verified as unknown as ConfirmedDonation);
       setStep("confirmed");
     } catch (err: unknown) {
-      setFormError(err instanceof Error ? err.message : "Payment processing failed");
+      const failure = classifyFailure(err);
+      if (failure.kind === "error") {
+        setFormError(failure.message);
+      } else {
+        setFailureReason(failure.message);
+        setStep(failure.kind);
+      }
     } finally {
       setSandboxBusy(false);
     }
@@ -440,7 +502,7 @@ export default function DonatePage() {
                   </div>
 
                   {formError && (
-                    <div className="mt-4 rounded-lg bg-red-50 p-3 text-xs text-red-700 border border-red-200">
+                    <div role="alert" className="mt-4 rounded-lg bg-red-50 p-3 text-xs text-red-700 border border-red-200">
                       {formError}
                     </div>
                   )}
@@ -461,33 +523,36 @@ export default function DonatePage() {
                       </div>
                     )}
 
-                    {/* Simulation Controls (SRS S3-11: Testing all payment ending states) */}
+                    {/* Sandbox only: preview the ending screens without calling the gateway */}
                     {isSandbox && (
                       <div className="pt-2 border-t border-slate-200">
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5 text-center">
-                          Simulate Gateway Edge Cases (SRS S3-11)
+                        <div className="text-[11px] font-bold uppercase tracking-wider text-slate-600 mb-1.5 text-center">
+                          Sandbox: preview a payment ending
                         </div>
                         <div className="grid grid-cols-2 gap-2">
                           <button
                             type="button"
                             disabled={sandboxBusy}
                             onClick={() => {
-                              setFailureReason("Transaction declined by the card issuer (INSUFFICIENT_FUNDS / GATEWAY_DECLINED).");
-                              setStep("declined");
+                              setFailureReason("Transaction declined by the card issuer.");
+                              setSimulated(true);
+                              goTo("declined");
                             }}
-                            className="rounded-lg border border-red-200 bg-red-50/70 hover:bg-red-100/80 px-2.5 py-1.5 text-xs font-semibold text-red-700 transition cursor-pointer text-center"
+                            className="min-h-11 rounded-lg border border-red-200 bg-red-50/70 hover:bg-red-100/80 px-2.5 py-1.5 text-xs font-semibold text-red-700 transition cursor-pointer text-center"
                           >
-                            Simulate Decline
+                            Preview Decline
                           </button>
                           <button
                             type="button"
                             disabled={sandboxBusy}
                             onClick={() => {
-                              setStep("timed_out");
+                              setFailureReason("The gateway did not answer in time.");
+                              setSimulated(true);
+                              goTo("timed_out");
                             }}
-                            className="rounded-lg border border-amber-200 bg-amber-50/70 hover:bg-amber-100/80 px-2.5 py-1.5 text-xs font-semibold text-amber-700 transition cursor-pointer text-center"
+                            className="min-h-11 rounded-lg border border-amber-200 bg-amber-50/70 hover:bg-amber-100/80 px-2.5 py-1.5 text-xs font-semibold text-amber-700 transition cursor-pointer text-center"
                           >
-                            Simulate Timeout
+                            Preview Timeout
                           </button>
                         </div>
                       </div>
@@ -495,8 +560,11 @@ export default function DonatePage() {
 
                     <button
                       type="button"
-                      onClick={() => setStep("abandoned")}
-                      className="w-full rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition cursor-pointer"
+                      onClick={() => {
+                        setSimulated(false);
+                        goTo("abandoned");
+                      }}
+                      className="w-full min-h-11 rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-medium text-slate-600 hover:bg-slate-50 transition cursor-pointer"
                     >
                       Cancel & Abandon Order
                     </button>
@@ -511,7 +579,7 @@ export default function DonatePage() {
                     <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-red-100 text-red-700 text-xl font-bold">
                       ✕
                     </span>
-                    <h2 className="mt-3 text-lg font-bold text-slate-900">Contribution Declined</h2>
+                    <h2 ref={outcomeHeadingRef} tabIndex={-1} className="mt-3 text-lg font-bold text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500">Contribution Declined</h2>
                     <p className="mt-1 text-xs text-slate-500">
                       The payment gateway was unable to authorize this transaction.
                     </p>
@@ -528,7 +596,7 @@ export default function DonatePage() {
                     </div>
                     <div className="flex justify-between text-xs">
                       <span className="text-slate-500">Status</span>
-                      <span className="font-bold text-red-700">FAILED / DECLINED</span>
+                      <span className="font-bold text-red-700">{simulated ? "DECLINED (preview)" : "DECLINED"}</span>
                     </div>
                     <div className="pt-2 border-t border-red-100 text-xs text-red-800">
                       <strong>Reason:</strong> {failureReason || "Gateway authorization failed. Please check payment details and retry."}
@@ -536,20 +604,20 @@ export default function DonatePage() {
                   </div>
 
                   <div className="mt-3 rounded-lg bg-amber-50 p-2 text-center text-[11px] font-medium text-amber-800 border border-amber-200">
-                    ⚠️ SANDBOX SIMULATION — No real money was charged to your card or account.
+                    {simulated ? "⚠️ SANDBOX PREVIEW — nothing was sent to the gateway and no money moved." : "⚠️ SANDBOX — no real money was charged to your card or account."}
                   </div>
 
                   <div className="mt-6 flex flex-col gap-2 sm:flex-row">
                     <button
                       type="button"
-                      onClick={() => setStep("order_created")}
+                      onClick={() => goTo("order_created")}
                       className="flex-1 rounded-lg bg-sky-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-sky-500 transition cursor-pointer text-center"
                     >
                       Retry Payment
                     </button>
                     <button
                       type="button"
-                      onClick={() => setStep("select")}
+                      onClick={() => goTo("select")}
                       className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition cursor-pointer text-center"
                     >
                       Change Details
@@ -565,7 +633,7 @@ export default function DonatePage() {
                     <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-slate-100 text-slate-600 text-xl font-bold">
                       ⊘
                     </span>
-                    <h2 className="mt-3 text-lg font-bold text-slate-900">Contribution Cancelled</h2>
+                    <h2 ref={outcomeHeadingRef} tabIndex={-1} className="mt-3 text-lg font-bold text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500">Contribution Cancelled</h2>
                     <p className="mt-1 text-xs text-slate-500">
                       You cancelled this payment request before authorization completed.
                     </p>
@@ -590,13 +658,13 @@ export default function DonatePage() {
                   </div>
 
                   <div className="mt-3 rounded-lg bg-amber-50 p-2 text-center text-[11px] font-medium text-amber-800 border border-amber-200">
-                    ⚠️ SANDBOX SIMULATION — Safe testing mode.
+                    {simulated ? "⚠️ SANDBOX PREVIEW — nothing was sent to the gateway." : "⚠️ SANDBOX — no real money moved."}
                   </div>
 
                   <div className="mt-6 flex flex-col gap-2 sm:flex-row">
                     <button
                       type="button"
-                      onClick={() => setStep("select")}
+                      onClick={() => goTo("select")}
                       className="flex-1 rounded-lg bg-sky-600 px-4 py-2.5 text-xs font-semibold text-white hover:bg-sky-500 transition cursor-pointer text-center"
                     >
                       Resume Contribution
@@ -618,7 +686,7 @@ export default function DonatePage() {
                     <span className="mx-auto flex size-12 items-center justify-center rounded-full bg-amber-100 text-amber-700 text-xl font-bold">
                       ⏱
                     </span>
-                    <h2 className="mt-3 text-lg font-bold text-slate-900">Payment Session Timed Out</h2>
+                    <h2 ref={outcomeHeadingRef} tabIndex={-1} className="mt-3 text-lg font-bold text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-500">Payment Session Timed Out</h2>
                     <p className="mt-1 text-xs text-slate-500">
                       The authorization window expired before a confirmation signal was received from the gateway.
                     </p>
@@ -635,15 +703,15 @@ export default function DonatePage() {
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-500">State</span>
-                      <span className="font-bold text-amber-800">SESSION_TIMEOUT</span>
+                      <span className="font-bold text-amber-800">{simulated ? "TIMED OUT (preview)" : "TIMED OUT"}</span>
                     </div>
                     <p className="text-[11px] text-amber-900/80 pt-1 border-t border-amber-200">
-                      If your bank account was debited, the transaction will automatically reverse within 3–5 business days.
+                      No payment is confirmed until the gateway reports it. If you were charged, quote this order ID to the relief fund team.
                     </p>
                   </div>
 
                   <div className="mt-3 rounded-lg bg-amber-50 p-2 text-center text-[11px] font-medium text-amber-800 border border-amber-200">
-                    ⚠️ SANDBOX SIMULATION — Safe testing mode.
+                    {simulated ? "⚠️ SANDBOX PREVIEW — nothing was sent to the gateway." : "⚠️ SANDBOX — no real money moved."}
                   </div>
 
                   <div className="mt-6 flex flex-col gap-2 sm:flex-row">
@@ -657,7 +725,7 @@ export default function DonatePage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => setStep("select")}
+                      onClick={() => goTo("select")}
                       className="flex-1 rounded-lg border border-slate-200 px-4 py-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50 transition cursor-pointer text-center"
                     >
                       Start New Contribution
