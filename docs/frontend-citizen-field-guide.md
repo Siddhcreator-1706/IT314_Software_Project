@@ -39,8 +39,8 @@ flowchart TD
     BoundaryCheck -- Yes --> Advisory["Run Rule-based Pre-Triage & Nearby Duplicate Detection"]
     Advisory --> InputFields["Complete Scenario, Urgency, Needs Checklist & Situation Text"]
     InputFields --> Submit["Transmit to SEOC Dispatch Queue with Idempotency Key"]
-    Submit --> Success["Display Cryptographic Reference (e.g., INC-20261106-XXXX)"]
-    Success --> LinkMyReports["Redirect / Navigate to /my-reports Status Tracker"]
+    Submit --> Success["Show the incident reference returned by the server (e.g., INC-2026-000042)"]
+    Success --> LinkMyReports["Link to /my-reports Status Tracker"]
 ```
 
 1. **State Bounding Invariant:** Every incident must fall strictly within the geographic boundaries of Gujarat State ($20.1^\circ\text{N} - 24.7^\circ\text{N}, 68.1^\circ\text{E} - 74.5^\circ\text{E}$). The system rejects coordinates outside this bounding box to prevent sending Gujarat emergency responders to locations outside jurisdiction.
@@ -53,8 +53,8 @@ flowchart TD
 ## 4. Live Polling & Citizen Status Timeline (`/my-reports`)
 
 ### 4.1 15-Second Background Polling Architecture
-- Both `/my-reports` and `/field` execute silent, non-blocking background polling every 15,000ms (`setInterval` with clean `AbortController`/unmount lifecycle management).
-- Timestamps are displayed in accessible `aria-live="polite"` indicators, informing users when the data was last confirmed by state servers.
+- Both `/my-reports` and `/field` refresh in the background every 15,000 ms with `setInterval`. The interval is cleared on unmount, and `/field` ignores a response that arrives after the page has unmounted.
+- `/my-reports` shows the time of the last successful refresh in an `aria-live="polite"` region (visible from the `md` breakpoint up). The time is rendered only after the first load: a time rendered on the server uses a different format than the browser and causes a hydration error, so the server renders a placeholder (`…`).
 
 ### 4.2 Four-Stage Incident Progression Matrix
 
@@ -96,16 +96,24 @@ stateDiagram-v2
 
 ---
 
-## 6. Payment Recovery & Edge-Case Safeguards (`/donate`)
+## 6. Payment Endings (`/donate`, S3-11)
 
-In compliance with Sprint 3 Requirement **S3-11**, the donation interface provides deterministic handling for payment gateway edge cases:
+After an order is created the donation page can end in one of four states. Each failure state names the order and amount, says whether money moved, and offers a next step. Focus moves to the state heading when it appears, and errors that stay on the order screen use `role="alert"`.
 
-1. **Explicit Edge-Case States:**
-   - `declined`: User card/UPI payment declined by bank; surfaces specific reversal notes and one-click retry preserving form state.
-   - `abandoned`: User closes gateway modal or cancels flow; preserves campaign and donor details so the donor doesn't re-type info.
-   - `timed_out`: Gateway network handshake expires; instructs donor to verify bank statement before retrying, preventing double-debits.
-2. **Sandbox Simulation Panel:** Under developer / demonstration environments, the interface renders explicit sandbox controls (`Simulate Declined`, `Simulate Abandoned`, `Simulate Timed-Out`, `Simulate Success`) to enable deterministic testing without real financial transactions.
-3. **Reversal Invariant Notice:** Clear legal and operational disclaimer that unsuccessful or failed charges are released by banking switches within 3–5 working days.
+| State | When it is shown | What the donor can do |
+| :--- | :--- | :--- |
+| `confirmed` | The server verified the signature and returned a receipt number. | Make another contribution, view the map. |
+| `declined` | The gateway or server rejected the payment: `INVALID_SIGNATURE` or an HTTP 400 or 402 answer. The server's reason is shown. | Retry the payment, or go back and change the details (the form keeps its values). |
+| `timed_out` | A payment call gets no answer within 20 seconds, or the network connection is lost. | Check status and re-verify, or start a new contribution. |
+| `abandoned` | The donor presses "Cancel & Abandon Order". | Resume the contribution or return to the map. |
+
+Other server errors (for example 409 `DONATION_NOT_PENDING` or a 5xx) stay on the order screen as an error message with the server's text.
+
+**Limits to know about**
+- There is no cancel or status endpoint yet, so an abandoned or timed-out order stays `PENDING` on the server. The screens say "no payment is confirmed until the gateway reports it" and do not promise a refund timeline.
+- `GET /me/donations` and the payment webhook are not built yet (see issue #102), so a donor cannot look a receipt up later.
+
+**Sandbox preview.** When `NEXT_PUBLIC_PAYMENT_SANDBOX=true` the order screen shows a "Sandbox: preview a payment ending" panel with **Preview Decline** and **Preview Timeout** buttons. They only show the screens; nothing is sent to the gateway, and the screens are labelled "(preview)" with a "SANDBOX PREVIEW" notice. A real decline or timeout is labelled without "(preview)".
 
 ---
 
@@ -115,19 +123,20 @@ In compliance with Sprint 3 Requirement **S3-11**, the donation interface provid
 
 | Component | Selector / Element | Keyboard Trigger | Focus Treatment | ARIA Attributes |
 | :--- | :--- | :--- | :--- | :--- |
-| **Scenario Cards** | `button[role="radio"]` | `Tab`, `Space`, `Enter` | `focus-visible:ring-2 focus-visible:ring-sky-400 ring-offset-2` | `role="radio"`, `aria-checked="true/false"` |
-| **Urgency Buttons** | `button[role="radio"]` | `Tab`, `ArrowKeys`, `Space` | `focus-visible:ring-2 focus-visible:ring-sky-400 ring-offset-1` | `role="radiogroup"`, `role="radio"`, `aria-checked` |
+| **Scenario Cards** | `button[role="radio"]` inside `role="radiogroup"` | `Tab` reaches the selected card; `Arrow` keys move the selection and focus | `focus-visible:ring-2 focus-visible:ring-sky-400 ring-offset-2` | `role="radiogroup"` with `aria-label`, `role="radio"`, `aria-checked`; roving `tabIndex` |
+| **Urgency Buttons** | `button[role="radio"]` inside `role="radiogroup"` | `Tab` reaches the selected option; `Arrow` keys move the selection and focus | `focus-visible:ring-2 focus-visible:ring-sky-400 ring-offset-1` | `role="radiogroup"` with `aria-label`, `role="radio"`, `aria-checked`; roving `tabIndex` |
 | **Needs Checkbox** | `label:has(input)` | `Tab`, `Space` | `focus-within:ring-2 focus-within:ring-sky-400 ring-offset-1` | Accessible native checkbox wrapped in label |
-| **Form Inputs** | `input`, `textarea` | `Tab` | `focus-visible:ring-2 focus-visible:ring-sky-400` | `aria-required="true"`, `aria-describedby` |
+| **Form Inputs** | `input`, `textarea` | `Tab` | `focus-visible:ring-2 focus-visible:ring-sky-400` | Visible `<label>`; `aria-required="true"` on the situation description |
 | **Field Action Buttons** | `button.min-h-12` | `Tab`, `Enter` | `focus-visible:ring-2 focus-visible:ring-sky-500 ring-offset-2` | `aria-busy="true/false"` during sync |
-| **Dialog Modals** | `dialog[aria-labelledby]` | `Escape` to close, `Tab` trap | Automatic modal focus trap via HTML5 `<dialog>` | `aria-labelledby="dialog-title"` |
+| **Dialog Modals** | native `<dialog>` opened with `showModal()` | `Escape` closes; `Tab` stays inside while open | Focus moves into the dialog on open and returns to the control that opened it on close | `aria-labelledby="dialog-title"` |
 
-### 7.2 Mobile Responsiveness Breakpoints
+### 7.2 Mobile Responsiveness
 
-- **`< 380px` (Ultra-Compact Phone):** Navigation header links compress into compact icons/abbreviations; grid stacks into single column (`grid-cols-1`); button touch heights stay $\ge 44\text{px}$.
-- **`380px – 640px` (Standard Smartphone):** Scenario cards stack or use 2-column compact grid; quick-count selectors display touch chips; modal sheets scale to 95% viewport width.
-- **`640px – 1024px` (Tablet / Responder Mobile Mount):** 2-column coordinate and urgency grids; full stage timeline displayed with horizontal connectors.
-- **`> 1024px` (Desktop / Command Center):** Centered max-width containers (`max-w-4xl` / `max-w-5xl`) with high-density informational hierarchy.
+Checked in a browser at **375 px width** (the "mobile" preset): `/donate`, `/field`, `/my-reports` and `/report` have no horizontal scrolling, and the field and report controls fit the screen.
+
+- **Touch targets:** primary actions on `/field`, `/my-reports` and `/donate` are at least 44 px tall (`min-h-11` or `min-h-[44px]`); the main field actions use `min-h-12` (48 px).
+- **Layout:** grids stack to one column on narrow screens (`grid-cols-1 sm:grid-cols-2`), headers wrap instead of overflowing, and the timeline connectors only show from `sm` up.
+- **Containers:** page content is centred with `max-w-4xl` or `max-w-5xl` on wide screens.
 
 ---
 
@@ -139,7 +148,7 @@ To verify frontend stability, zero console regressions, and accessibility compli
 # 1. Lint and Static Code Analysis (Strict 0 Errors)
 npm --prefix frontend run lint
 
-# 2. Production Type-Check & Static Route Generation (32 Routes)
+# 2. Production type-check and route generation (must finish with no errors)
 npm --prefix frontend run build
 
 # 3. Interactive Keyboard Navigation Audit
