@@ -7,6 +7,7 @@ citizen's incident is reported as 404 so its existence is never revealed.
 
 import json
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header
@@ -18,6 +19,7 @@ from pydantic import BaseModel, Field, field_validator
 from app import audit, db
 from app.auth import Citizen
 from app.common import Page, Priority, Scenario, next_incident_ref, notify, page_body, scenario_db
+from app.config import get_settings
 from app.errors import ApiError, not_found
 from app.geo import district_for, is_in_gujarat
 from app.ratelimit import rate_limit
@@ -25,6 +27,14 @@ from app.ratelimit import rate_limit
 router = APIRouter(prefix="/api/v1", tags=["citizen"])
 
 _MAX_DETAILS_BYTES = 4096
+_DEMO_CITIZEN_INCIDENTS: list[dict] = []
+_DEMO_INC_SEQ = 100
+
+
+def _is_demo_mode() -> bool:
+    import os
+    settings = get_settings()
+    return not settings.database_url or os.getenv("DEMO_MODE", "").lower() in ("true", "1")
 
 
 class IncidentCreate(BaseModel):
@@ -68,9 +78,43 @@ def create_incident(
     principal: Citizen,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", max_length=100)] = None,
 ):
+    global _DEMO_INC_SEQ
     if not is_in_gujarat(body.latitude, body.longitude):
         raise ApiError(422, "OUTSIDE_GUJARAT", "The reported location is outside Gujarat")
     district = district_for(body.latitude, body.longitude)
+    if _is_demo_mode():
+        if idempotency_key:
+            for inc in _DEMO_CITIZEN_INCIDENTS:
+                if inc["reporter_id"] == principal.user_id and inc.get("idempotency_key") == idempotency_key:
+                    return JSONResponse(status_code=200, content=jsonable_encoder(_created_body(inc)))
+        _DEMO_INC_SEQ += 1
+        now_iso = datetime.now(UTC).isoformat()
+        demo_id = uuid.uuid4()
+        ref = f"INC-{datetime.now(UTC).year}-{_DEMO_INC_SEQ:06d}"
+        demo_record = {
+            "incident_id": demo_id,
+            "incident_ref": ref,
+            "reporter_id": principal.user_id,
+            "scenario": body.scenario,
+            "description": body.description.strip(),
+            "reported_urgency": body.reported_urgency,
+            "people_affected": body.people_affected,
+            "location_source": body.location_source,
+            "latitude": body.latitude,
+            "longitude": body.longitude,
+            "address_text": body.address_text.strip() if body.address_text else None,
+            "landmark": body.landmark.strip() if body.landmark else None,
+            "details": body.details,
+            "idempotency_key": idempotency_key,
+            "status": "SUBMITTED",
+            "district": district or "Ahmedabad",
+            "submitted_at": now_iso,
+            "updated_at": now_iso,
+            "timeline": [{"status": "SUBMITTED", "timestamp": now_iso, "message": "Report submitted"}],
+        }
+        _DEMO_CITIZEN_INCIDENTS.append(demo_record)
+        return _created_body(demo_record)
+
     with db.transaction() as conn:
         if idempotency_key:
             existing = conn.execute(
@@ -166,6 +210,29 @@ _MY_COLUMNS = """
 
 @router.get("/me/incidents")
 def my_incidents(principal: Citizen, page: Page):
+    if _is_demo_mode():
+        mine = [
+            {
+                "incident_id": inc["incident_id"],
+                "incident_ref": inc["incident_ref"],
+                "scenario": inc["scenario"],
+                "status": inc["status"],
+                "district": inc["district"],
+                "description": inc["description"],
+                "address_text": inc["address_text"],
+                "landmark": inc["landmark"],
+                "people_affected": inc["people_affected"],
+                "submitted_at": inc["submitted_at"],
+                "updated_at": inc["updated_at"],
+                "latitude": inc["latitude"],
+                "longitude": inc["longitude"],
+                "timeline": inc["timeline"],
+            }
+            for inc in _DEMO_CITIZEN_INCIDENTS
+            if inc["reporter_id"] == principal.user_id
+        ]
+        return page_body(mine[page.offset : page.offset + page.limit], len(mine), page)
+
     with db.transaction() as conn:
         total = conn.execute(
             "SELECT COUNT(*) AS n FROM incidents WHERE reporter_id = %s", (principal.user_id,)
@@ -194,6 +261,27 @@ def _own_incident(conn, incident_id: uuid.UUID, user_id: uuid.UUID) -> dict:
 
 @router.get("/me/incidents/{incident_id}")
 def my_incident(incident_id: uuid.UUID, principal: Citizen):
+    if _is_demo_mode():
+        for inc in _DEMO_CITIZEN_INCIDENTS:
+            if inc["incident_id"] == incident_id and inc["reporter_id"] == principal.user_id:
+                return {
+                    "incident_id": inc["incident_id"],
+                    "incident_ref": inc["incident_ref"],
+                    "scenario": inc["scenario"],
+                    "status": inc["status"],
+                    "district": inc["district"],
+                    "description": inc["description"],
+                    "address_text": inc["address_text"],
+                    "landmark": inc["landmark"],
+                    "people_affected": inc["people_affected"],
+                    "submitted_at": inc["submitted_at"],
+                    "updated_at": inc["updated_at"],
+                    "latitude": inc["latitude"],
+                    "longitude": inc["longitude"],
+                    "timeline": inc["timeline"],
+                }
+        raise not_found("Incident")
+
     with db.transaction() as conn:
         return _own_incident(conn, incident_id, principal.user_id)
 
