@@ -14,7 +14,7 @@ export default async function DmLayout({ children }: LayoutProps<"/dm">) {
 
   if (user.role !== "DISASTER_MGMT" || !user.mfa_verified) {
     return (
-      <main className="dm-theme flex h-screen items-center justify-center px-4">
+      <main className="dm-theme flex min-h-screen items-center justify-center px-4">
         <div className="max-w-md rounded-xl border border-border bg-surface p-6 text-center">
           <p className="text-sm font-semibold text-critical">403 · Not authorised</p>
           <h1 className="mt-2 text-lg font-semibold">This workspace is for Disaster Management staff</h1>

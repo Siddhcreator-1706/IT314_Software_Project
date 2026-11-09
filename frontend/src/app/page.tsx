@@ -5,6 +5,7 @@ import Link from "next/link";
 import { fetchPublicIncidents, fetchPublicAlerts, PublicIncident, PublicAlert } from "../services/citizenApi";
 import { LiveOperationsLayer } from "../components/dm/LiveOperationsLayer";
 import { signOut } from "./login/actions";
+import { NavLink, SiteHeader } from "../components/Brand";
 import { GUJARAT_BOUNDS, GUJARAT_CENTER, GUJARAT_DEFAULT_ZOOM, GUJARAT_DISTRICTS } from "../lib/geo";
 
 interface SessionInfo {
@@ -47,6 +48,7 @@ export default function PublicPortalPage() {
 
   const [incidents, setIncidents] = useState<PublicIncident[]>([]);
   const [alerts, setAlerts] = useState<PublicAlert[]>([]);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [selectedIncident, setSelectedIncident] = useState<PublicIncident | null>(null);
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -293,116 +295,79 @@ export default function PublicPortalPage() {
   }, [alerts, showAlertsLayer, mapReadyVersion]);
 
   return (
-    <div className="relative h-screen w-screen overflow-hidden bg-slate-900 font-sans flex flex-col">
+    <div className="app-screen relative bg-slate-900 font-sans flex flex-col">
       {/* Top Header */}
-      <header className="z-[1000] h-16 bg-[#0c4a75]/95 backdrop-blur-md border-b border-[#093554] px-4 md:px-6 flex items-center justify-between shadow-lg shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-sky-400/20 border border-white flex items-center justify-center text-xl shadow-inner">
-            🛡️
-          </div>
-          <div>
-            <div className="flex items-baseline gap-1.5 leading-tight">
-              <span className="text-xl font-black text-white tracking-tight">ResQ</span>
-              <span className="text-xs font-medium text-sky-200">Gujarat Emergency Portal</span>
-            </div>
-            <div className="text-[10px] text-sky-200/80">Disaster Response Coordination Hub · NDMA</div>
-          </div>
-        </div>
-
-        {/* Action Controls & Navigation */}
-        <div className="flex items-center gap-2.5">
-          {/* Alerts button */}
-          <button
-            onClick={() => setShowAlertsDrawer(!showAlertsDrawer)}
-            className="relative px-3 py-1.5 rounded-lg bg-sky-950/80 hover:bg-sky-900 border border-sky-700/60 text-white text-xs font-semibold flex items-center gap-1.5 transition"
-          >
-            <span>🔔</span>
-            <span className="hidden sm:inline">Active Alerts</span>
-            {alerts.length > 0 && (
-              <span className="ml-1 px-1.5 py-0.2 bg-red-600 text-white text-[10px] rounded-full font-bold">
-                {alerts.length}
-              </span>
-            )}
-          </button>
-
-          {/* Quick links */}
-          <Link
-            href="/report"
-            className="px-3.5 py-1.5 rounded-lg bg-red-600 hover:bg-red-500 text-white text-xs font-bold flex items-center gap-1.5 shadow-md transition"
-          >
-            <span>🚨</span>
-            <span>Report Incident</span>
-          </Link>
-
-          <Link
-            href="/my-reports"
-            className="hidden sm:flex px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold items-center gap-1.5 transition"
-          >
-            <span>📋</span>
-            <span>My Reports</span>
-          </Link>
-
-          <Link
-            href="/about"
-            className="hidden md:flex px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold items-center gap-1.5 transition"
-          >
-            <span>ℹ️</span>
-            <span>About</span>
-          </Link>
-
-          <Link
-            href="/how-to"
-            className="hidden md:flex px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold items-center gap-1.5 transition"
-          >
-            <span>❓</span>
-            <span>How to use</span>
-          </Link>
-
-          <Link
-            href="/safety"
-            className="hidden md:flex px-3 py-1.5 rounded-lg bg-white/10 hover:bg-white/20 text-white text-xs font-semibold items-center gap-1.5 transition"
-          >
-            <span>🛟</span>
-            <span>Safety</span>
-          </Link>
-
-          <Link
-            href="/donate"
-            className="hidden sm:flex px-3 py-1.5 rounded-lg bg-emerald-600/90 hover:bg-emerald-500 text-white text-xs font-semibold items-center gap-1.5 transition"
-          >
-            <span>🤝</span>
-            <span>Donate</span>
-          </Link>
-
-          {/* User / Auth status */}
-          {session?.authenticated ? (
-            <div className="flex items-center gap-2 pl-2 border-l border-sky-800">
-              <Link
-                href={session.dm ? "/dm" : "/citizen/dashboard"}
-                className="text-xs font-semibold text-sky-200 hover:text-white underline truncate max-w-[120px]"
-              >
-                {session.name || "My Account"}
-              </Link>
-              <button
-                onClick={async () => {
-                  await signOut();
-                }}
-                className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs transition"
-              >
-                Sign Out
-              </button>
-            </div>
-          ) : (
-            <Link
-              href="/login"
-              className="px-3.5 py-1.5 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 text-xs font-bold flex items-center gap-1.5 shadow-md transition"
-            >
-              <span>🔐</span>
-              <span>Sign In</span>
-            </Link>
+      <SiteHeader subtitle="Gujarat Emergency Portal · NDMA" maxWidth="max-w-none">
+        <button
+          onClick={() => setShowAlertsDrawer(!showAlertsDrawer)}
+          className="relative inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-sky-700/60 bg-sky-950/80 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-sky-900"
+        >
+          <span aria-hidden>🔔</span>
+          <span className="hidden sm:inline">Active Alerts</span>
+          {alerts.length > 0 && (
+            <span className="rounded-full bg-red-600 px-1.5 text-[10px] font-bold">{alerts.length}</span>
           )}
-        </div>
-      </header>
+        </button>
+        <NavLink href="/report" variant="primary">Report<span className="hidden sm:inline"> Incident</span></NavLink>
+        <NavLink href="/my-reports" hideBelow="lg">My Reports</NavLink>
+        <NavLink href="/about" hideBelow="lg">About</NavLink>
+        <NavLink href="/how-to" hideBelow="lg">How to use</NavLink>
+        <NavLink href="/safety" hideBelow="lg">Safety</NavLink>
+        <NavLink href="/donate" hideBelow="lg" variant="success">Donate</NavLink>
+        {session?.authenticated ? (
+          <div className="hidden items-center gap-2 border-l border-sky-800 pl-2 sm:flex">
+            <Link
+              href={session.dm ? "/dm" : "/citizen/dashboard"}
+              className="max-w-[120px] truncate text-xs font-semibold text-sky-200 underline hover:text-white"
+            >
+              {session.name || "My Account"}
+            </Link>
+            <button
+              onClick={async () => {
+                await signOut();
+              }}
+              className="rounded-lg bg-white/10 px-2.5 py-1.5 text-xs font-semibold text-white transition hover:bg-white/20"
+            >
+              Sign Out
+            </button>
+          </div>
+        ) : (
+          <Link
+            href="/login"
+            className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg bg-sky-500 px-3 py-1.5 text-xs font-bold text-slate-950 transition hover:bg-sky-400"
+          >
+            Sign In
+          </Link>
+        )}
+        <button
+          onClick={() => setMenuOpen((v) => !v)}
+          className="rounded-lg bg-white/10 px-2.5 py-1.5 text-sm text-white hover:bg-white/20 lg:hidden"
+          aria-label="Toggle menu"
+          aria-expanded={menuOpen}
+        >
+          {menuOpen ? "✕" : "☰"}
+        </button>
+      </SiteHeader>
+      {menuOpen && (
+        <nav className="absolute inset-x-0 top-14 z-[1000] flex flex-col gap-1 border-b border-[#093554] bg-[#0c4a75] p-3 text-sm text-white shadow-xl lg:hidden" aria-label="Menu">
+          {[
+            ["/my-reports", "My Reports"],
+            ["/about", "About"],
+            ["/how-to", "How to use"],
+            ["/safety", "Safety"],
+            ["/donate", "Donate"],
+          ].map(([href, label]) => (
+            <Link key={href} href={href} className="rounded-lg px-3 py-2 font-semibold hover:bg-white/10" onClick={() => setMenuOpen(false)}>
+              {label}
+            </Link>
+          ))}
+          {session?.authenticated && (
+            <button onClick={async () => { await signOut(); }} className="rounded-lg px-3 py-2 text-left font-semibold hover:bg-white/10">
+              Sign Out
+            </button>
+          )}
+        </nav>
+      )}
 
       {/* Main Map View */}
       <div className="relative flex-1 w-full h-full">

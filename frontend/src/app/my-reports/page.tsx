@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from "react";
+import { SiteHeader, NavLink } from "@/components/Brand";
 import Link from "next/link";
 import { fetchMyReports, replyToInformationRequest, ReportData } from "@/services/citizenApi";
 
@@ -127,35 +128,14 @@ export default function MyReportsPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans overflow-y-auto">
       {/* Header */}
-      <header className="min-h-16 bg-slate-900 border-b border-slate-800 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-20">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 rounded-lg p-1 transition">
-            <span className="text-xl" aria-hidden="true">🛡️</span>
-            <span className="font-bold text-white text-base tracking-wide">ResQ Gujarat</span>
-          </Link>
-          <span className="text-slate-600 hidden sm:inline">/</span>
-          <span className="text-[11px] sm:text-xs uppercase tracking-wider font-semibold text-sky-400 bg-sky-400/10 px-2 py-0.5 rounded border border-sky-400/20">
-            My Incident Reports
-          </span>
-        </div>
-
-        <nav aria-label="Incident tracking navigation" className="flex items-center gap-2 sm:gap-4 flex-wrap">
-          <div aria-live="polite" className="text-[11px] text-slate-400 font-mono hidden md:flex items-center gap-1.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" aria-hidden="true" />
-            Auto-refreshes every 15s • Updated {lastRefreshed ? lastRefreshed.toLocaleTimeString() : "…"}
-          </div>
-          <Link
-            href="/report"
-            className="min-h-[44px] bg-sky-600 hover:bg-sky-500 text-white text-xs font-semibold px-4 py-2 rounded-lg shadow-md shadow-sky-600/30 transition flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
-          >
-            <span aria-hidden="true">+</span>
-            <span>Report Incident</span>
-          </Link>
-          <Link href="/citizen/dashboard" className="inline-flex min-h-[44px] items-center text-xs text-slate-300 hover:text-white px-2 py-1 rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 transition">
-            Dashboard
-          </Link>
-        </nav>
-      </header>
+      <SiteHeader subtitle="My Incident Reports" maxWidth="max-w-5xl">
+        <span aria-live="polite" className="hidden items-center gap-1.5 font-mono text-[11px] text-sky-200/80 xl:flex">
+          <span aria-hidden="true" className="size-1.5 animate-ping rounded-full bg-emerald-400" />
+          Auto-refresh 15s · {lastRefreshed ? lastRefreshed.toLocaleTimeString() : "…"}
+        </span>
+        <NavLink href="/report" variant="primary">+ Report<span className="hidden sm:inline"> Incident</span></NavLink>
+        <NavLink href="/citizen/dashboard" hideBelow="sm">Dashboard</NavLink>
+      </SiteHeader>
 
       {/* Main Content */}
       <main className="flex-1 max-w-5xl w-full mx-auto p-4 sm:p-6 md:p-8">

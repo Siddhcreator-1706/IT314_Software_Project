@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { SiteHeader, NavLink } from "@/components/Brand";
 import { useSyncExternalStore, type ReactNode } from "react";
 
 import { useAuthLanguage } from "./AuthLanguage";
@@ -95,21 +96,9 @@ export function AuthShell({ children }: { children: ReactNode }) {
         </div>
       )}
 
-      <header className="bg-[#0c4a75] text-white">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
-          <Link href="/" className="flex items-center gap-2 rounded focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300">
-            <span aria-hidden className="text-2xl">🛡️</span>
-            <span className="text-xl font-extrabold">ResQ</span>
-            <span className="text-sm text-sky-200">Gujarat</span>
-          </Link>
-          <Link
-            href="/"
-            className="rounded-lg bg-white/10 px-3 py-2 text-sm font-semibold hover:bg-white/20 focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300"
-          >
-            {copy.liveMap}
-          </Link>
-        </div>
-      </header>
+      <SiteHeader subtitle="Gujarat Emergency Portal" maxWidth="max-w-3xl">
+        <NavLink href="/">{copy.liveMap}</NavLink>
+      </SiteHeader>
 
       <main id="auth-main" className="mx-auto w-full max-w-lg px-4 py-6 sm:py-10">
         {children}
