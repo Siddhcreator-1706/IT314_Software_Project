@@ -1,19 +1,56 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-/** ResQ logo mark: shield + rescue cross + location pin. Mirrors /public/logo.svg. */
-export function LogoMark({ className = "size-9" }: { className?: string }) {
+const NAVY = "#0C4A75";
+const SKY = "#38BDF8";
+const RED = "#DC2626";
+
+/** Radar "Q" (final identity: Q-Radar). Drawn in a 100x100 box; `dark` adds the white ring on the alert dot. */
+function Radar({ ink, id, dark }: { ink: string; id: string; dark: boolean }) {
   return (
-    <svg viewBox="0 0 48 48" className={className} role="img" aria-label="ResQ logo" xmlns="http://www.w3.org/2000/svg">
+    <>
       <defs>
-        <linearGradient id="resq-g" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor="#38bdf8" />
-          <stop offset="1" stopColor="#0369a1" />
-        </linearGradient>
+        <mask id={id} maskUnits="userSpaceOnUse" x="-20" y="-20" width="140" height="140">
+          <rect x="-20" y="-20" width="140" height="140" fill="#fff" />
+          <circle cx="25.96" cy="25.96" r="12.5" fill="#000" />
+          <path d="M64.14 64.14L106.57 106.57" stroke="#000" strokeWidth="21" fill="none" />
+        </mask>
       </defs>
-      <path d="M24 2 5 9v13c0 11.5 7.6 19.6 19 24 11.4-4.4 19-12.5 19-24V9L24 2Z" fill="url(#resq-g)" stroke="#fff" strokeWidth="2" strokeLinejoin="round" />
-      <path d="M21 13h6v8h8v6h-8v8h-6v-8h-8v-6h8v-8Z" fill="#fff" />
-      <circle cx="24" cy="24" r="3" fill="#dc2626" />
+      <circle cx="50" cy="50" r="34" fill="none" stroke={ink} strokeWidth="12" mask={`url(#${id})`} />
+      <path d="M50 50L72.47 35.96A26.5 26.5 0 0 1 68.74 68.74Z" fill={SKY} stroke={SKY} strokeWidth="2" strokeLinejoin="round" />
+      <path d="M50 50L84.29 84.29" fill="none" stroke={ink} strokeWidth="12" strokeLinecap="round" />
+      <circle cx="25.96" cy="25.96" r="9" fill={RED} {...(dark ? { stroke: "#FFFFFF", strokeWidth: 3 } : {})} />
+    </>
+  );
+}
+
+/** Full ResQ lockup (R, E, S drawn as strokes + radar Q). `variant="dark"` is for navy/dark backgrounds. */
+export function Logo({ variant = "dark", className = "h-8 w-auto" }: { variant?: "light" | "dark"; className?: string }) {
+  const dark = variant === "dark";
+  const ink = dark ? "#FFFFFF" : NAVY;
+  const id = `rq-${variant}`;
+  return (
+    <svg viewBox="-1 -67 209 72" className={className} role="img" aria-label="ResQ" xmlns="http://www.w3.org/2000/svg">
+      <g fill="none" stroke={ink} strokeWidth="9.67" strokeLinejoin="miter">
+        <path d="M4.84 0V-64" />
+        <path d="M4.84 -59.16H24A14.16 14.16 0 0 1 24 -30.84H4.84" />
+        <path d="M21 -30.84L42 0" />
+        <path d="M57.84 -23.5H95.16A18.66 18.66 0 1 0 90.8 -11.5" />
+        <path d="M127.81 -38.18A9.33 9.33 0 1 0 120.17 -23.5A9.33 9.33 0 1 1 112.52 -8.82" />
+      </g>
+      <g transform="translate(132.94 -72.3) scale(0.806)">
+        <Radar ink={ink} id={id} dark={dark} />
+      </g>
+    </svg>
+  );
+}
+
+/** Standalone radar-Q symbol (no wordmark). */
+export function LogoMark({ variant = "dark", className = "size-9" }: { variant?: "light" | "dark"; className?: string }) {
+  const dark = variant === "dark";
+  return (
+    <svg viewBox="0 0 100 100" className={className} role="img" aria-label="ResQ" xmlns="http://www.w3.org/2000/svg">
+      <Radar ink={dark ? "#FFFFFF" : NAVY} id={`rqm-${variant}`} dark={dark} />
     </svg>
   );
 }
@@ -31,14 +68,15 @@ export function Brand({
   return (
     <Link
       href={href}
-      className="flex min-w-0 items-center gap-2.5 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
+      className="flex min-w-0 items-center gap-3 rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300"
       aria-label="ResQ home"
     >
-      <LogoMark className={size === "sm" ? "size-8 shrink-0" : "size-9 shrink-0"} />
-      <span className="min-w-0 leading-tight">
-        <span className="block text-lg font-extrabold tracking-tight text-white">ResQ</span>
-        {subtitle && <span className="hidden truncate text-[10px] font-medium text-sky-200/90 sm:block">{subtitle}</span>}
-      </span>
+      <Logo variant="dark" className={size === "sm" ? "h-7 w-auto shrink-0" : "h-8 w-auto shrink-0"} />
+      {subtitle && (
+        <span className="hidden truncate border-l border-white/25 pl-3 font-brand text-[10px] font-semibold uppercase tracking-[0.16em] text-sky-100 md:block">
+          {subtitle}
+        </span>
+      )}
     </Link>
   );
 }
@@ -66,7 +104,7 @@ export function SiteHeader({
 }) {
   return (
     <header
-      className={`${sticky ? "sticky top-0" : ""} z-[1000] shrink-0 border-b border-[#093554] bg-[#0c4a75] text-white shadow-md`}
+      className={`${sticky ? "sticky top-0" : ""} z-[1000] shrink-0 border-b border-[#093554] bg-[#0c4a75] font-brand text-white shadow-md`}
     >
       <div className={`mx-auto flex h-14 w-full ${maxWidth} items-center gap-3 px-4 sm:px-6`}>
         {leading}
