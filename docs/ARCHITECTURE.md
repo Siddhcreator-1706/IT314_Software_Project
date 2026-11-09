@@ -264,6 +264,7 @@ Before introducing new components or functions, developers must inspect and reus
 ### Reusable Frontend Components & Libraries
 | Component / Module | Location | Reusable Capabilities |
 | :--- | :--- | :--- |
+| `Brand.tsx` (Logo, LogoMark, Brand, SiteHeader, NavLink) | [`frontend/src/components/Brand.tsx`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/frontend/src/components/Brand.tsx) | Final Q-Radar logo (light/dark lockup, symbol) and the single shared top bar (56px, navy) used by every page; assets in `frontend/public/logo*.svg` and `frontend/src/app/icon.svg` |
 | `ui.tsx` Primitives | [`frontend/src/components/ui.tsx`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/frontend/src/components/ui.tsx) | Base buttons, cards, modals, dialogs, form inputs, badges |
 | `badges.tsx` | [`frontend/src/components/badges.tsx`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/frontend/src/components/badges.tsx) | Color-coded status badges for incidents, dispatches, and priority levels |
 | `LiveOperationsLayer` | [`frontend/src/components/dm/LiveOperationsLayer.tsx`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/frontend/src/components/dm/LiveOperationsLayer.tsx) | Interactive Leaflet tactical map with incidents, teams, and shelter markers |
