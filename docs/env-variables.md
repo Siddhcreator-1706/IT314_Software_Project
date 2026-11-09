@@ -25,6 +25,7 @@ When `APP_ENV` is `staging` or `production` the backend refuses to start unless 
 | `AI_TRIAGE_URL` | no | - | URL of the triage service (`.../triage`). Unset = triage returns `UNAVAILABLE`. |
 | `AI_TRIAGE_TOKEN` (S) | no | - | Bearer token sent to the triage service; set the same value on `ai-workers`. |
 | `AI_LOW_CONFIDENCE_THRESHOLD` | no | `0.6` | Below this a suggestion is `LOW_CONFIDENCE`. |
+| `AI_IMAGE_SERVICE_URL` | no | - | Base URL of the disaster image classifier (`ai-workers/model`, `POST /predict`), for example `http://localhost:8002` when started with `uvicorn app:app --port 8002` (it must not point at the backend's own port 8000). Unset = photo analysis returns `AI_PHOTO_UNAVAILABLE` (503). |
 | `GOOGLE_MAPS_API_KEY` (S) / `GOOGLE_GEOCODING_API_KEY` (S) | no | - | Optional geocoder; falls back to OpenStreetMap Nominatim. |
 | `BOUNDARY_SYNC_ENABLED` | no | `true` | Enable the periodic boundary sync worker. |
 | `BOUNDARY_SYNC_INTERVAL_HOURS` | no | `720` | Minimum hours between upstream syncs. |

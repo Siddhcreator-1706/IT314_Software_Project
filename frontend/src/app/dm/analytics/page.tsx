@@ -18,6 +18,7 @@ type Analytics = {
   };
   dispatches: { status: string; priority: string; n: number; avg_ack_seconds: number | null }[];
   ai_recommendations: { status: string; human_action: string; in_scope: number; out_of_scope: number }[];
+  ai_by_decision?: { scenario: string; human_action: string; confidence_band: string; n: number }[];
   donations: { confirmed: string; pending: string; failed: string };
   aid: { status: string; contributions: number }[];
   resources: { type: string; status: string; n: number }[];
@@ -95,6 +96,10 @@ function Body({ d }: { d: Analytics }) {
   const statuses = [...new Set(d.incidents.by_scenario_status.map((r) => r.status))];
   const outOfScope = sum(d.ai_recommendations, (r) => r.out_of_scope);
   const inScope = sum(d.ai_recommendations, (r) => r.in_scope);
+  const acceptedCount = sum(d.ai_recommendations.filter((r) => r.human_action === "ACCEPTED"), (r) => r.in_scope + r.out_of_scope);
+  const modifiedCount = sum(d.ai_recommendations.filter((r) => r.human_action === "MODIFIED"), (r) => r.in_scope + r.out_of_scope);
+  const rejectedCount = sum(d.ai_recommendations.filter((r) => r.human_action === "REJECTED"), (r) => r.in_scope + r.out_of_scope);
+  const undecidedCount = sum(d.ai_recommendations.filter((r) => r.human_action === "UNDECIDED"), (r) => r.in_scope + r.out_of_scope);
   const ack = d.dispatches.filter((r) => r.avg_ack_seconds !== null);
   const ackWeighted = ack.length ? sum(ack, (r) => (r.avg_ack_seconds ?? 0) * r.n) / sum(ack, (r) => r.n) : null;
 
@@ -156,21 +161,115 @@ function Body({ d }: { d: Analytics }) {
             })).filter((r) => r.value > 0)}
           />
         </Card>
-        <Card title="AI recommendations" subtitle={d.definitions.out_of_scope}>
-          <dl className="grid grid-cols-2 gap-4 text-sm">
-            <div><dt className="text-xs text-muted">In scope</dt><dd className="text-xl font-semibold tabular-nums">{formatNumber(inScope)}</dd></div>
-            <div><dt className="text-xs text-muted">Out of scope (counted separately)</dt><dd className="text-xl font-semibold tabular-nums">{formatNumber(outOfScope)}</dd></div>
-          </dl>
-          <table className="mt-4 w-full text-sm">
-            <caption className="sr-only">AI recommendations by status and human decision</caption>
-            <thead className="text-left text-xs text-muted"><tr><th scope="col" className="py-1 font-medium">AI status</th><th scope="col" className="py-1 font-medium">Human decision</th><th scope="col" className="py-1 text-right font-medium">Count</th></tr></thead>
-            <tbody className="divide-y divide-border">
-              {d.ai_recommendations.map((r) => (
-                <tr key={`${r.status}-${r.human_action}`}><td className="py-1.5">{label(r.status)}</td><td>{label(r.human_action)}</td><td className="text-right tabular-nums">{r.in_scope + r.out_of_scope}</td></tr>
-              ))}
-              {d.ai_recommendations.length === 0 && <tr><td colSpan={3} className="py-2 text-muted">No AI recommendations recorded.</td></tr>}
-            </tbody>
-          </table>
+        <Card title="AI vs. human decision analytics" subtitle="Dispatcher decisions on advisory AI suggestions (S3-06)">
+          <div className="space-y-6">
+            <dl className="grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
+              <div><dt className="text-xs text-muted">In scope</dt><dd className="text-xl font-semibold tabular-nums">{formatNumber(inScope)}</dd></div>
+              <div><dt className="text-xs text-muted">Out of scope</dt><dd className="text-xl font-semibold tabular-nums">{formatNumber(outOfScope)}</dd></div>
+              <div><dt className="text-xs text-muted">Accepted</dt><dd className="text-xl font-semibold tabular-nums text-emerald-600">{formatNumber(acceptedCount)}</dd></div>
+              <div><dt className="text-xs text-muted">Modified / Rejected</dt><dd className="text-xl font-semibold tabular-nums text-amber-600">{formatNumber(modifiedCount + rejectedCount)}</dd></div>
+            </dl>
+
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wider text-muted">Human decision distribution</p>
+              <BarList
+                rows={[
+                  { label: "Accepted by dispatcher", value: acceptedCount, barClass: "bg-emerald-600" },
+                  { label: "Modified by dispatcher", value: modifiedCount, barClass: "bg-amber-500" },
+                  { label: "Rejected by dispatcher", value: rejectedCount, barClass: "bg-red-500" },
+                  { label: "Undecided / Pending", value: undecidedCount, barClass: "bg-slate-400" },
+                ].filter((r) => r.value > 0)}
+                emptyText="No AI recommendations recorded in this filter range."
+              />
+            </div>
+
+            {d.ai_by_decision && d.ai_by_decision.length > 0 && (
+              <div className="space-y-2 border-t border-border pt-4">
+                <p className="text-xs font-semibold uppercase tracking-wider text-muted">Decisions by confidence band</p>
+                <div className="grid gap-3 sm:grid-cols-3 text-xs">
+                  {["HIGH", "MEDIUM", "LOW", ...(d.ai_by_decision.some((r) => r.confidence_band === "UNKNOWN") ? ["UNKNOWN"] : [])].map((band) => {
+                    const bandRows = d.ai_by_decision!.filter((r) => r.confidence_band === band);
+                    const totalBand = sum(bandRows, (r) => r.n);
+                    const bandLabel =
+                      band === "HIGH" ? "High (≥80%)" : band === "MEDIUM" ? "Medium (60–79%)" : band === "LOW" ? "Low (<60%)" : "No confidence recorded";
+                    return (
+                      <div key={band} className="rounded-lg border border-border p-3 bg-surface-muted/30">
+                        <div className="flex justify-between font-semibold">
+                          <span>{bandLabel}</span>
+                          <span className="tabular-nums">{formatNumber(totalBand)}</span>
+                        </div>
+                        <ul className="mt-2 space-y-1 text-muted">
+                          {["ACCEPTED", "MODIFIED", "REJECTED", "UNDECIDED"].map((act) => {
+                            const cnt = sum(bandRows.filter((r) => r.human_action === act), (r) => r.n);
+                            if (cnt === 0) return null;
+                            return (
+                              <li key={act} className="flex justify-between">
+                                <span>{label(act)}</span>
+                                <span className="tabular-nums font-mono">{cnt}</span>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                </div>
+                {d.definitions.confidence_bands && <p className="text-[11px] text-muted">{d.definitions.confidence_bands}</p>}
+                <div className="overflow-x-auto pt-2">
+                  <table className="w-full min-w-[420px] text-xs">
+                    <caption className="sr-only">AI suggestions by scenario and human decision</caption>
+                    <thead className="text-left text-muted">
+                      <tr>
+                        <th scope="col" className="py-1 font-medium">Scenario</th>
+                        {["ACCEPTED", "MODIFIED", "REJECTED", "UNDECIDED"].map((act) => (
+                          <th key={act} scope="col" className="py-1 text-right font-medium">{label(act)}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {[...new Set(d.ai_by_decision.map((r) => r.scenario))].map((sc) => (
+                        <tr key={sc}>
+                          <th scope="row" className="py-1.5 text-left font-normal">{scenarioLabel[sc] ?? label(sc)}</th>
+                          {["ACCEPTED", "MODIFIED", "REJECTED", "UNDECIDED"].map((act) => (
+                            <td key={act} className="py-1.5 text-right tabular-nums">
+                              {sum(d.ai_by_decision!.filter((r) => r.scenario === sc && r.human_action === act), (r) => r.n)}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            <div className="border-t border-border pt-4">
+              <table className="w-full text-sm">
+                <caption className="sr-only">AI recommendations by status and human decision</caption>
+                <thead className="text-left text-xs text-muted">
+                  <tr>
+                    <th scope="col" className="py-1 font-medium">AI status</th>
+                    <th scope="col" className="py-1 font-medium">Human decision</th>
+                    <th scope="col" className="py-1 text-right font-medium">Count</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {d.ai_recommendations.map((r) => (
+                    <tr key={`${r.status}-${r.human_action}`}>
+                      <td className="py-1.5">{label(r.status)}</td>
+                      <td>{label(r.human_action)}</td>
+                      <td className="text-right tabular-nums">{r.in_scope + r.out_of_scope}</td>
+                    </tr>
+                  ))}
+                  {d.ai_recommendations.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="py-2 text-muted">No AI recommendations recorded.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </Card>
       </div>
 

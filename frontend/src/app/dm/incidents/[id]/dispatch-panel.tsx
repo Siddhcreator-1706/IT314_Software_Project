@@ -76,8 +76,11 @@ function CreateDispatch({ incident, onClose, onDone }: { incident: IncidentDetai
       agency: string | null;
       distance_km: number | null;
       capability_match: string[];
+      secondary_match?: string[];
       rank: number;
       reasons: string;
+      score?: number;
+      matched_count?: number;
     }>;
   }>(`incidents/${incident.incident_id}/team-recommendations`);
   const { run, busy } = useAction();
@@ -154,46 +157,57 @@ function CreateDispatch({ incident, onClose, onDone }: { incident: IncidentDetai
         </Field>
 
         {/* Suggested Teams (AI / Rule Recommendation) */}
-        {recommendations.data?.recommendations && recommendations.data.recommendations.length > 0 && (
-          <div className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-3.5 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-sky-400 uppercase tracking-wider">Suggested teams</span>
-              <span className="text-[11px] text-muted italic">Advisory — you confirm the dispatch</span>
-            </div>
-            <ul className="divide-y divide-border/60 text-xs">
-              {recommendations.data.recommendations.map((rec) => {
-                const resourceAvailable = resources.data?.items.find((r) => r.resource_id === rec.resource_id);
-                const isSelected = Number(lines[rec.resource_id] ?? 0) > 0;
-                return (
-                  <li key={rec.resource_id} className="flex items-center justify-between py-2 gap-2">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2">
-                        <span className="font-semibold text-foreground">{rec.team_name}</span>
-                        {rec.distance_km !== null && (
-                          <span className="text-[10px] font-mono text-muted">{rec.distance_km.toFixed(1)} km</span>
+        {recommendations.data?.recommendations && (
+          recommendations.data.recommendations.length > 0 ? (
+            <div className="rounded-xl border border-sky-500/30 bg-sky-500/5 p-3.5 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-sky-400 uppercase tracking-wider">Suggested teams</span>
+                <span className="text-[11px] text-muted italic">Advisory — you confirm the dispatch</span>
+              </div>
+              <ul className="divide-y divide-border/60 text-xs">
+                {recommendations.data.recommendations.map((rec) => {
+                  const resourceAvailable = resources.data?.items.find((r) => r.resource_id === rec.resource_id);
+                  const isSelected = Number(lines[rec.resource_id] ?? 0) > 0;
+                  return (
+                    <li key={rec.resource_id} className="flex items-center justify-between py-2 gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-foreground">{rec.team_name}</span>
+                          {rec.distance_km !== null && (
+                            <span className="text-[10px] font-mono text-muted">{rec.distance_km.toFixed(1)} km</span>
+                          )}
+                          {rec.agency && <span className="text-[10px] text-muted">({rec.agency})</span>}
+                        </div>
+                        <p className="text-[11px] text-muted truncate">{rec.reasons}</p>
+                        {rec.secondary_match && rec.secondary_match.length > 0 && (
+                          <p className="mt-0.5 text-[10px] text-sky-300">
+                            Secondary capabilities: {rec.secondary_match.join(", ")}
+                          </p>
                         )}
-                        {rec.agency && <span className="text-[10px] text-muted">({rec.agency})</span>}
                       </div>
-                      <p className="text-[11px] text-muted truncate">{rec.reasons}</p>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant={isSelected ? "secondary" : "primary"}
-                      onClick={() => {
-                        setLines((l) => ({ ...l, [rec.resource_id]: "1" }));
-                        if (!agencyId && resourceAvailable?.agency_id) {
-                          setAgencyId(resourceAvailable.agency_id);
-                        }
-                      }}
-                      disabled={!resourceAvailable || Number(resourceAvailable.quantity_available) <= 0}
-                    >
-                      {isSelected ? "Selected" : "Add to dispatch"}
-                    </Button>
-                  </li>
-                );
-              })}
-            </ul>
-          </div>
+                      <Button
+                        size="sm"
+                        variant={isSelected ? "secondary" : "primary"}
+                        onClick={() => {
+                          setLines((l) => ({ ...l, [rec.resource_id]: "1" }));
+                          if (!agencyId && resourceAvailable?.agency_id) {
+                            setAgencyId(resourceAvailable.agency_id);
+                          }
+                        }}
+                        disabled={!resourceAvailable || Number(resourceAvailable.quantity_available) <= 0}
+                      >
+                        {isSelected ? "Selected" : "Add to dispatch"}
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-border/80 bg-surface-muted/50 p-3 text-xs text-muted">
+              No available team matches; allocate manually.
+            </div>
+          )
         )}
 
         <div>

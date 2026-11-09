@@ -1,14 +1,18 @@
 """AI-assisted triage (DM-FR-05): advisory recommendations and the separate human decision."""
 
+import os
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Literal
+from urllib.parse import unquote
 
-from fastapi import APIRouter, Depends
+import httpx
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from psycopg import sql
 from psycopg.types.json import Jsonb
 from pydantic import BaseModel, model_validator
+from starlette.concurrency import run_in_threadpool
 
 from app import audit, db
 from app.auth import DMUser
@@ -252,3 +256,130 @@ def decide_recommendation(
             )
             result.update(applied=True, version=updated["version"])
     return result
+
+
+# --------------------------------------------------------------------------- advisory photo analysis (S3-08)
+
+_MAX_IMAGE_BYTES = 10 * 1024 * 1024
+_ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
+
+# Image classes that map onto one of the three supported scenarios. Every other class gives no scenario.
+_IMAGE_CLASS_MAPPING: dict[str, str] = {
+    "fire": "industrial_fire",
+    "flood": "urban_flooding",
+    "hurricane": "cyclone",
+}
+# Real disasters the platform does not support: shown as out of scope, never mapped to a scenario.
+_OUT_OF_SCOPE_IMAGE_CLASSES = {"earthquake", "landslide", "other_disaster"}
+
+
+def sniff_image_type(data: bytes) -> str | None:
+    """Identify JPEG, PNG or WebP from the first bytes; the client-declared type is not trusted."""
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def safe_filename(raw: str | None) -> str:
+    """Decode the percent-encoded X-Filename header and keep a short, printable base name."""
+    name = unquote(raw or "").replace("\\", "/").rsplit("/", 1)[-1]
+    name = "".join(c for c in name if c.isprintable() and c not in '<>:"|?*')[:100].strip()
+    return name or "photo"
+
+
+async def _read_capped_body(request: Request, limit: int) -> bytes:
+    """Read the request body but stop as soon as it passes `limit`, so an oversized upload never sits in memory."""
+    too_large = ApiError(413, "FILE_TOO_LARGE", f"Image file exceeds the {limit // (1024 * 1024)} MB limit.")
+    declared = request.headers.get("content-length", "")
+    if declared.isdigit() and int(declared) > limit:
+        raise too_large
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > limit:
+            raise too_large
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+def _load_open_incident(incident_id: uuid.UUID) -> None:
+    with db.transaction() as conn:
+        row = conn.execute("SELECT * FROM incidents WHERE incident_id = %s", (incident_id,)).fetchone()
+        if row is None:
+            raise not_found("Incident")
+        ensure_open(row)
+
+
+def _record_photo_analysis(principal, incident_id: uuid.UUID, filename: str, prediction: str, mapped, confidence: float) -> None:
+    with db.transaction() as conn:
+        audit.record(
+            conn,
+            actor=principal,
+            action="AI_PHOTO_ANALYSED",
+            entity_type="incident",
+            entity_id=incident_id,
+            result="SUCCESS",
+            rationale=f"Photo analysed: {prediction} ({confidence:.2f})",
+            after={"filename": filename, "prediction": prediction, "suggested_scenario": mapped, "confidence": confidence},
+            ip=principal.ip,
+        )
+
+
+@router.post("/incidents/{incident_id}/photo-analyse")
+async def analyze_incident_photo(incident_id: uuid.UUID, request: Request, principal: DMUser):
+    """Advisory only: classify an uploaded scene photo. Nothing is stored on the incident and nothing is verified."""
+    declared_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if declared_type not in _ALLOWED_IMAGE_TYPES:
+        raise ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Send the photo as the request body with a JPEG, PNG or WebP content type.")
+    await run_in_threadpool(_load_open_incident, incident_id)
+
+    content = await _read_capped_body(request, _MAX_IMAGE_BYTES)
+    image_type = sniff_image_type(content)
+    if image_type is None:
+        raise ApiError(415, "INVALID_IMAGE", "The file is not a JPEG, PNG or WebP image.")
+    filename = safe_filename(request.headers.get("x-filename"))
+
+    prediction: str | None = None
+    confidence = 0.0
+    needs_review = False
+    top3: list = []
+    ai_image_url = os.getenv("AI_IMAGE_SERVICE_URL")
+    if ai_image_url:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                resp = await client.post(f"{ai_image_url.rstrip('/')}/predict", files={"file": (filename, content, image_type)})
+            if resp.status_code == 200:
+                data = resp.json()
+                raw_prediction = data.get("prediction")
+                prediction = raw_prediction if isinstance(raw_prediction, str) and raw_prediction.strip() else None
+                confidence = min(max(float(data.get("confidence", 0.0)), 0.0), 1.0)
+                needs_review = bool(data.get("needs_review", False))
+                raw_top3 = data.get("top3")
+                top3 = raw_top3[:3] if isinstance(raw_top3, list) else []
+        except (httpx.HTTPError, OSError, ValueError, TypeError, AttributeError):
+            prediction = None
+
+    if prediction is None:
+        raise ApiError(503, "AI_PHOTO_UNAVAILABLE", "Image analysis model is currently unavailable.")
+
+    key = prediction.strip().lower()
+    mapped_scenario = _IMAGE_CLASS_MAPPING.get(key)
+    await run_in_threadpool(_record_photo_analysis, principal, incident_id, filename, prediction, mapped_scenario, confidence)
+
+    return {
+        "status": "ANALYZED",
+        "filename": filename,
+        "prediction": prediction,
+        "suggested_scenario": mapped_scenario,
+        "confidence": confidence,
+        "is_out_of_scope": key in _OUT_OF_SCOPE_IMAGE_CLASSES,
+        "no_disaster_detected": key == "not_disaster",
+        "needs_review": needs_review,
+        "top3": top3,
+        "advisory_notice": "Advisory suggestion only. It is not stored as incident verification; a dispatcher decides.",
+    }
