@@ -14,7 +14,7 @@ from typing import Any
 import defusedxml.ElementTree as ET
 import httpx
 
-from app.services.ingest.base import Adapter
+from app.services.ingest.base import Adapter, get_capped
 from app.services.ingest.signals import (
     detect_language,
     locate_gujarat_text,
@@ -102,6 +102,12 @@ def parse_news_rss(xml_text: str, query_lang: str, now: datetime | None = None) 
     return rows
 
 
+def _same_host_only(request: httpx.Request) -> None:
+    """Request hook: runs before every request, redirects included, so no other host is ever contacted."""
+    if request.url.scheme != "https" or request.url.host != FEED_HOST:
+        raise ValueError("News RSS redirected to an unexpected host")
+
+
 class GoogleNewsAdapter(Adapter):
     """Poll Google News RSS search for recent Gujarat hazard headlines."""
 
@@ -112,18 +118,15 @@ class GoogleNewsAdapter(Adapter):
         rows: dict[str, dict[str, Any]] = {}
         failures = 0
         # Google normalises some non-Latin queries with a redirect on the same host; follow it,
-        # but never accept a response from any other host.
+        # but the request hook refuses any hop to another host before that request is sent.
         with httpx.Client(timeout=15.0, follow_redirects=True, max_redirects=3,
-                          headers={"User-Agent": USER_AGENT}) as client:
+                          headers={"User-Agent": USER_AGENT},
+                          event_hooks={"request": [_same_host_only]}) as client:
             for lang, query, params in QUERIES:
                 try:
-                    response = client.get(FEED_URL, params={"q": query, **params})
-                    if response.url.host != FEED_HOST:
-                        raise ValueError("News RSS redirected to an unexpected host")
-                    response.raise_for_status()
-                    if len(response.content) > MAX_RESPONSE_BYTES:
-                        raise ValueError("News RSS response exceeded the size limit")
-                    for row in parse_news_rss(response.text, lang):
+                    body, _, charset = get_capped(client, FEED_URL, params={"q": query, **params},
+                                                  limit=MAX_RESPONSE_BYTES)
+                    for row in parse_news_rss(body.decode(charset or "utf-8", errors="replace"), lang):
                         rows.setdefault(row["source_uid"], row)
                 except (httpx.HTTPError, ValueError, ET.ParseError) as exc:
                     failures += 1

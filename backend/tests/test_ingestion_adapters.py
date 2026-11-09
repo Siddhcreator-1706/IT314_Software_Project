@@ -271,12 +271,104 @@ def test_news_adapter_fails_only_when_every_query_fails(monkeypatch):
         def __exit__(self, *args):
             return False
 
-        def get(self, url, params=None):
-            raise httpx.ConnectError("down", request=httpx.Request("GET", url))
+        def stream(self, method, url, params=None):
+            raise httpx.ConnectError("down", request=httpx.Request(method, url))
 
     monkeypatch.setattr(news.httpx, "Client", Client)
     with pytest.raises(RuntimeError):
         news.GoogleNewsAdapter().fetch()
+
+
+import httpx as _httpx
+
+_REAL_HTTPX_CLIENT = _httpx.Client
+
+
+def _mock_transport_client(monkeypatch, module, handler):
+    """Route every httpx.Client the module opens through a MockTransport (no network)."""
+    monkeypatch.setattr(
+        module.httpx, "Client", lambda **kwargs: _REAL_HTTPX_CLIENT(transport=_httpx.MockTransport(handler), **kwargs)
+    )
+
+
+def test_news_adapter_never_contacts_another_host_on_redirect(monkeypatch):
+    import httpx
+    import pytest
+
+    from app.services.ingest import news
+
+    hosts = []
+
+    def handler(request):
+        hosts.append(request.url.host)
+        return httpx.Response(302, headers={"location": "https://evil.example/rss"})
+
+    _mock_transport_client(monkeypatch, news, handler)
+    with pytest.raises(RuntimeError):
+        news.GoogleNewsAdapter().fetch()
+    assert hosts and set(hosts) == {"news.google.com"}  # the redirect target was never requested
+
+
+def test_news_adapter_stops_reading_an_oversized_response(monkeypatch):
+    import httpx
+    import pytest
+
+    from app.services.ingest import news
+
+    monkeypatch.setattr(news, "MAX_RESPONSE_BYTES", 1_000)
+    chunks_sent = []
+
+    def big_stream():
+        for _ in range(100):  # 100 KB offered; reading must stop after ~1 KB
+            chunks_sent.append(1)
+            yield b"x" * 1_024
+
+    _mock_transport_client(monkeypatch, news, lambda request: httpx.Response(200, content=big_stream()))
+    with pytest.raises(RuntimeError):
+        news.GoogleNewsAdapter().fetch()
+    assert len(chunks_sent) < 10 * len(news.QUERIES)
+
+
+def test_news_adapter_reads_a_normal_feed(monkeypatch):
+    from datetime import UTC, datetime
+    from email.utils import format_datetime
+
+    import httpx
+
+    from app.services.ingest import news
+
+    now = format_datetime(datetime.now(UTC))
+    rss = (
+        "<rss><channel><item><title>Flood waters enter homes in Surat - Example Times</title>"
+        f"<link>https://news.google.com/x1</link><guid>x1</guid><pubDate>{now}</pubDate>"
+        "<source>Example Times</source></item></channel></rss>"
+    ).encode()
+    _mock_transport_client(monkeypatch, news, lambda request: httpx.Response(200, content=rss))
+    rows = news.GoogleNewsAdapter().fetch()
+    assert len(rows) == 1 and rows[0]["source"] == "GNEWS"
+    assert rows[0]["location_text"].startswith("Surat")
+
+
+def test_bluesky_adapter_stops_reading_an_oversized_response_and_parses_normal_ones(monkeypatch):
+    import json
+    from datetime import UTC, datetime
+
+    import httpx
+    import pytest
+
+    from app.services.ingest import bluesky
+
+    monkeypatch.setattr(bluesky, "MAX_RESPONSE_BYTES", 1_000)
+    _mock_transport_client(monkeypatch, bluesky, lambda request: httpx.Response(200, content=b"x" * 50_000))
+    with pytest.raises(RuntimeError):
+        bluesky.BlueskySearchAdapter().fetch()
+
+    monkeypatch.setattr(bluesky, "MAX_RESPONSE_BYTES", 3_000_000)
+    post = {"uri": "at://did:plc:abc/app.bsky.feed.post/1",
+            "record": {"text": "@someone Flood in Surat, water rising", "createdAt": datetime.now(UTC).isoformat()}}
+    _mock_transport_client(monkeypatch, bluesky, lambda request: httpx.Response(200, content=json.dumps({"posts": [post]}).encode()))
+    rows = bluesky.BlueskySearchAdapter().fetch()
+    assert len(rows) == 1 and "@someone" not in rows[0]["content_text"]
 
 
 def test_live_text_adapters_are_skipped_unless_enabled():

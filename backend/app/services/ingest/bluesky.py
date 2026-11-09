@@ -8,6 +8,7 @@ repeated poll updates the same row without recording who wrote it.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 from datetime import UTC, datetime, timedelta
@@ -17,7 +18,7 @@ from urllib.parse import urlsplit
 import httpx
 
 from app.config import get_settings
-from app.services.ingest.base import Adapter
+from app.services.ingest.base import Adapter, get_capped
 from app.services.ingest.signals import (
     detect_language,
     locate_gujarat_text,
@@ -111,13 +112,10 @@ class BlueskySearchAdapter(Adapter):
         with httpx.Client(timeout=15.0, follow_redirects=False, headers={"User-Agent": USER_AGENT}) as client:
             for query in QUERIES:
                 try:
-                    response = client.get(self.search_url, params={
+                    body, _, _ = get_capped(client, self.search_url, params={
                         "q": query, "sort": "latest", "since": since, "limit": RESULTS_PER_QUERY,
-                    })
-                    response.raise_for_status()
-                    if len(response.content) > MAX_RESPONSE_BYTES:
-                        raise ValueError("Bluesky search response exceeded the size limit")
-                    for row in parse_search_response(response.json()):
+                    }, limit=MAX_RESPONSE_BYTES)
+                    for row in parse_search_response(json.loads(body)):
                         rows.setdefault(row["source_uid"], row)
                 except (httpx.HTTPError, ValueError) as exc:
                     failures += 1
