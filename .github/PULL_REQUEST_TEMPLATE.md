@@ -30,9 +30,17 @@
 - [ ] Database migrations / schema changes reviewed, if applicable
 - [ ] New behaviour is covered by a test, or the reason it is not is stated here
 
-## Risk and rollback
+## Before deploy
 
-<!-- Impact on staging/production, config or secret names that must be set (names only), migration order, and how to roll back. Write "Low risk, revert the PR" if that is all. -->
+<!-- Everything that must be done before or while this reaches staging/production. Write "Nothing" if there is nothing. Examples:
+- Run migration `NN_name.sql` on Neon (take a backup branch first)
+- Set or rotate environment variables (names only): `NAME_A`, `NAME_B`
+- Update the hosting configuration (Render, Vercel, GitHub secrets)
+- Run a seed or backfill script, or a one-time data fix
+- Merge or deploy another PR first
+-->
+
+- 
 
 ## Screenshots
 
@@ -40,9 +48,17 @@
 
 ## Checklist
 
-- [ ] I followed the repository's contribution guidance and used a Conventional Commit title.
-- [ ] I updated relevant documentation (`docs/`, `docs/api_contracts.md`, `docs/env-variables.md`).
-- [ ] I did not include secrets, credentials, or real personal/emergency-report data.
-- [ ] Public responses expose no reporter PII, and public coordinates stay rounded to 4 decimals.
+<!-- Tick every item that applies. For an item that does not apply, leave it unticked and add "N/A" with a short reason. -->
+
+**Quality**
+- [ ] The PR title is a Conventional Commit and the PR contains only changes related to this task.
+- [ ] Relevant tests and lint pass locally (or CI covers them).
+- [ ] Relevant documentation is updated (`docs/`, `docs/api_contracts.md`, `docs/env-variables.md`).
+
+**Security and privacy**
+- [ ] No secrets, credentials, or real personal/emergency-report data are included.
+- [ ] Public responses expose no reporter personal data, and public coordinates stay rounded to 4 decimals.
+
+**Project rules**
 - [ ] AI output stays advisory; verification, dispatch, escalation and closure still need a human dispatcher.
-- [ ] State changes write to `audit_logs`; no Supabase Auth or Supabase-specific SQL was added.
+- [ ] State changes write to `audit_logs`, and no Supabase Auth or Supabase-specific SQL was added.
