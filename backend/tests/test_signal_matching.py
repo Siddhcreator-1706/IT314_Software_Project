@@ -286,8 +286,10 @@ def test_suggestions_change_nothing_and_every_action_still_needs_a_human(client,
     b = make.signal(content_text=FLOOD_B, **kw)
 
     def counts():
-        return tuple(sql.execute(f"SELECT count(*) AS n FROM {t}").fetchone()["n"]
-                     for t in ("incidents", "audit_logs", "dispatch_orders"))
+        incidents = sql.execute("SELECT count(*) AS n FROM incidents").fetchone()["n"]
+        audit_logs = sql.execute("SELECT count(*) AS n FROM audit_logs").fetchone()["n"]
+        dispatch_orders = sql.execute("SELECT count(*) AS n FROM dispatch_orders").fetchone()["n"]
+        return incidents, audit_logs, dispatch_orders
 
     before = counts()
 
