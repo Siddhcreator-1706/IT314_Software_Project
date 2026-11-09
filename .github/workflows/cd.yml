@@ -244,29 +244,29 @@ jobs:
             echo "ℹ️ RENDER_DEPLOY_HOOK secret not set. Skipping Render trigger."
           fi
 
-      - name: Verify Backend Production Health
+      - name: Verify Backend Health
         if: ${{ (needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch') }}
         env:
-          PROD_BACKEND_URL: ${{ secrets.PROD_BACKEND_URL }}
+          BACKEND_URL: ${{ secrets.PROD_BACKEND_URL }}
         run: |
-          if [ -n "$PROD_BACKEND_URL" ]; then
-            PROD_BACKEND_URL="${PROD_BACKEND_URL%/}"
-            PROD_BACKEND_URL="${PROD_BACKEND_URL%/api/v1}"
-            echo "Waiting for production backend to complete deployment rollout at $PROD_BACKEND_URL..."
+          if [ -n "$BACKEND_URL" ]; then
+            BACKEND_URL="${BACKEND_URL%/}"
+            BACKEND_URL="${BACKEND_URL%/api/v1}"
+            echo "Waiting for backend to complete deployment rollout at $BACKEND_URL..."
             sleep 10
             for i in $(seq 1 30); do
-              HTTP_STATUS=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 15 "$PROD_BACKEND_URL/health" || echo "000")
+              HTTP_STATUS=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 15 "$BACKEND_URL/health" || echo "000")
               if [ "$HTTP_STATUS" != "200" ]; then
-                HTTP_STATUS=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 15 "$PROD_BACKEND_URL/api/v1/health" || echo "000")
+                HTTP_STATUS=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 15 "$BACKEND_URL/api/v1/health" || echo "000")
               fi
               if [ "$HTTP_STATUS" = "200" ]; then
-                echo "✅ Production backend healthcheck passed (HTTP 200)."
+                echo "✅ Backend healthcheck passed (HTTP 200)."
                 exit 0
               fi
-              echo "Polling $PROD_BACKEND_URL/health - attempt $i/30 (got HTTP $HTTP_STATUS), retrying in 5s..."
+              echo "Polling $BACKEND_URL/health - attempt $i/30 (got HTTP $HTTP_STATUS), retrying in 5s..."
               sleep 5
             done
-            echo "⚠️ Health check timed out or failed on $PROD_BACKEND_URL"
+            echo "⚠️ Health check timed out or failed on $BACKEND_URL"
           else
             echo "ℹ️ PROD_BACKEND_URL secret not set. Skipping live health verification."
           fi
@@ -301,10 +301,10 @@ jobs:
       - name: Wait until this commit is live
         id: wait_live
         env:
-          STAGING_URL: ${{ secrets.STAGING_BACKEND_URL }}
+          STAGING_URL: ${{ secrets.PROD_BACKEND_URL }}
         run: |
           if [ -z "$STAGING_URL" ]; then
-            echo "::notice::STAGING_BACKEND_URL secret not set in GitHub Secrets. Skipping staging live version verification."
+            echo "::notice::PROD_BACKEND_URL secret not set in GitHub Secrets. Skipping staging live version verification."
             echo "is_live=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -346,4 +346,4 @@ jobs:
           SMOKE_STAFF_PASSWORD: ${{ secrets.SMOKE_STAFF_PASSWORD }}
           SMOKE_STAFF_TOTP_SECRET: ${{ secrets.SMOKE_STAFF_TOTP_SECRET }}
         run: |
-          python scripts/smoke.py --base-url "$API_URL" --scenario field-loop
+          python scripts/smoke.py --base-url "$API_URL"

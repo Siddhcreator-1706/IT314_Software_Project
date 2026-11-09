@@ -179,7 +179,7 @@ IT314_Software_Project/
 │   └── Dockerfile              # Next.js container build specification
 ├── scripts/                    # Automation and operational maintenance scripts
 │   ├── seed_reset.py           # Automated DB reset & seed application
-│   ├── smoke.py                # End-to-end smoke test runner (core-loop & field-loop)
+│   ├── smoke.py                # End-to-end smoke test runner (core loop: report, verify, public map)
 │   ├── smoke.sh                # Staging deployment prober
 │   └── sync_boundaries.py      # Standalone PostGIS boundary loader
 ├── docker-compose.yml          # Local multi-container development environment

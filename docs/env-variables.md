@@ -26,14 +26,17 @@ When `APP_ENV` is `staging` or `production` the backend refuses to start unless 
 | `AI_TRIAGE_TOKEN` (S) | no | - | Bearer token sent to the triage service; set the same value on `ai-workers`. |
 | `AI_LOW_CONFIDENCE_THRESHOLD` | no | `0.6` | Below this a suggestion is `LOW_CONFIDENCE`. |
 | `AI_IMAGE_SERVICE_URL` | no | - | Base URL of the disaster image classifier (`ai-workers/model`, `POST /predict`), for example `http://localhost:8002` when started with `uvicorn app:app --port 8002` (it must not point at the backend's own port 8000). Unset = photo analysis returns `AI_PHOTO_UNAVAILABLE` (503). |
-| `GOOGLE_MAPS_API_KEY` (S) / `GOOGLE_GEOCODING_API_KEY` (S) | no | - | Optional geocoder; falls back to OpenStreetMap Nominatim. |
+| `GOOGLE_MAPS_API_KEY` (S) | no | - | Optional geocoder; falls back to OpenStreetMap Nominatim. |
 | `BOUNDARY_SYNC_ENABLED` | no | `true` | Enable the periodic boundary sync worker. |
 | `BOUNDARY_SYNC_INTERVAL_HOURS` | no | `720` | Minimum hours between upstream syncs. |
 | `BOUNDARY_SYNC_CHECK_INTERVAL_SECONDS` | no | `86400` | Worker wake-up interval. |
 | `GEOJSON_GUJARAT_DISTRICTS_URL` | no | empty | GeoJSON FeatureCollection of Gujarat districts. Empty = sync disabled (packaged state polygon + PostGIS data are used). |
 | `PAYMENT_GATEWAY` | no | `mock` | Only `mock` is implemented. |
 | `MOCK_GATEWAY_SECRET` (S) | when donations are used | - | HMAC key for the sandbox gateway. |
-| `SACHET_FEED_URL` | no | empty | SACHET RSS feed URL; the adapter fetches linked CAP XML and honors ETags. Empty = adapter disabled. |
+| `SACHET_FEED_URL` | no | empty | SACHET RSS feed URL (public Gujarat feed: `https://sachet.ndma.gov.in/cap_public_website/rss/rss_gujarat.xml`; the all-India `rss_india.xml` holds only the latest 100 alerts, mostly other states); the adapter fetches linked CAP XML and honors ETags. Empty = adapter disabled. |
+| `NEWS_RSS_ENABLED` | no | `false` | Turns on the `GNEWS` signal adapter: Google News RSS search for Gujarat hazard headlines in English, Gujarati and Hindi. Stores headline, publisher, time and link only. |
+| `BLUESKY_SEARCH_ENABLED` | no | `false` | Turns on the `BLUESKY` signal adapter: public post search for Gujarat hazard posts. Author identity is never stored. |
+| `BLUESKY_SEARCH_URL` | no | `https://api.bsky.app/xrpc/app.bsky.feed.searchPosts` | Bluesky AppView search endpoint; only `api.bsky.app` and `public.api.bsky.app` over https are accepted. |
 | `USGS_FEED_URL` | no | Gujarat GeoJSON query | USGS earthquake GeoJSON feed; results are checked against the Gujarat boundary before storage. |
 | `SOCIAL_REPLAY_FILE` | no | packaged JSONL replay | Path to the team-authored, sanitised social replay fixture. Replay records are always marked simulated. |
 | `INGEST_INTERVAL_SECONDS` | no | `600` | In-process adapter polling interval. Use a shorter value only for local scheduler checks. |
@@ -54,7 +57,6 @@ When `APP_ENV` is `staging` or `production` the backend refuses to start unless 
 | `INVITATION_TOKEN_HOURS` | no | `48` | Lifetime of an account-invitation link. |
 | `PASSWORD_RESET_TOKEN_MINUTES` | no | `15` | Lifetime of a password-reset link. |
 | `GOOGLE_CLIENT_ID` | no | - | Google OAuth web client id. `POST /auth/google` returns 503 until it is set; tokens for any other audience are rejected. |
-| `GOOGLE_CLIENT_SECRET` (S) | no | - | Google OAuth client secret (reserved; the ID-token flow does not need it yet). |
 
 ## AI text model (`ai-workers/`, optional)
 
@@ -66,7 +68,7 @@ When `APP_ENV` is `staging` or `production` the backend refuses to start unless 
 
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
-| `API_URL` | server runtime | falls back to `NEXT_PUBLIC_API_URL`, then `http://localhost:8000` | Backend base URL used by server code (BFF routes, server actions). |
+| `API_URL` | no | falls back to `NEXT_PUBLIC_API_URL`, then `http://localhost:8000` | Backend URL for server code (BFF routes, server actions) when it differs from the browser-facing one. Only Docker Compose sets it (`http://backend:8000`); leave it unset on Vercel. |
 | `NEXT_PUBLIC_API_URL` | build time | `http://localhost:8000` | Baked into the bundle; only used by `next.config.ts` rewrites. |
 | `NEXT_PUBLIC_PAYMENT_SANDBOX` | no | `false` | When `true`, enables sandbox payment test flow on `/donate`; never set in production. |
 | `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | build time | - | Google OAuth web client id for the "Sign in with Google" button (same value as the backend `GOOGLE_CLIENT_ID`). |

@@ -8,7 +8,7 @@ Owner: Siddh. Secret values are entered by the owner in the hosting consoles onl
 |---|---|---|
 | Database | Neon PostgreSQL 16 + PostGIS | `DATABASE_URL` (S) on Render |
 | Backend + AI triage | Render (image from GHCR) | `render.yaml`; every `sync: false` key is entered in the Render console |
-| Frontend | Vercel | `NEXT_PUBLIC_API_URL`, `API_URL` pointing at the Render backend |
+| Frontend | Vercel | `NEXT_PUBLIC_API_URL` pointing at the Render backend |
 | Fallback | `docker-compose.prod.yml` on any Docker host | `.env` file with the required keys (compose refuses to start when one is missing) |
 
 Order: (1) create the Neon branch `backup-pre-<tag>` (see [runbook-migration.md](runbook-migration.md) Step 1); (2) apply migrations with `python -m app.migrate` against the production-like database; (3) set Render variables, deploy the backend, wait for `/api/v1/health`; (4) set Vercel variables and deploy the frontend; (5) create staff accounts with `python -m app.cli create-staff`; (6) run `scripts/smoke.py` against the backend.
