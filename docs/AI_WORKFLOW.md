@@ -16,7 +16,7 @@ Every mode and tool follows the same rules, which live in one place so they are 
 - `.agents/rules/*.md`: topic detail for architecture, backend and database, frontend, and security.
 - `.github/PULL_REQUEST_TEMPLATE.md` and `.github/ISSUE_TEMPLATE/*.yml`: the required PR and issue formats.
 
-AI tools never run `git commit`, `git push`, `git merge`, `git reset` or `git clean`, and never rewrite history. They draft commit messages, PR descriptions and issues for a human to submit.
+AI tools never run `git commit`, `git push`, `git merge`, `git reset`, `git clean` or `git rebase`, and never rewrite history. They draft commit messages, PR descriptions and issues for a human to submit.
 
 ---
 
