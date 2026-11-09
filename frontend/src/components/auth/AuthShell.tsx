@@ -53,14 +53,14 @@ export function ErrorBox({ message, hint }: { message: string; hint?: string }) 
 }
 
 /**
- * Page frame for sign-in and sign-up. The app body is overflow:hidden, so this wrapper
- * owns scrolling; otherwise the form is cut off on small phones and when the keyboard is open.
+ * Page frame for sign-in and sign-up. The page scrolls with the document, so the form stays
+ * reachable on small phones and when the keyboard is open.
  */
 export function AuthShell({ children }: { children: ReactNode }) {
   const online = useOnline();
   const { copy } = useAuthLanguage();
   return (
-    <div className="fixed inset-0 overflow-y-auto bg-slate-100 font-sans text-slate-900">
+    <div className="min-h-dvh bg-slate-100 font-sans text-slate-900">
       <a
         href="#auth-main"
         className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-white focus:px-3 focus:py-2"

@@ -222,7 +222,7 @@ Urgent needs: ${needs.join(", ")}` : description.trim(),
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans overflow-y-auto">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       {/* Header */}
       <SiteHeader subtitle="Citizen Emergency Dispatch" maxWidth="max-w-5xl">
         <NavLink href="/my-reports">My Reports</NavLink>
