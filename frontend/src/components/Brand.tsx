@@ -100,7 +100,7 @@ export function NavLink({
   return (
     <Link
       href={href}
-      className={`${hide} ${tone} items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs text-white transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300`}
+      className={`${hide} ${tone} items-center gap-1.5 min-h-11 whitespace-nowrap rounded-lg px-3 py-1.5 text-xs text-white transition focus:outline-none focus-visible:ring-2 focus-visible:ring-sky-300`}
     >
       {children}
     </Link>
