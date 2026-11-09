@@ -31,7 +31,7 @@ export default async function FieldLayout({ children }: { children: ReactNode })
     <div className="min-h-screen bg-background text-foreground">
       <SiteHeader subtitle={`Field Ops · ${user.full_name}`} brandHref="/field" maxWidth="max-w-4xl">
         <form action={signOut}>
-          <button className="min-h-9 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/20">
+          <button className="min-h-11 cursor-pointer rounded-lg bg-white/10 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300">
             Sign out
           </button>
         </form>

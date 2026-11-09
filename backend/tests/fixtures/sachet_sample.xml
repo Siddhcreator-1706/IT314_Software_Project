@@ -14,7 +14,7 @@
       <severity>Extreme</severity>
       <certainty>Observed</certainty>
       <effective>2026-11-02T10:00:00+05:30</effective>
-      <expires>2026-11-05T18:00:00+05:30</expires>
+      <expires>2099-12-31T18:00:00+05:30</expires>
       <headline>Severe Cyclonic Storm Warning for Saurashtra and Kutch</headline>
       <description>Severe cyclonic storm likely to make landfall near Saurashtra coast.</description>
       <area>
@@ -47,4 +47,3 @@
     </info>
   </alert>
 </alerts>
-

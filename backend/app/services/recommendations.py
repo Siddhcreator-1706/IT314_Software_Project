@@ -1,12 +1,19 @@
 """Emergency team recommendation rules and PostGIS spatial ranking engine.
 
 Core capabilities:
-1. Scenario-to-capability rules matrix mapping emergency types to required team competencies.
+1. Scenario-to-capability rules: PRIMARY capabilities a team must bring for the scenario and
+   SECONDARY capabilities that support the response but cannot carry it alone.
 2. PostGIS spatial query calculating ST_Distance in km for AVAILABLE teams.
-3. Multi-factor ranking:
-   Score = (Capability Overlap Count * 10) - (Distance (km) * 0.05)
-4. Explanatory reasoning for dispatchers (matched capabilities, distance, availability).
-5. Offline in-memory fallback using authoritative Gujarat seed teams when PostGIS is not reachable.
+3. Multi-factor ranking (S3-14 tuning):
+   Score = (Primary capability GROUPS covered * 10) + (Secondary tags * 3) - (Distance (km) * 0.08)
+   Teams with at least one PRIMARY match always rank above teams without one, so a nearby
+   team that cannot do the job never outranks a capable team further away.
+4. Explanatory reasoning for dispatchers (matched capabilities, distance, nearest capable team).
+5. Offline in-memory fallback using the Gujarat seed teams ONLY when no database connection is
+   passed (no DATABASE_URL). When the database answers with no available team the result is
+   empty: a dispatcher must never be shown teams that do not exist.
+
+Recommendations are strictly advisory: nothing in this module reserves or dispatches a team.
 """
 
 from __future__ import annotations
@@ -45,6 +52,7 @@ SCENARIO_CAPABILITY_RULES: dict[str, list[str]] = {
         "breathing_apparatus",
         "fire",
         "water_tender",
+        "industrial_fire",
     ],
     "FIRE": [
         "hazmat",
@@ -53,6 +61,7 @@ SCENARIO_CAPABILITY_RULES: dict[str, list[str]] = {
         "breathing_apparatus",
         "fire",
         "water_tender",
+        "industrial_fire",
     ],
     "EARTHQUAKE": [
         "search_and_rescue",
@@ -86,11 +95,43 @@ SCENARIO_CAPABILITY_RULES: dict[str, list[str]] = {
 SECONDARY_CAPABILITIES: dict[str, list[str]] = {
     "URBAN_FLOODING": ["diver_squad", "inflatable_boats", "medical"],
     "FLOOD": ["diver_squad", "inflatable_boats", "medical"],
-    "CYCLONE": ["boat", "heavy_extrication", "water_rescue", "heavy_machinery"],
-    "INDUSTRIAL_FIRE": ["gas_leak", "smoke_extraction", "high_rise_rescue"],
-    "FIRE": ["gas_leak", "smoke_extraction", "high_rise_rescue"],
+    "CYCLONE": ["boat", "heavy_extrication", "water_rescue", "heavy_machinery", "medical"],
+    "INDUSTRIAL_FIRE": ["gas_leak", "smoke_extraction", "high_rise_rescue", "medical"],
+    "FIRE": ["gas_leak", "smoke_extraction", "high_rise_rescue", "medical"],
     "EARTHQUAKE": ["triage_support", "critical_care"],
 }
+
+# Primary capabilities grouped by the job they do (S3-14). Tags inside one group are
+# near-synonyms (a fire tender team is tagged fire, fire_tender and water_tender), so a team
+# scores once per GROUP it covers, not once per tag. With per-tag scoring, a tag-rich specialist
+# 220 km away was within 0.5 points of fire tenders 10 km from a GIDC fire (and overtook them once
+# the seed's industrial_fire tag counted). Scenarios without groups here score
+# each primary tag as its own group (Sprint 2 behaviour).
+CAPABILITY_GROUPS: dict[str, dict[str, list[str]]] = {
+    "URBAN_FLOODING": {
+        "water rescue": ["boat", "flood_rescue", "water_rescue"],
+        "dewatering": ["dewatering_pump"],
+    },
+    "INDUSTRIAL_FIRE": {
+        "firefighting": ["fire", "fire_tender", "water_tender"],
+        "hazmat": ["hazmat", "chemical_foam", "industrial_fire", "breathing_apparatus"],
+    },
+    "CYCLONE": {
+        "rescue": ["search_and_rescue", "cyclone_response", "high_wind_rescue"],
+        "debris clearing": ["debris_clearing"],
+        "shelter": ["shelter_management"],
+        "first aid": ["medical_first_aid"],
+    },
+}
+CAPABILITY_GROUPS["FLOOD"] = CAPABILITY_GROUPS["URBAN_FLOODING"]
+CAPABILITY_GROUPS["FIRE"] = CAPABILITY_GROUPS["INDUSTRIAL_FIRE"]
+
+# Ranking weights (S3-14). One covered primary group = 10 points, one secondary tag = 3 points,
+# and 0.08 points per km: 125 km of extra travel costs as much as one capability group, so a
+# local team that can do the job beats a distant one with only extra supporting tags.
+PRIMARY_WEIGHT = 10.0
+SECONDARY_WEIGHT = 3.0
+DISTANCE_PENALTY_PER_KM = 0.08
 
 
 def normalize_scenario(scenario: str) -> str:
@@ -115,6 +156,47 @@ def get_required_capabilities(scenario: str) -> list[str]:
     """Retrieve list of required capabilities for a scenario."""
     norm = normalize_scenario(scenario)
     return SCENARIO_CAPABILITY_RULES.get(norm, ["search_and_rescue"])
+
+
+def get_secondary_capabilities(scenario: str) -> list[str]:
+    """Retrieve supporting (secondary) capabilities for a scenario."""
+    return SECONDARY_CAPABILITIES.get(normalize_scenario(scenario), [])
+
+
+def get_capability_groups(scenario: str) -> dict[str, list[str]]:
+    """Primary capabilities grouped by job; ungrouped scenarios get one group per tag."""
+    norm = normalize_scenario(scenario)
+    if norm in CAPABILITY_GROUPS:
+        return CAPABILITY_GROUPS[norm]
+    return {cap: [cap] for cap in get_required_capabilities(norm)}
+
+
+def build_reasons(
+    matched: list[str],
+    secondary: list[str],
+    groups_covered: int,
+    groups_total: int,
+    dist_km: float,
+    nearest_capable: bool,
+) -> str:
+    """Factually accurate justification for one ranked team (never claims 'closest' unless true)."""
+    if matched and groups_covered == groups_total:
+        text = f"Exact capability match ({', '.join(matched)})"
+    elif matched:
+        text = (
+            f"Partial capability match ({', '.join(matched)}; "
+            f"covers {groups_covered} of {groups_total} required capability groups)"
+        )
+    elif secondary:
+        text = f"Supporting capabilities only ({', '.join(secondary)})"
+    else:
+        text = "Available proximity reserve team with no specific capability match"
+    if matched and secondary:
+        text += f"; also offers {', '.join(secondary)}"
+    text += f" - {dist_km:.1f} km away"
+    if nearest_capable:
+        text += " (nearest capable team)"
+    return text
 
 
 def extract_capability_tags(raw_capabilities: Any) -> list[str]:
@@ -369,7 +451,7 @@ SELECT r.resource_id,
        a.name AS agency_name,
        r.status,
        r.quantity_available,
-       COALESCE(r.capability_tags, r.capability, '{}'::jsonb) AS capabilities,
+       COALESCE(NULLIF(r.capability_tags, '{}'::jsonb), r.capability, '{}'::jsonb) AS capabilities,
        ROUND((ST_Distance(r.current_geom::geography, ST_SetSRID(ST_MakePoint(%(lon)s, %(lat)s), 4326)::geography) / 1000.0)::numeric, 1) AS distance_km
 FROM resources r
 JOIN agencies a ON a.agency_id = r.agency_id
@@ -414,24 +496,23 @@ def recommend_candidate_teams(
     conn: Any = None,
     required_capabilities: list[str] | str | None = None,
 ) -> list[CandidateTeam]:
-    """Score and rank candidate response teams using Phase 4 criteria.
+    """Score and rank candidate response teams (S3-14 tuned rules).
 
-    Formula: Score = (Capability Overlap Count * 10) - (Distance (km) * 0.05)
+    Formula: Score = (Primary groups covered * 10) + (Secondary tags * 3) - (Distance (km) * 0.08),
+    with every team that has a primary match ranked above every team that has none.
     Returns ranked CandidateTeam models with structured operational justification text.
-    When required_capabilities is provided, candidate teams are filtered and scored specifically
-    against the requested capabilities.
+    When required_capabilities is provided (field backup request), candidate teams are filtered
+    and scored only against the requested capabilities.
+
+    With a database connection the PostGIS answer is authoritative, even when it is empty, and
+    query errors propagate (the transaction is aborted, so a fallback could only invent teams).
+    The in-memory seed teams are used only when no connection is passed (offline demo mode).
     """
     raw_teams: list[dict[str, Any]] = []
 
-    # Attempt live PostGIS query if database connection is explicitly passed
     if conn is not None:
-        try:
-            raw_teams = fetch_available_teams_postgis(conn, latitude, longitude)
-        except Exception:
-            logger.exception("PostGIS team query failed; falling back to in-memory seed teams")
-
-    if not raw_teams:
-        # Fallback to authoritative seed teams
+        raw_teams = fetch_available_teams_postgis(conn, latitude, longitude)
+    else:
         for t in _FALLBACK_TEAMS:
             dist = haversine_km(latitude, longitude, t["latitude"], t["longitude"])
             raw_teams.append({
@@ -447,13 +528,19 @@ def recommend_candidate_teams(
 
     if required_capabilities is not None:
         if isinstance(required_capabilities, str):
-            required_set = {required_capabilities.strip().lower()}
+            required_order = [required_capabilities.strip().lower()]
         else:
-            required_set = {cap.strip().lower() for cap in required_capabilities if cap.strip()}
+            required_order = [cap.strip().lower() for cap in required_capabilities if cap.strip()]
+        secondary_order: list[str] = []
+        groups = [[cap] for cap in dict.fromkeys(required_order)]
     else:
         norm_scenario = normalize_scenario(scenario)
-        required = get_required_capabilities(norm_scenario)
-        required_set = {cap.lower() for cap in required}
+        required_order = [cap.lower() for cap in get_required_capabilities(norm_scenario)]
+        secondary_order = [
+            cap.lower() for cap in get_secondary_capabilities(norm_scenario) if cap.lower() not in required_order
+        ]
+        groups = [[c.lower() for c in tags] for tags in get_capability_groups(norm_scenario).values()]
+    required_order = list(dict.fromkeys(required_order))
 
     scored_candidates: list[dict[str, Any]] = []
 
@@ -462,9 +549,12 @@ def recommend_candidate_teams(
         if t.get("status") != "AVAILABLE" or (t.get("quantity_available") or 0) <= 0:
             continue
 
-        team_caps = extract_capability_tags(t.get("capabilities"))
-        matched = [cap for cap in team_caps if cap in required_set]
+        team_caps = set(extract_capability_tags(t.get("capabilities")))
+        # Listed in rule order so the output is deterministic and reads like the rules table.
+        matched = [cap for cap in required_order if cap in team_caps]
+        secondary = [cap for cap in secondary_order if cap in team_caps]
         overlap_count = len(matched)
+        groups_covered = sum(1 for tags in groups if team_caps.intersection(tags))
         dist_km = round(float(t.get("distance_km", 0.0)), 1)
 
         # When specific capabilities are required (e.g. backup reinforcement),
@@ -472,16 +562,11 @@ def recommend_candidate_teams(
         if required_capabilities is not None and overlap_count == 0:
             continue
 
-        # Multi-factor score: (Overlap * 10) - (Distance * 0.05)
-        score = (overlap_count * 10.0) - (dist_km * 0.05)
-
-        # Structured operational justification text
-        if overlap_count == len(required_set) and overlap_count > 0:
-            reasons = f"Exact capability match ({', '.join(matched)}) and closest proximity ({dist_km:.1f} km)"
-        elif overlap_count > 0:
-            reasons = f"Partial capability match ({', '.join(matched)}) at {dist_km:.1f} km proximity"
-        else:
-            reasons = f"Available proximity reserve team ({dist_km:.1f} km) with no specific capability match"
+        score = (
+            groups_covered * PRIMARY_WEIGHT
+            + len(secondary) * SECONDARY_WEIGHT
+            - dist_km * DISTANCE_PENALTY_PER_KM
+        )
 
         # Coerce resource UUID safely, handling non-standard seed strings gracefully
         raw_res_id = t["resource_id"]
@@ -511,14 +596,21 @@ def recommend_candidate_teams(
             "agency": t.get("agency_name", "Public Safety Agency"),
             "distance_km": dist_km,
             "capability_match": matched,
-            "reasons": reasons,
+            "secondary_match": secondary,
+            "groups_covered": groups_covered,
             "status": t["status"],
             "capabilities": t.get("capabilities"),
             "score": score,
         })
 
-    # Sort descending by score, ascending by distance
-    scored_candidates.sort(key=lambda x: (x["score"], -x["distance_km"]), reverse=True)
+    # Capable teams (>= 1 primary match) first, then by score, then the nearer team.
+    scored_candidates.sort(
+        key=lambda x: (len(x["capability_match"]) > 0, x["score"], -x["distance_km"]),
+        reverse=True,
+    )
+
+    capable_km = [c["distance_km"] for c in scored_candidates if c["capability_match"]]
+    nearest_capable_km = min(capable_km) if capable_km else None
 
     results: list[CandidateTeam] = []
     for rank_idx, cand in enumerate(scored_candidates[:limit], start=1):
@@ -530,8 +622,19 @@ def recommend_candidate_teams(
                 agency=cand["agency"],
                 distance_km=cand["distance_km"],
                 capability_match=cand["capability_match"],
+                secondary_match=cand["secondary_match"],
+                matched_count=len(cand["capability_match"]),
+                score=round(cand["score"], 2),
                 rank=rank_idx,
-                reasons=cand["reasons"],
+                reasons=build_reasons(
+                    cand["capability_match"],
+                    cand["secondary_match"],
+                    cand["groups_covered"],
+                    len(groups),
+                    cand["distance_km"],
+                    nearest_capable=bool(cand["capability_match"])
+                    and cand["distance_km"] == nearest_capable_km,
+                ),
                 status=cand["status"],
                 capabilities=cand["capabilities"],
             )
@@ -642,13 +745,13 @@ def get_recommended_teams(
     limit: int = 5,
     conn: Any = None,
 ) -> list[RecommendedTeam]:
-    """Legacy helper for backwards compatibility with test_recommendations.py."""
+    """Legacy helper for backwards compatibility with test_recommendations.py.
+
+    Same data rule as recommend_candidate_teams: with a connection the database answer is
+    authoritative (an empty answer stays empty); seed teams are used only offline.
+    """
     if conn is not None:
-        try:
-            db_teams = fetch_available_teams_postgis(conn, latitude, longitude)
-            if db_teams:
-                return score_and_rank_teams(db_teams, latitude, longitude, scenario, limit=limit)
-        except Exception:
-            logger.exception("PostGIS team query failed; falling back to in-memory seed teams")
+        db_teams = fetch_available_teams_postgis(conn, latitude, longitude)
+        return score_and_rank_teams(db_teams, latitude, longitude, scenario, limit=limit)
 
     return score_and_rank_teams(_FALLBACK_TEAMS, latitude, longitude, scenario, limit=limit)

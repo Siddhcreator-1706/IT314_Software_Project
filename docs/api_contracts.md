@@ -279,6 +279,13 @@ The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm
 ```
 *(Promoted incidents start as `SUBMITTED` and are NOT publicly visible until verified by a dispatcher).*
 
+### 4.4 Related Signal Suggestions (advisory)
+* **Path:** `GET /api/v1/dm/signals/related`
+* **Auth:** Staff Session (`DISASTER_MGMT`)
+* **Query Parameters:** `signal_id` *(optional UUID)*, `limit` *(1-500, default 100)*
+* **Response (200 OK):** `{ method: "heuristic", advisory: true, requires_human_review: true, rules, pairs[], pairs_total, groups[], unlocated[], unlocated_total, truncated }`. Each pair has `signal_a`, `signal_b`, `distance_m`, `minutes_apart`, `label_agreement`, `ranking_score` (0-100 sort hint, not a probability), `reasons[]`, `warnings[]`.
+* Read-only: it never promotes, dismisses, merges or dispatches. Full rules, thresholds, example and limitations: [signal-matching.md](signal-matching.md).
+
 ---
 
 ## 5. Field Operations API (Sprint 2 — S2-01)
@@ -495,69 +502,66 @@ The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm
 
 ---
 
-## 6. Team Recommendation Engine & Backup Decision API (Sprint 2 — S2-02)
+## 6. Team Recommendation Engine & Backup Decision API (Sprint 2 — S2-02, tuned in Sprint 3 — S3-14)
 
 > [!NOTE]
-> The ranking engine scores candidates as: **Score = (Capability Overlap Count × 10) − (Distance km × 0.05)**. Higher score = higher rank. If incident coordinates are unavailable, the engine falls back to the district centroid from `get_district_centroid()` (33 Gujarat districts pre-loaded), and finally to Ahmedabad State HQ coordinates.
+> **Ranking (S3-14):** `Score = (primary capability groups covered × 10) + (secondary capability tags × 3) − (distance km × 0.08)`.
+> Primary capabilities are grouped by job (for example `boat`, `flood_rescue` and `water_rescue` are one "water rescue" group), so a team scores once per group, not once per synonym tag. Every team with at least one primary match ranks above every team without one. Higher score = higher rank; `distance_km` breaks ties.
+> If the incident has no coordinates the engine uses the district centroid from `get_district_centroid()` (33 Gujarat districts), and finally Ahmedabad State HQ.
+> With a configured database the PostGIS answer is authoritative: if no team is available the list is **empty** (it never falls back to in-memory seed teams). The in-memory seed teams are used only when `DATABASE_URL` is unset (offline demo).
 
 ### 6.1 Query Recommended Teams
 
 * **Path:** `GET /api/v1/dm/incidents/{incident_id}/team-recommendations`
-* **Auth:** Staff Session (`DISASTER_MGMT`)
+* **Auth:** Staff Session (`DISASTER_MGMT`, MFA verified)
 * **Query Parameters:**
   * `limit` *(optional integer, 1–20, default `5`)*: Maximum candidate teams to return.
 * **Response (200 OK):**
 ```json
 {
   "incident_id": "3c0b05b3-3a1e-450e-a226-bcfe69d0d939",
-  "scenario": "urban_flooding",
+  "scenario": "URBAN_FLOODING",
   "requires_confirmation": true,
   "recommendations": [
     {
       "resource_id": "18e69001-f111-4ebc-87d0-c3d3bb7a0002",
-      "team_name": "NDRF 602 Flood Rescue Unit (Ahmedabad Sabarmati)",
-      "agency_id": "a0000000-0000-0000-0000-000000000001",
-      "agency_name": "NDRF 6th Battalion (Vadodara)",
-      "distance_km": 3.4,
+      "team_name": "NDRF 602 Flood & Water Rescue Unit (Ahmedabad Sabarmati)",
+      "agency_id": "a0000000-0000-0000-0000-000000000007",
+      "agency": "NDRF 6th Battalion (Vadodara)",
+      "distance_km": 1.9,
       "capability_match": ["boat", "flood_rescue", "water_rescue"],
+      "secondary_match": ["diver_squad", "inflatable_boats"],
       "matched_count": 3,
-      "score": 29.83,
+      "score": 15.85,
       "rank": 1,
-      "advisory": true,
-      "reasons": "Exact capability match (boat, flood_rescue, water_rescue) and closest proximity (3.4 km)"
-    },
-    {
-      "resource_id": "18e69001-f111-4ebc-87d0-c3d3bb7a0007",
-      "team_name": "SDRF Flood Quick Response Team (Rajkot)",
-      "agency_id": "a0000000-0000-0000-0000-000000000002",
-      "agency_name": "SDRF Gujarat Command",
-      "distance_km": 215.0,
-      "capability_match": ["boat", "flood_rescue"],
-      "matched_count": 2,
-      "score": 9.25,
-      "rank": 2,
-      "advisory": true,
-      "reasons": "Capability match available as regional backup reserve (215.0 km away)"
+      "reasons": "Partial capability match (boat, flood_rescue, water_rescue; covers 1 of 2 required capability groups); also offers diver_squad, inflatable_boats - 1.9 km away (nearest capable team)",
+      "status": "AVAILABLE",
+      "capabilities": {"boat": true, "water_rescue": true, "flood_rescue": true, "inflatable_boats": true, "diver_squad": true}
     }
   ],
-  "generated_at": "2026-10-24T15:00:00Z"
+  "generated_at": "2026-11-05T15:00:00Z"
 }
 ```
-* **Scenario → Capability Mapping:**
+* **Field notes for the frontend:**
+  * `scenario` is the database enum value (`URBAN_FLOODING`, `INDUSTRIAL_FIRE`, `CYCLONE`).
+  * `agency` (not `agency_name`) carries the agency display name.
+  * `secondary_match`, `matched_count` and `score` were **added in S3-14**; they are additive and optional to display. `score` is advisory and only meaningful for ordering within one response.
+  * `reasons` calls a team "nearest capable team" only when it is the closest team with a primary match.
+* **Scenario → capability rules (S3-14):**
 
-| Scenario | Critical Capabilities Ranked |
-| :--- | :--- |
-| `urban_flooding` | `boat`, `flood_rescue`, `water_rescue`, `dewatering_pump` |
-| `cyclone` | `debris_clearing`, `shelter_management`, `high_wind_rescue`, `medical_first_aid` |
-| `industrial_fire` | `hazmat`, `fire_tender`, `chemical_foam`, `breathing_apparatus` |
-| `earthquake` | `search_and_rescue`, `collapse_rescue`, `structural_shoring`, `canine_unit`, `trauma_care` |
+| Scenario | Primary capability groups (10 pts per group) | Secondary tags (3 pts each) |
+| :--- | :--- | :--- |
+| `urban_flooding` | water rescue: `boat`, `flood_rescue`, `water_rescue` · dewatering: `dewatering_pump` | `diver_squad`, `inflatable_boats`, `medical` |
+| `industrial_fire` | firefighting: `fire`, `fire_tender`, `water_tender` · hazmat: `hazmat`, `chemical_foam`, `industrial_fire`, `breathing_apparatus` | `gas_leak`, `smoke_extraction`, `high_rise_rescue`, `medical` |
+| `cyclone` | rescue: `search_and_rescue`, `cyclone_response`, `high_wind_rescue` · debris clearing: `debris_clearing` · shelter: `shelter_management` · first aid: `medical_first_aid` | `boat`, `heavy_extrication`, `water_rescue`, `heavy_machinery`, `medical` |
 
 * **Constraints:**
-  * Only `AVAILABLE` resources of `type = 'TEAM'` are ranked; unavailable or already-dispatched teams are **strictly excluded**.
-  * `requires_confirmation: true` is **always** returned — this endpoint is **strictly advisory** and never auto-creates a dispatch.
+  * Only `AVAILABLE` resources of `type = 'TEAM'` with `quantity_available > 0` are ranked; reserved, maintenance or already-dispatched teams are **strictly excluded** (so a dispatched team disappears from the list: no double booking).
+  * `requires_confirmation: true` is **always** returned — this endpoint is **strictly advisory** and never creates a dispatch. Dispatch creation stays on `POST /api/v1/dm/incidents/{id}/dispatches` with the `DISPATCH` permission.
 * **Errors:**
   * `404 NOT_FOUND`: Incident does not exist.
-  * `403 FORBIDDEN`: Caller lacks `DISASTER_MGMT` role.
+  * `401 MFA_REQUIRED`: Staff token without verified MFA.
+  * `403 ROLE_REQUIRED`: Caller is not `DISASTER_MGMT`.
 
 ---
 
@@ -597,7 +601,7 @@ The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm
 ### 6.3 Decide on a Backup Request (Approve / Decline)
 
 * **Path:** `POST /api/v1/dm/team-requests/{request_id}/decision`
-* **Auth:** Staff Session (`DISASTER_MGMT`)
+* **Auth:** Staff Session (`DISASTER_MGMT`) with the **`DISPATCH`** permission
 * **Request Body:**
 ```json
 {
@@ -643,9 +647,12 @@ The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm
   * On `DECLINE`: Updates `team_requests.status = 'DECLINED'`; writes audit entry with rationale; notifies the requesting field user.
   * `dispatch_draft` (approve only): Pre-populated dispatch creation payload — dispatcher must **manually** create the dispatch using this data.
 * **Errors:**
-  * `404 NOT_FOUND`: Request ID does not exist.
+  * `403 PERMISSION_REQUIRED`: Caller lacks the `DISPATCH` permission.
+  * `404 NOT_FOUND`: Request ID (or `target_resource_id`) does not exist.
   * `409 TEAM_REQUEST_ALREADY_DECIDED`: Request has already been approved or declined.
-  * `422 VALIDATION_FAILED`: `action = DECLINE` requires non-empty `rationale`.
+  * `422 RATIONALE_REQUIRED`: `action = DECLINE` requires a non-empty `rationale`.
+  * `422 CAPABILITY_MISMATCH`: `target_resource_id` does not have the requested capability.
+* **Auto-suggestion (approve without `target_resource_id`):** ranks AVAILABLE teams that have the requested capability (Section 6.1 engine). If none is available, `suggested_resource_id` is `null` and `instructions` ends with "manual allocation required"; no team is invented.
 
 ---
 
@@ -730,7 +737,24 @@ The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm
   ]
 }
 ```
-### 8.2 AI Service Health
+### 8.2 English Text Analysis (Experimental Advisory Endpoint)
+* **Path:** `POST /analyze-text`
+* **Auth:** Optional `Authorization: Bearer <AI_TRIAGE_TOKEN>` when the worker token is configured.
+* **Purpose:** Run the separately trained English crisis-message model. This endpoint is additive and does not change `/triage` or the backend incident lifecycle.
+* **Request Body:**
+```json
+{
+  "description": "The underpass is flooded and several people need rescue.",
+  "source": "example-feed",
+  "source_created_at": "2026-11-04T12:30:00Z",
+  "latitude": 23.02,
+  "longitude": 72.57
+}
+```
+* **Response (200 OK):** Includes advisory disaster relevance and probabilities for learned help intent, direct-report, and humanitarian information categories. Low-confidence relevance is returned as `REVIEW` with a candidate label. Text not confidently detected as English returns `LANGUAGE_UNCERTAIN` or `UNSUPPORTED_LANGUAGE` without classification. `source_metadata` is copied from the caller; it is not extracted from the text. The model explicitly returns `NOT_TRAINED` for the project's exact operational scenario and priority, location mentions, and event-time extraction.
+* **Availability:** Returns `503` when `TEXT_MODEL_DIR` does not point to a trained model artifact. Human review is required; this response must not trigger incident verification or dispatch.
+
+### 8.3 AI Service Health
 * **Path:** `GET /health`
 * **Response (200 OK):** `{"status": "ok", "service": "drch-ai-triage"}`
 

@@ -51,6 +51,7 @@ flowchart TD
 
     subgraph AIService["AI & Triage Services"]
         InProcessAI["In-Process Rule-Based Classifier<br/>Guarded Keyword Triage"]
+        TextAI["Optional English Text Classifier<br/>/analyze-text (advisory; event-held-out baseline)"]
         VisionAI["PyTorch Vision Microservice<br/>ai-workers/model (timm backbone)"]
     end
 
@@ -93,6 +94,7 @@ IT314_Software_Project/
 │   ├── CODEOWNERS              # Pull request review assignment rules
 │   └── PULL_REQUEST_TEMPLATE.md# Team PR template with verification checklist
 ├── ai-workers/                 # Standalone AI workers and model evaluation
+│   ├── text_model/             # English crisis-text dataset, training and inference
 │   ├── model/                  # Deep learning image classifier microservice & test harness
 │   │   ├── app.py              # PyTorch/timm image triage service
 │   │   ├── train_disaster_types.py # Training pipeline
@@ -118,6 +120,7 @@ IT314_Software_Project/
 │   │   │   ├── dispatch.py         # Shared dispatch transitions & overdue escalation
 │   │   │   ├── incidents.py        # Incident status validation & notification hooks
 │   │   │   ├── recommendations.py  # Spatial team proximity & recommendation ranking
+│   │   │   ├── signal_matching.py  # Advisory related-signal suggestions (distance, time, wording, label)
 │   │   │   ├── resources.py        # Row-level locked resource allocations & release
 │   │   │   └── spatial_sync.py     # Upstream Gujarat district GeoJSON sync worker
 │   │   ├── audit.py            # Audit log recording & cryptographic hash-chain verifier
@@ -135,7 +138,8 @@ IT314_Software_Project/
 │   │   │   ├── 01_schema.sql             # Base tables, triggers, hash-chain audit log
 │   │   │   ├── 02_dm_module.sql          # DM extensions, status history, triage results
 │   │   │   ├── 03_core_extensions.sql    # Ingest runs, alerts, fallback flags, campaigns
-│   │   │   └── 04_spatial_boundaries.sql # PostGIS administrative boundary tables
+│   │   │   ├── 04_spatial_boundaries.sql # PostGIS administrative boundary tables
+│   │   │   └── 10_signal_matching.sql    # Signal geom sync trigger + pending-signal indexes
 │   │   └── seeds/              # Seed data for demo and integration testing
 │   │       └── seed_data.sql   # Demo staff, Gujarat districts, resources, simulated incidents
 │   ├── tests/                  # Pytest automated test suite
@@ -230,6 +234,11 @@ IT314_Software_Project/
   - Active default triage provider for the backend API.
   - Applies deterministic keyword heuristics, confidence scoring, and strict prompt-injection guardrails.
   - Results are marked advisory; stored in `triage_results` and never automatically alter incident states.
+- **English Text Analysis ([`ai-workers/text_model/`](../ai-workers/text_model/)):**
+  - Optional `/analyze-text` endpoint trained on an openly licensed, event-held-out English crisis-message corpus.
+  - Predicts disaster relevance, help request/offer, direct reports, and available humanitarian information categories.
+  - Does not replace `/triage` and does not infer the operational scenario, priority, location, or event time because the training labels do not support those outputs.
+  - Requires a separately supplied local model artifact; ingestion is not connected to it yet.
 - **Standalone Vision Model Service ([`ai-workers/model/app.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/ai-workers/model/app.py)):**
   - Microservice utilizing a `timm` PyTorch backbone for classifying disaster imagery (`fire`, `flood`, `hurricane`, `other_disaster`).
   - Evaluated on test splits via [`test_api_on_split.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/ai-workers/model/test_api_on_split.py) with class-specific review thresholds.
@@ -308,6 +317,7 @@ To maintain factual engineering clarity, capabilities in the repository are cata
 | **Team Recommendation Engine** | **Implemented (Real)** | PostGIS proximity sorting, capability scoring, tested in `test_recommendations.py` |
 | **Internal Ingestion Runner** | **Implemented (Real)** | Advisory lock protected `/api/v1/internal/ingest/run` & cron workflow |
 | **Advisory Text AI Triage** | **Implemented (Real)** | In-process rule-based classifier with guardrails (`app.services.ai_provider`) |
+| **English Crisis Text Model** | **Experimental / Optional** | Real-data event-held-out baseline at `ai-workers/text_model`; separate `/analyze-text` endpoint, not connected to ingestion |
 | **Image Disaster Classifier** | **Prototype / Isolated** | PyTorch service in `ai-workers/model/app.py`, evaluated offline on split data |
 | **Payment Gateway Integration** | **Simulated (Sandbox)** | Sandbox `MockGateway` only; live Razorpay/Stripe integration is planned |
 | **Live External Alert Ingestion** | **Simulated / Fixture** | Uses fallback database fixtures (`is_fallback = TRUE`); live CAP/USGS worker planned |

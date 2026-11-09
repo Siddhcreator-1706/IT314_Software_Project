@@ -31,6 +31,16 @@ from app.services.recommendations import (
 )
 
 
+@pytest.fixture(autouse=True)
+def _database_configured():
+    """Exercise the database code path against the mocked connection, not the offline demo."""
+    with patch(
+        "app.routers.dm.recommendations.get_settings",
+        return_value=MagicMock(database_url="postgresql://mocked/drch_test"),
+    ):
+        yield
+
+
 @pytest.fixture
 def dispatcher_principal() -> Principal:
     return Principal(
@@ -281,7 +291,18 @@ def test_district_centroid_fallback_when_coordinates_null(
 
     mock_conn = MagicMock()
     mock_conn.execute.return_value.fetchone.return_value = mock_incident_without_point
-    mock_conn.execute.return_value.fetchall.return_value = []
+    mock_conn.execute.return_value.fetchall.return_value = [
+        {
+            "resource_id": uuid.uuid4(),
+            "name": "Surat Hazira Chemical Hazard & Industrial Fire Team",
+            "agency_id": uuid.uuid4(),
+            "agency_name": "Gujarat Fire and Emergency Services",
+            "status": "AVAILABLE",
+            "quantity_available": 1,
+            "capabilities": {"hazmat": True, "fire": True, "industrial_fire": True},
+            "distance_km": 12.4,
+        }
+    ]
 
     @contextmanager
     def mock_tx():
@@ -296,9 +317,41 @@ def test_district_centroid_fallback_when_coordinates_null(
     assert isinstance(res, TeamRecommendationResponse)
     assert res.incident_id == incident_id
     assert res.requires_confirmation is True
-    # Successfully ranked teams around Surat centroid
-    assert len(res.recommendations) > 0
+    # The PostGIS team query was run from the Surat district centroid
+    team_query_params = mock_conn.execute.call_args_list[-1].args[1]
+    assert (team_query_params["lat"], team_query_params["lon"]) == surat_centroid
+    assert len(res.recommendations) == 1
     assert res.recommendations[0].agency is not None
+
+
+def test_no_available_team_in_database_returns_empty_not_seed_teams(
+    dispatcher_principal: Principal,
+):
+    """S3-14 fix: a live database with no available team must not fall back to seed teams."""
+    mock_conn = MagicMock()
+    mock_conn.execute.return_value.fetchone.return_value = {
+        "incident_id": uuid.uuid4(),
+        "incident_ref": "INC-2026-000777",
+        "scenario": "URBAN_FLOODING",
+        "status": "VERIFIED",
+        "district": "Ahmedabad",
+        "latitude": 23.0373,
+        "longitude": 72.5613,
+    }
+    mock_conn.execute.return_value.fetchall.return_value = []
+
+    @contextmanager
+    def mock_tx():
+        yield mock_conn
+
+    with patch("app.db.transaction", mock_tx):
+        res = get_incident_team_recommendations(
+            incident_id=uuid.uuid4(),
+            principal=dispatcher_principal,
+        )
+
+    assert res.recommendations == []
+    assert res.requires_confirmation is True
 
 
 # ── 14. Safety Rule: Advisory Never Auto-Dispatches ──────────────────────

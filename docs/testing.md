@@ -89,10 +89,13 @@ docker stop drch_test_db && docker rm drch_test_db
 
 - `client`: Session-scoped FastAPI `TestClient` initialized without background worker loops.
 - `sql`: Autocommit `psycopg` connection using `dict_row` row factory for direct database state arrangement and assertion.
-- `make`: Factory instance bound to `sql` connection for creating test entities (users, incidents, agencies, resources).
+- `make`: Factory instance bound to `sql` connection for creating test entities (users, incidents, agencies, resources, field users, and assigned field dispatches).
 - `citizen_user`: Active `NORMAL_USER` citizen account with pre-issued bearer headers and no MFA.
 - `staff_user`: Active `DISASTER_MGMT` staff account with TOTP MFA secret and `DISPATCH`, `SUPERVISOR` permissions.
-- `field_user`: Active `FIELD_TEAM` user bound to a team resource, gracefully skipping if table or role is not yet in schema.
+- `field_user`: Active `FIELD_TEAM` user bound to a team resource and `field_team_members` record with verified MFA.
+- `field_dispatch`: A realistic operational dispatch order (`REQUESTED`) assigned to the `field_user`'s team resource with active reservation.
+- `source_signal`: A realistic raw ingested signal (`PENDING`) in `source_signals`.
+- `campaign`: An active donation campaign (`ACTIVE`) in `donation_campaigns`.
 
 ---
 

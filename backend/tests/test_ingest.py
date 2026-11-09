@@ -91,6 +91,7 @@ def test_sachet_ingest_idempotency(client, sample_xml_path, monkeypatch, sql):
     assert count == 1
 
 
+@pytest.mark.db
 def test_sachet_ingest_malformed_xml(client, tmp_path, monkeypatch):
     """Malformed XML results in FAILED run status without storing alerts."""
     test_token = "secret_ingest_token_48_chars_long_for_sachet_tests"
@@ -141,15 +142,18 @@ def test_cli_load_fallback_alerts(monkeypatch, sql):
     mock_dev.app_env = "development"
     monkeypatch.setattr("app.config.get_settings", lambda: mock_dev)
 
-    load_fallback_alerts(argparse_dummy())
+    try:
+        load_fallback_alerts(argparse_dummy())
 
-    with db.transaction() as conn:
-        fallbacks = conn.execute(
-            "SELECT source_uid, is_fallback, event_type FROM external_alerts WHERE source_uid LIKE 'FALLBACK-%'"
-        ).fetchall()
-    assert len(fallbacks) == 3
-    for f in fallbacks:
-        assert f["is_fallback"] is True
+        with db.transaction() as conn:
+            fallbacks = conn.execute(
+                "SELECT source_uid, is_fallback, event_type FROM external_alerts WHERE source_uid LIKE 'FALLBACK-%'"
+            ).fetchall()
+        assert len(fallbacks) == 3
+        for f in fallbacks:
+            assert f["is_fallback"] is True
+    finally:
+        sql.execute("DELETE FROM external_alerts WHERE source_uid LIKE 'FALLBACK-%'")
 
 
 @pytest.mark.db

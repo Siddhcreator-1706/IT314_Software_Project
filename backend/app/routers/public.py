@@ -61,6 +61,8 @@ class PublicAlert(BaseModel):
     certainty: str | None = None
     language: str | None = None
     area_text: str | None
+    latitude: float | None = None
+    longitude: float | None = None
     is_fallback: bool
     effective_at: datetime | None
     expires_at: datetime | None
@@ -94,12 +96,12 @@ def _parse_bbox(raw: str) -> tuple[float, float, float, float]:
     return min_lon, min_lat, max_lon, max_lat
 
 
-@router.get("/incidents", response_model=list[PublicIncident], summary="Verified incidents for the public map")
-def list_public_incidents(
-    district: Annotated[str | None, Query(max_length=100)] = None,
+def build_public_incident_query(
+    district: str | None = None,
     scenario: Scenario | None = None,
-    bbox: Annotated[str | None, Query(description="min_lon,min_lat,max_lon,max_lat")] = None,
-):
+    bbox: str | None = None,
+) -> tuple[sql.Composed, dict]:
+    """The exact public-map query and parameters (also used by scripts/explain_queries.py)."""
     clauses: list[sql.Composable] = [sql.SQL(_INCIDENT_SELECT)]
     params: dict = {}
     if get_settings().app_env != "development":
@@ -117,8 +119,18 @@ def list_public_incidents(
         )
         params.update(x1=min_lon, y1=min_lat, x2=max_lon, y2=max_lat)
     clauses.append(sql.SQL(" ORDER BY i.verified_at DESC NULLS LAST LIMIT 1000"))
+    return sql.Composed(clauses), params
+
+
+@router.get("/incidents", response_model=list[PublicIncident], summary="Verified incidents for the public map")
+def list_public_incidents(
+    district: Annotated[str | None, Query(max_length=100)] = None,
+    scenario: Scenario | None = None,
+    bbox: Annotated[str | None, Query(description="min_lon,min_lat,max_lon,max_lat")] = None,
+):
+    query, params = build_public_incident_query(district, scenario, bbox)
     with db.transaction() as conn:
-        return conn.execute(sql.Composed(clauses), params).fetchall()
+        return conn.execute(query, params).fetchall()
 
 
 @router.get("/campaigns", response_model=list[PublicCampaign], summary="Active donation campaigns")
@@ -140,8 +152,8 @@ def list_public_alerts():
         rows = conn.execute(
             """
             SELECT alert_id::text AS alert_id, source, event_type, severity, urgency, certainty, language,
-                   area_text, is_fallback,
-                   effective_at, expires_at
+                   area_text, ROUND(latitude::numeric, 4)::float AS latitude, ROUND(longitude::numeric, 4)::float AS longitude,
+                   is_fallback, effective_at, expires_at
             FROM external_alerts
             WHERE source IN ('SACHET', 'USGS', 'GDACS', 'IMD')
               AND (expires_at IS NULL OR expires_at > now())

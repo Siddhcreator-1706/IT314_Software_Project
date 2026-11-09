@@ -25,6 +25,7 @@ When `APP_ENV` is `staging` or `production` the backend refuses to start unless 
 | `AI_TRIAGE_URL` | no | - | URL of the triage service (`.../triage`). Unset = triage returns `UNAVAILABLE`. |
 | `AI_TRIAGE_TOKEN` (S) | no | - | Bearer token sent to the triage service; set the same value on `ai-workers`. |
 | `AI_LOW_CONFIDENCE_THRESHOLD` | no | `0.6` | Below this a suggestion is `LOW_CONFIDENCE`. |
+| `AI_IMAGE_SERVICE_URL` | no | - | Base URL of the disaster image classifier (`ai-workers/model`, `POST /predict`), for example `http://localhost:8002` when started with `uvicorn app:app --port 8002` (it must not point at the backend's own port 8000). Unset = photo analysis returns `AI_PHOTO_UNAVAILABLE` (503). |
 | `GOOGLE_MAPS_API_KEY` (S) / `GOOGLE_GEOCODING_API_KEY` (S) | no | - | Optional geocoder; falls back to OpenStreetMap Nominatim. |
 | `BOUNDARY_SYNC_ENABLED` | no | `true` | Enable the periodic boundary sync worker. |
 | `BOUNDARY_SYNC_INTERVAL_HOURS` | no | `720` | Minimum hours between upstream syncs. |
@@ -55,6 +56,12 @@ When `APP_ENV` is `staging` or `production` the backend refuses to start unless 
 | `GOOGLE_CLIENT_ID` | no | - | Google OAuth web client id. `POST /auth/google` returns 503 until it is set; tokens for any other audience are rejected. |
 | `GOOGLE_CLIENT_SECRET` (S) | no | - | Google OAuth client secret (reserved; the ID-token flow does not need it yet). |
 
+## AI text model (`ai-workers/`, optional)
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `TEXT_MODEL_DIR` | no | `ai-workers/text_model/artifacts` | Directory holding `model.joblib` (and `metadata.json`) for `POST /analyze-text`. The endpoint returns 503 when it is missing, incompatible, or its SHA-256 does not match `metadata.json`. |
+
 ## Frontend (Next.js)
 
 | Variable | Required | Default | Purpose |
@@ -82,6 +89,12 @@ When `APP_ENV` is `staging` or `production` the backend refuses to start unless 
 | `TEST_DATABASE_URL` (S) | Test database; the name must end in `_test`. |
 | `REQUIRE_DB_TESTS` | `1` = fail the run if no DB-backed test executed (CI guard). |
 | `SMOKE_BASE_URL`, `STAGING_URL`, `SMOKE_STAFF_EMAIL`, `SMOKE_STAFF_PASSWORD` (S), `SMOKE_STAFF_TOTP_SECRET` (S), `SMOKE_COLD_START_TIMEOUT` | Smoke-test runner configuration. |
+| `SMOKE_FIELD_EMAIL`, `SMOKE_FIELD_PASSWORD` (S), `SMOKE_FIELD_TOTP_SECRET` (S) | Seeded field responder (team 1) for the field-operations steps F1-F3. |
+| `SMOKE_FIELD2_EMAIL`, `SMOKE_FIELD2_PASSWORD` (S), `SMOKE_FIELD2_TOTP_SECRET` (S) | Responder from a second team for the cross-team isolation step F4. |
+| `SMOKE_TEAM_RESOURCE_ID`, `SMOKE_TEAM_AGENCY_ID` | Optional overrides; resolved automatically when unset. |
+| `SMOKE_MOCK_GATEWAY_SECRET` (S) | Mock-gateway signing secret used to sign sandbox donations; falls back to `MOCK_GATEWAY_SECRET`, then to a dummy dev value. Must match the backend under test. |
+| `SMOKE_DONATION_WEBHOOK_SECRET` (S), `SMOKE_STAGING_WEBHOOK_URL` | Webhook probe (W1) against staging. |
+| `SMOKE_SKIP_<STEP>` | `1` skips one smoke step (see `scripts/README.md` section 3). |
 
 ## Not used (removed)
 
