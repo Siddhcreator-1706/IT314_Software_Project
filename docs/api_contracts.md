@@ -279,6 +279,13 @@ The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm
 ```
 *(Promoted incidents start as `SUBMITTED` and are NOT publicly visible until verified by a dispatcher).*
 
+### 4.4 Related Signal Suggestions (advisory)
+* **Path:** `GET /api/v1/dm/signals/related`
+* **Auth:** Staff Session (`DISASTER_MGMT`)
+* **Query Parameters:** `signal_id` *(optional UUID)*, `limit` *(1-500, default 100)*
+* **Response (200 OK):** `{ method: "heuristic", advisory: true, requires_human_review: true, rules, pairs[], pairs_total, groups[], unlocated[], unlocated_total, truncated }`. Each pair has `signal_a`, `signal_b`, `distance_m`, `minutes_apart`, `label_agreement`, `ranking_score` (0-100 sort hint, not a probability), `reasons[]`, `warnings[]`.
+* Read-only: it never promotes, dismisses, merges or dispatches. Full rules, thresholds, example and limitations: [signal-matching.md](signal-matching.md).
+
 ---
 
 ## 5. Field Operations API (Sprint 2 — S2-01)

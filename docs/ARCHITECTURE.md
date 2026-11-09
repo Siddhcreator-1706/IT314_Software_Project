@@ -120,6 +120,7 @@ IT314_Software_Project/
 │   │   │   ├── dispatch.py         # Shared dispatch transitions & overdue escalation
 │   │   │   ├── incidents.py        # Incident status validation & notification hooks
 │   │   │   ├── recommendations.py  # Spatial team proximity & recommendation ranking
+│   │   │   ├── signal_matching.py  # Advisory related-signal suggestions (distance, time, wording, label)
 │   │   │   ├── resources.py        # Row-level locked resource allocations & release
 │   │   │   └── spatial_sync.py     # Upstream Gujarat district GeoJSON sync worker
 │   │   ├── audit.py            # Audit log recording & cryptographic hash-chain verifier
@@ -137,7 +138,8 @@ IT314_Software_Project/
 │   │   │   ├── 01_schema.sql             # Base tables, triggers, hash-chain audit log
 │   │   │   ├── 02_dm_module.sql          # DM extensions, status history, triage results
 │   │   │   ├── 03_core_extensions.sql    # Ingest runs, alerts, fallback flags, campaigns
-│   │   │   └── 04_spatial_boundaries.sql # PostGIS administrative boundary tables
+│   │   │   ├── 04_spatial_boundaries.sql # PostGIS administrative boundary tables
+│   │   │   └── 10_signal_matching.sql    # Signal geom sync trigger + pending-signal indexes
 │   │   └── seeds/              # Seed data for demo and integration testing
 │   │       └── seed_data.sql   # Demo staff, Gujarat districts, resources, simulated incidents
 │   ├── tests/                  # Pytest automated test suite
