@@ -48,12 +48,14 @@ async function forward(request: NextRequest, ctx: RouteContext<"/api/dm/[...path
 
   let upstream: Response;
   try {
-    const isMultipart = request.headers.get("content-type")?.includes("multipart/form-data");
+    // JSON and form text pass as text; everything else (photos, multipart) must stay binary or it is corrupted.
+    const contentType = request.headers.get("content-type") ?? "";
+    const isText = contentType === "" || contentType.includes("json") || contentType.startsWith("text/");
     const body = ["GET", "HEAD"].includes(request.method)
       ? undefined
-      : isMultipart
-        ? await request.arrayBuffer()
-        : await request.text();
+      : isText
+        ? await request.text()
+        : await request.arrayBuffer();
     upstream = await fetch(target, {
       method: request.method,
       headers,
