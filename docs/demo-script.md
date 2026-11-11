@@ -1,16 +1,16 @@
-# Gujarat Disaster Management Platform (ResQ) — Sprint 2 Demo Script
+# Gujarat Disaster Management Platform (ResQ) — Demo Script
 
 **Document Version:** 1.0.0  
 **Author:** Dhruv (QA & Test Lead)  
 **Target Audience / Presenter:** Siddh (DevOps & Deployment Lead)  
-**Platform Target:** Sprint 2 Review & Stakeholder Demonstration  
+**Platform Target:** Review & Stakeholder Demonstration  
 **Applicable Environments:** Local Docker Compose / Render Staging  
 
 ---
 
 ## 1. Overview & Demonstration Goals
 
-This script provides a structured, step-by-step operational walkthrough of the **Gujarat Disaster Management Platform (ResQ / DRCH)** for Sprint 2. It demonstrates the complete crisis lifecycle across all four system personas:
+This script provides a structured, step-by-step operational walkthrough of the **Gujarat Disaster Management Platform (ResQ / DRCH)** for a stakeholder review. It demonstrates the complete crisis lifecycle across all four system personas:
 
 1. **Citizen / Reporter:** Registers securely, reports emergency incidents within Gujarat boundaries, tracks status timeline, and issues crisis donations.
 2. **Staff Dispatcher:** Authenticates via RFC 6238 TOTP MFA, reviews unverified queues, requests advisory AI triage, verifies incidents, evaluates multi-agency team requests, and dispatches field teams.
@@ -348,10 +348,10 @@ python -m app.cli create-field-user \
 
 ---
 
-## 4. Pending Sprint 2 Features & Known Defects
+## 4. Known Limitations
 
 > [!WARNING]
-> During the demo, navigate around the following endpoints which are pending merge or feature completion in Sprint 2:
+> During the demo, navigate around the following endpoints which are pending merge or feature completion:
 
 ### 1. Donor History Feed (`GET /api/v1/me/donations`)
 - **Status:** Unmerged / 404 Route Not Registered.

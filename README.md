@@ -160,11 +160,9 @@ gantt
 
 ---
 
-## 📋 Sprint Roadmap & Archived Work Allocation
+## 📋 Sprint Roadmap
 
 The active implementation plan follows the **3-Sprint Production Delivery Roadmap** shown in the Gantt chart above.
-
-The original 5-phase theoretical concept allocation (Kafka, drone edge CV, Indic-BERT, 10-member allocation) has been archived for reference in [`docs/archive/original-roadmap.md`](docs/archive/original-roadmap.md).
 
 ---
 

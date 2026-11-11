@@ -208,7 +208,7 @@ Until an enterprise transactional email provider is connected, public password r
 ## 3. Field Team Responder API (Owner: Nisarg)
 
 > [!NOTE]
-> This section is a high-level summary stub retained for Sprint 1 traceability. For the complete, production-grade Sprint 2 API specification — including full request/response contracts, state transition rules, idempotency, isolation guarantees, and error codes — refer to **[Section 5: Field Operations API](#5-field-operations-api-sprint-2--s2-01)**.
+> This section is a high-level summary stub retained for Sprint 1 traceability. For the complete, production-grade Sprint 2 API specification — including full request/response contracts, state transition rules, idempotency, isolation guarantees, and error codes — refer to **[Section 5: Field Operations API](#5-field-operations-api)**.
 
 | Endpoint | Path | Method |
 | :--- | :--- | :--- |
@@ -288,7 +288,7 @@ The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm
 
 ---
 
-## 5. Field Operations API (Sprint 2 — S2-01)
+## 5. Field Operations API
 
 > [!IMPORTANT]
 > All field endpoints require `Authorization: Bearer <token>` issued to a `FIELD_TEAM` role user. Field users do **not** require TOTP MFA — password authentication only. Every dispatch-specific route enforces strict cross-team isolation: requesting another team's dispatch returns `404 NOT_FOUND` (never `403`) to eliminate enumeration attacks.
@@ -502,7 +502,7 @@ The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm
 
 ---
 
-## 6. Team Recommendation Engine & Backup Decision API (Sprint 2 — S2-02, tuned in Sprint 3 — S3-14)
+## 6. Team Recommendation Engine & Backup Decision API
 
 > [!NOTE]
 > **Ranking (S3-14):** `Score = (primary capability groups covered × 10) + (secondary capability tags × 3) − (distance km × 0.08)`.
