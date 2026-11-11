@@ -3,20 +3,21 @@
 import { useActionState, useState } from "react";
 
 import { ErrorBox, Spinner, authButton, authInput, authLabel } from "@/components/auth/AuthShell";
+import { useAuthLanguage } from "@/components/auth/AuthLanguage";
 
 import { authenticate, type LoginState } from "./actions";
 
 /** Turn a terse server message into something a stressed person can act on. */
-function friendly(message: string): { message: string; hint?: string } {
+function friendly(message: string, copy: ReturnType<typeof useAuthLanguage>["copy"]): { message: string; hint?: string } {
   const m = message.toLowerCase();
   if (m.includes("unreachable") || m.includes("network") || m.includes("fetch")) {
-    return { message: "We could not reach the service.", hint: "Check your internet connection and try again in a moment." };
+    return { message: copy.networkError, hint: copy.networkHint };
   }
   if (m.includes("locked") || m.includes("too many")) {
-    return { message, hint: "Wait a few minutes before trying again, or ask your team lead for help." };
+    return { message, hint: copy.lockedHint };
   }
   if (m.includes("sign-in failed") || m.includes("invalid") || m.includes("incorrect")) {
-    return { message: "That email or password is not correct.", hint: "Check for spaces or capital letters. Use “Show” to see what you typed." };
+    return { message: copy.incorrectCredentials, hint: copy.incorrectCredentialsHint };
   }
   return { message };
 }
@@ -28,7 +29,8 @@ function friendly(message: string): { message: string; hint?: string } {
 export function StaffSignIn({ next }: { next?: string }) {
   const [state, action, pending] = useActionState<LoginState, FormData>(authenticate, { step: "password" });
   const [showPassword, setShowPassword] = useState(false);
-  const err = state.error ? friendly(state.error) : null;
+  const { copy } = useAuthLanguage();
+  const err = state.error ? friendly(state.error, copy) : null;
 
   if (state.step === "mfa") {
     return (
@@ -36,13 +38,13 @@ export function StaffSignIn({ next }: { next?: string }) {
         <input type="hidden" name="intent" value="mfa" />
         <input type="hidden" name="next" value={next ?? ""} />
         <div className="rounded-xl border-2 border-sky-200 bg-sky-50 p-4 text-base text-sky-950">
-          <p className="font-semibold">One more step</p>
+          <p className="font-semibold">{copy.mfaStep}</p>
           <p className="mt-1">
-            Open your authenticator app and enter the 6-digit code for <strong className="break-all">{state.email}</strong>.
+            {copy.mfaInstruction(state.email ?? "")}
           </p>
         </div>
         <div>
-          <label htmlFor="staff-code" className={authLabel}>6-digit code · 6 अंकों का कोड · 6 અંકનો કોડ</label>
+          <label htmlFor="staff-code" className={authLabel}>{copy.codeLabel}</label>
           <input
             id="staff-code"
             name="code"
@@ -55,20 +57,20 @@ export function StaffSignIn({ next }: { next?: string }) {
             placeholder="000000"
             className={`${authInput} text-center font-mono text-3xl tracking-[0.5em]`}
           />
-          <p className="mt-2 text-sm text-slate-600">The code changes every 30 seconds. If it fails, wait for the next one.</p>
+          <p className="mt-2 text-sm text-slate-600">{copy.codeHelp}</p>
         </div>
         {err && <ErrorBox message={err.message} hint={err.hint} />}
         <button type="submit" className={authButton} disabled={pending}>
           {pending ? (
             <>
-              <Spinner /> Verifying…
+              <Spinner /> {copy.verifying}
             </>
           ) : (
-            "Verify and continue →"
+            copy.verifyAndContinue
           )}
         </button>
         <a href="/login" className="block text-center text-base font-semibold text-sky-800 underline">
-          Use a different account
+          {copy.useDifferentAccount}
         </a>
       </form>
     );
@@ -79,7 +81,7 @@ export function StaffSignIn({ next }: { next?: string }) {
       <input type="hidden" name="intent" value="password" />
       <input type="hidden" name="next" value={next ?? ""} />
       <div>
-        <label htmlFor="staff-email" className={authLabel}>Email · ईमेल · ઇમેઇલ</label>
+        <label htmlFor="staff-email" className={authLabel}>{copy.email}</label>
         <input
           id="staff-email"
           name="email"
@@ -98,14 +100,14 @@ export function StaffSignIn({ next }: { next?: string }) {
       </div>
       <div>
         <div className="mb-1.5 flex items-center justify-between">
-          <label htmlFor="staff-password" className="text-base font-semibold text-slate-800">Password · पासवर्ड · પાસવર્ડ</label>
+          <label htmlFor="staff-password" className="text-base font-semibold text-slate-800">{copy.password}</label>
           <button
             type="button"
             onClick={() => setShowPassword((v) => !v)}
             aria-pressed={showPassword}
             className="min-h-11 cursor-pointer rounded-lg px-3 text-base font-semibold text-sky-800 hover:bg-sky-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-sky-300"
           >
-            {showPassword ? "Hide" : "Show"}
+            {showPassword ? copy.hide : copy.show}
           </button>
         </div>
         <input
@@ -114,7 +116,7 @@ export function StaffSignIn({ next }: { next?: string }) {
           type={showPassword ? "text" : "password"}
           autoComplete="current-password"
           required
-          placeholder="Your password"
+          placeholder={copy.yourPassword}
           className={authInput}
         />
       </div>
@@ -122,13 +124,13 @@ export function StaffSignIn({ next }: { next?: string }) {
       <button type="submit" className={authButton} disabled={pending}>
         {pending ? (
           <>
-            <Spinner /> Signing in…
+            <Spinner /> {copy.signingIn}
           </>
         ) : (
-          "Sign in →"
+          copy.signInArrow
         )}
       </button>
-      <p className="text-center text-sm text-slate-600">Dispatch and field staff will be asked for an authenticator code next.</p>
+      <p className="text-center text-sm text-slate-600">{copy.staffMfaNote}</p>
     </form>
   );
 }

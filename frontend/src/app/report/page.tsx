@@ -1,11 +1,29 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { SiteHeader, NavLink } from "@/components/Brand";
 import Link from "next/link";
 import { isInGujarat, GUJARAT_CENTER, GUJARAT_BOUNDS, GUJARAT_DEFAULT_ZOOM } from "@/lib/geo";
 import { createReport, fetchPublicIncidents, type PublicIncident, type Scenario } from "@/services/citizenApi";
 import { findNearbyIncidents } from "@/services/duplicateDetection";
 import { URGENT_NEEDS, preTriage } from "@/services/preTriage";
+
+/** ARIA radio pattern: arrow keys move the selection and focus inside a group; only one option is a tab stop. */
+function moveRadioSelection(
+  event: React.KeyboardEvent<HTMLElement>,
+  ids: readonly string[],
+  current: string,
+  select: (id: string) => void,
+) {
+  const forward = event.key === "ArrowRight" || event.key === "ArrowDown";
+  const backward = event.key === "ArrowLeft" || event.key === "ArrowUp";
+  if (!forward && !backward) return;
+  event.preventDefault();
+  const index = Math.max(ids.indexOf(current), 0);
+  const next = ids[(index + (forward ? 1 : -1) + ids.length) % ids.length];
+  select(next);
+  event.currentTarget.querySelector<HTMLElement>(`[data-radio-id="${next}"]`)?.focus();
+}
 
 const SCENARIOS = [
   { id: "urban_flooding", label: "Urban Flooding", icon: "🌊", desc: "Waterlogging, rising flood water, stranded residents" },
@@ -249,8 +267,8 @@ export default function ReportIncidentPage() {
         nearbyMarkersLayerRef.current.clearLayers();
 
         nearby.forEach((item) => {
-          const lat = item.incident.latitude;
-          const lon = item.incident.longitude;
+          const lat = item.incident.lat;
+          const lon = item.incident.lon;
           if (typeof lat !== "number" || typeof lon !== "number") return;
 
           const circle = L.circleMarker([lat, lon], {
@@ -264,8 +282,8 @@ export default function ReportIncidentPage() {
 
           circle.bindPopup(
             `<div style="font-size: 12px; color: #1e293b;">
-              <strong>${item.incident.reference || item.incident.id}</strong><br/>
-              ${item.incident.scenario || "Incident"}<br/>
+              <strong>${item.incident.id}</strong><br/>
+              ${item.incident.category || "Incident"}<br/>
               <em>~${item.distanceMeters < 1000 ? `${item.distanceMeters}m` : `${(item.distanceMeters / 1000).toFixed(1)}km`} away</em>
             </div>`
           );
@@ -373,8 +391,8 @@ export default function ReportIncidentPage() {
   };
 
   const handleFocusNearby = (item: { incident: PublicIncident }) => {
-    const lat = item.incident.latitude;
-    const lon = item.incident.longitude;
+    const lat = item.incident.lat;
+    const lon = item.incident.lon;
     if (typeof lat === "number" && typeof lon === "number" && mapRef.current) {
       mapRef.current.flyTo([lat, lon], 14, { duration: 1 });
     }
@@ -458,44 +476,15 @@ export default function ReportIncidentPage() {
       </div>
 
       {/* Header */}
-      <header className="h-16 bg-slate-900 border-b border-slate-800 px-6 flex items-center justify-between sticky top-0 z-20">
-        <div className="flex items-center gap-3">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition">
-            <span className="text-xl">🛡️</span>
-            <span className="font-bold text-white text-base tracking-wide">ResQ Gujarat</span>
-          </Link>
-          <span className="text-slate-600">/</span>
-          <span className="text-xs uppercase tracking-wider font-semibold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
-            Citizen Emergency Dispatch
-          </span>
-        </div>
-        <div className="flex items-center gap-4 text-xs font-medium">
-          {session?.authenticated ? (
-            <span className="hidden md:inline text-slate-400">
-              Signed in as <strong className="text-sky-300">{session.name || "Citizen"}</strong>
-            </span>
-          ) : (
-            <Link
-              href="/login?next=/report"
-              className="text-sky-400 hover:text-sky-300 font-semibold underline"
-            >
-              Sign In
-            </Link>
-          )}
-          <Link href="/my-reports" className="text-slate-300 hover:text-white transition flex items-center gap-1.5">
-            📋 My Reports
-          </Link>
-          <Link href="/citizen/dashboard" className="text-slate-300 hover:text-white transition flex items-center gap-1.5">
-            🏠 Citizen Dashboard
-          </Link>
-          <Link href="/" className="text-slate-400 hover:text-slate-200 transition">
-            Public Map
-          </Link>
-        </div>
-      </header>
+      <SiteHeader subtitle="Citizen Emergency Dispatch" maxWidth="max-w-5xl">
+        {!session?.authenticated && <NavLink href="/login?next=/report">Sign In</NavLink>}
+        <NavLink href="/my-reports">My Reports</NavLink>
+        <NavLink href="/citizen/dashboard" hideBelow="sm">Dashboard</NavLink>
+        <NavLink href="/" hideBelow="sm">Public Map</NavLink>
+      </SiteHeader>
 
       {/* Main Container */}
-      <main className="flex-1 max-w-4xl w-full mx-auto p-6 md:p-8">
+      <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 md:p-8">
         {/* Guest Warning if not authenticated */}
         {session && !session.authenticated && (
           <div className="mb-6 p-4 bg-sky-950/70 border border-sky-600/40 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs md:text-sm">
@@ -526,32 +515,32 @@ export default function ReportIncidentPage() {
         )}
 
         {successResult ? (
-          <div className="bg-slate-900 border border-emerald-500/30 rounded-2xl p-8 text-center shadow-xl space-y-6">
-            <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto text-3xl">
+          <div role="status" aria-live="polite" className="bg-slate-900 border border-emerald-500/30 rounded-2xl p-6 sm:p-8 text-center shadow-xl space-y-6">
+            <div className="w-16 h-16 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center mx-auto text-3xl font-bold" aria-hidden="true">
               ✓
             </div>
             <div>
               <h2 className="text-2xl font-bold text-white mb-2">Emergency Report Submitted</h2>
-              <p className="text-slate-400 text-sm max-w-md mx-auto">
+              <p className="text-slate-300 text-sm max-w-md mx-auto">
                 Your incident report has been securely registered in the Gujarat Disaster Response Operations Hub.
               </p>
             </div>
 
             <div className="inline-block bg-slate-950 border border-slate-800 rounded-xl px-6 py-4 text-left">
-              <div className="text-xs text-slate-500 uppercase tracking-wider font-semibold mb-1">
+              <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold mb-1">
                 Incident Reference
               </div>
               <div className="text-xl font-mono font-bold text-sky-400">{successResult.reference}</div>
-              <div className="text-xs text-emerald-400 mt-1 flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+              <div className="text-xs text-emerald-400 mt-1 flex items-center gap-1.5 font-medium">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" aria-hidden="true" />
                 Status: {successResult.status}
               </div>
             </div>
 
-            <div className="flex items-center justify-center gap-4 pt-4">
+            <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
               <Link
                 href="/my-reports"
-                className="bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-6 py-2.5 rounded-xl shadow-lg shadow-sky-600/30 transition"
+                className="min-h-[44px] bg-sky-600 hover:bg-sky-500 text-white text-sm font-semibold px-6 py-2.5 rounded-xl shadow-lg shadow-sky-600/30 transition flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
               >
                 Track Status in My Reports →
               </Link>
@@ -564,26 +553,26 @@ export default function ReportIncidentPage() {
                     setIdempotencyKey(crypto.randomUUID());
                   }
                 }}
-                className="bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm font-medium px-5 py-2.5 rounded-xl transition cursor-pointer"
+                className="min-h-[44px] bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium px-5 py-2.5 rounded-xl transition flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 cursor-pointer"
               >
                 File Another Report
               </button>
             </div>
           </div>
         ) : (
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 md:p-8 shadow-xl">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 md:p-8 shadow-xl">
             <div className="border-b border-slate-800 pb-5 mb-6">
               <h1 className="text-xl md:text-2xl font-bold text-white flex items-center gap-2.5">
-                <span>📢</span> Report Emergency Incident
+                <span aria-hidden="true">📢</span> Report Emergency Incident
               </h1>
-              <p className="text-slate-400 text-xs md:text-sm mt-1">
+              <p className="text-slate-300 text-xs md:text-sm mt-1">
                 Direct dispatch link to State Emergency Operations Center (SEOC) & Local Responders.
               </p>
             </div>
 
             {errorMessage && (
-              <div className="mb-6 p-4 bg-red-950/60 border border-red-700/60 rounded-xl text-red-200 text-sm flex items-start gap-3">
-                <span className="text-lg">⚠️</span>
+              <div role="alert" aria-live="assertive" className="mb-6 p-4 bg-red-950/60 border border-red-700/60 rounded-xl text-red-200 text-sm flex items-start gap-3">
+                <span className="text-lg" aria-hidden="true">⚠️</span>
                 <div>
                   <div className="font-semibold">Unable to submit report</div>
                   <div className="text-xs mt-0.5 text-red-300">{errorMessage}</div>
@@ -604,33 +593,44 @@ export default function ReportIncidentPage() {
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Scenario Picker */}
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2.5">
+                <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-2.5">
                   1. Disaster Scenario
                 </label>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div
+                  role="radiogroup"
+                  aria-label="Disaster Scenario"
+                  onKeyDown={(e) =>
+                    moveRadioSelection(e, SCENARIOS.map((x) => x.id), scenario, (id) => {
+                      setScenario(id as typeof scenario);
+                      setNeeds([]);
+                    })
+                  }
+                  className="grid grid-cols-1 sm:grid-cols-3 gap-3"
+                >
                   {SCENARIOS.map((item) => {
                     const isSelected = scenario === item.id;
                     return (
                       <button
                         key={item.id}
                         type="button"
-                        onClick={() => {
-                          setScenario(item.id);
-                          setNeeds([]);
-                        }}
-                        className={`p-3.5 rounded-xl border text-left flex flex-col gap-2 transition cursor-pointer ${
+                        role="radio"
+                        data-radio-id={item.id}
+                        tabIndex={isSelected ? 0 : -1}
+                        aria-checked={isSelected}
+                        onClick={() => { setScenario(item.id); setNeeds([]); }}
+                        className={`min-h-[56px] p-3.5 rounded-xl border text-left flex items-start gap-3 transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950 ${
                           isSelected
-                            ? "bg-sky-950/50 border-sky-500 shadow-md shadow-sky-500/10 ring-1 ring-sky-500/40"
-                            : "bg-slate-950/60 border-slate-800 hover:border-slate-700 text-slate-400"
+                            ? "bg-sky-950/40 border-sky-500 shadow-md shadow-sky-500/10"
+                            : "bg-slate-950/60 border-slate-800 hover:border-slate-700 text-slate-300"
                         }`}
                       >
-                        <div className="flex items-center gap-2">
-                          <span className="text-2xl">{item.icon}</span>
-                          <span className={`text-sm font-bold ${isSelected ? "text-white" : "text-slate-300"}`}>
+                        <span className="text-2xl" aria-hidden="true">{item.icon}</span>
+                        <div>
+                          <div className={`text-sm font-bold ${isSelected ? "text-white" : "text-slate-200"}`}>
                             {item.label}
-                          </span>
+                          </div>
+                          <div className="text-xs text-slate-400 mt-0.5">{item.desc}</div>
                         </div>
-                        <div className="text-xs text-slate-500 leading-tight">{item.desc}</div>
                       </button>
                     );
                   })}
@@ -640,19 +640,28 @@ export default function ReportIncidentPage() {
               {/* Urgency and People Affected */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                  <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-2">
                     2. Urgency Level
                   </label>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div
+                    role="radiogroup"
+                    aria-label="Urgency Level"
+                    onKeyDown={(e) => moveRadioSelection(e, URGENCIES.map((x) => x.id), urgency, (id) => setUrgency(id as typeof urgency))}
+                    className="grid grid-cols-2 gap-2"
+                  >
                     {URGENCIES.map((item) => (
                       <button
                         key={item.id}
                         type="button"
+                        role="radio"
+                        data-radio-id={item.id}
+                        tabIndex={urgency === item.id ? 0 : -1}
+                        aria-checked={urgency === item.id}
                         onClick={() => setUrgency(item.id)}
-                        className={`px-3 py-2.5 rounded-lg text-xs font-semibold border text-center transition cursor-pointer ${
+                        className={`min-h-[44px] px-3 py-2 rounded-lg text-xs font-semibold border text-center transition flex items-center justify-center cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-1 focus-visible:ring-offset-slate-950 ${
                           urgency === item.id
-                            ? `${item.color} bg-slate-800 shadow font-bold`
-                            : "border-slate-800 text-slate-500 hover:border-slate-700"
+                            ? `${item.color} bg-slate-800 shadow ring-1 ring-sky-500/50`
+                            : "border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white"
                         }`}
                       >
                         {item.label}
@@ -662,25 +671,26 @@ export default function ReportIncidentPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                  <label htmlFor="people-affected" className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-2">
                     3. Estimated People Affected
                   </label>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-3">
                     <input
+                      id="people-affected"
                       type="number"
                       min={1}
                       max={10000}
                       value={peopleAffected}
                       onChange={(e) => setPeopleAffected(Math.max(1, parseInt(e.target.value) || 1))}
-                      className="w-28 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white font-mono text-center focus:outline-none focus:border-sky-500"
+                      className="w-24 sm:w-28 min-h-[40px] bg-slate-950 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white font-mono text-center focus:outline-none focus:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400"
                     />
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5" role="group" aria-label="Quick select people affected">
                       {[1, 5, 10, 25].map((cnt) => (
                         <button
                           key={cnt}
                           type="button"
                           onClick={() => setPeopleAffected(cnt)}
-                          className="px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-medium transition cursor-pointer"
+                          className="min-h-[38px] min-w-[38px] px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-lg text-xs font-medium transition flex items-center justify-center cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
                         >
                           {cnt}+
                         </button>
@@ -692,32 +702,34 @@ export default function ReportIncidentPage() {
 
               {/* Description */}
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
-                  4. Situation Description
+                <label htmlFor="incident-description" className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-2">
+                  4. Situation Description <span className="text-amber-400" aria-hidden="true">*</span>
                 </label>
                 <textarea
+                  id="incident-description"
                   rows={3}
                   required
+                  aria-required="true"
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   placeholder="Describe the current hazard, trapped individuals, water depth, road blockages, or urgent medical needs..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-sky-500 transition resize-none"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-400 focus:outline-none focus:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400 transition resize-none"
                 />
               </div>
 
               {/* Urgent needs checklist */}
               <div>
-                <label className="block text-xs font-bold text-slate-300 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-2">
                   Urgent needs (optional)
                 </label>
                 <div className="flex flex-wrap gap-2">
                   {(URGENT_NEEDS[scenario as Scenario] || []).map((need) => (
                     <label
                       key={need}
-                      className={`px-3 py-1.5 rounded-lg border text-xs cursor-pointer transition select-none ${
+                      className={`min-h-[40px] px-3.5 py-2 rounded-lg border text-xs cursor-pointer transition select-none flex items-center focus-within:ring-2 focus-within:ring-sky-400 focus-within:ring-offset-1 focus-within:ring-offset-slate-950 ${
                         needs.includes(need)
-                          ? "border-sky-500 bg-sky-950/40 text-white font-semibold"
-                          : "border-slate-800 text-slate-400 hover:border-slate-700"
+                          ? "border-sky-500 bg-sky-950/40 text-white font-medium shadow-sm"
+                          : "border-slate-800 text-slate-300 hover:border-slate-700 hover:text-white"
                       }`}
                     >
                       <input
@@ -728,6 +740,7 @@ export default function ReportIncidentPage() {
                           setNeeds(needs.includes(need) ? needs.filter((n) => n !== need) : [...needs, need])
                         }
                       />
+                      <span className="mr-1.5 text-sky-400" aria-hidden="true">{needs.includes(need) ? "✓" : "+"}</span>
                       {need}
                     </label>
                   ))}
@@ -735,23 +748,21 @@ export default function ReportIncidentPage() {
               </div>
 
               {hint.level && (
-                <div className="p-4 bg-amber-950/40 border border-amber-700/50 rounded-xl text-xs text-amber-100" role="status">
-                  <div className="font-semibold">
+                <div className="p-4 bg-amber-950/40 border border-amber-700/50 rounded-xl text-xs text-amber-100" role="status" aria-live="polite">
+                  <div className="font-semibold text-amber-200">
                     Automated hint: this may be {hint.level === "CRITICAL" ? "a life-threatening situation" : "a serious situation"}
                   </div>
-                  <ul className="mt-1 list-disc pl-4 text-amber-200/90">
-                    {hint.reasons.map((r) => (
-                      <li key={r}>{r}</li>
-                    ))}
+                  <ul className="mt-1 list-disc pl-4 text-amber-200/90 space-y-0.5">
+                    {hint.reasons.map((r) => <li key={r}>{r}</li>)}
                   </ul>
-                  <div className="mt-1 text-amber-300/80">
+                  <div className="mt-1.5 text-amber-300/80">
                     This is advisory only. Choose the urgency yourself; a dispatcher reviews every report. If someone is in immediate danger, call 112.
                   </div>
                 </div>
               )}
 
               {nearby.length > 0 && (
-                <div className="p-4 bg-sky-950/40 border border-sky-700/50 rounded-xl text-xs text-sky-100" role="status">
+                <div className="p-4 bg-sky-950/40 border border-sky-700/50 rounded-xl text-xs text-sky-100" role="status" aria-live="polite">
                   <div className="font-semibold flex items-center justify-between">
                     <span>Similar incidents are already on the public map nearby ({nearby.length})</span>
                     <span className="text-[11px] text-amber-300 font-normal">Click to locate on map</span>
@@ -764,7 +775,7 @@ export default function ReportIncidentPage() {
                         className="p-2 rounded bg-slate-900/60 border border-slate-800 hover:border-sky-500 cursor-pointer transition flex items-center justify-between text-xs"
                       >
                         <span className="truncate pr-2">
-                          <strong>{n.incident.reference || n.incident.id}</strong> · {n.incident.title || n.incident.district}
+                          <strong>{n.incident.id}</strong> · {n.incident.title || n.incident.location_name}
                         </span>
                         <span className="text-amber-300 shrink-0 font-mono">
                           ~{n.distanceMeters < 1000 ? `${n.distanceMeters} m` : `${(n.distanceMeters / 1000).toFixed(1)} km`}
@@ -779,28 +790,29 @@ export default function ReportIncidentPage() {
               )}
 
               {/* Location Picker Section */}
-              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-5 space-y-4">
+              <div className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 sm:p-5 space-y-4">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-200 uppercase tracking-wider">
                       5. Gujarat Location Verification & Interactive Map
                     </label>
-                    <span className="text-xs text-slate-500">
+                    <span className="text-xs text-slate-400">
                       Click map, drag pin, or search. Must be within Gujarat (20.1°N - 24.7°N, 68.1°E - 74.5°E)
                     </span>
                   </div>
                   <button
                     type="button"
                     onClick={handleUseGPS}
-                    className="flex items-center gap-1.5 bg-sky-950/80 hover:bg-sky-900 border border-sky-700/60 text-sky-200 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                    className="min-h-[40px] flex items-center gap-1.5 bg-sky-950/80 hover:bg-sky-900 border border-sky-700/60 text-sky-200 px-3.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
                   >
-                    <span>📍</span> Use Device GPS
+                    <span aria-hidden="true">📍</span> Use Device GPS
                   </button>
                 </div>
 
                 {/* Address Search Bar */}
                 <div className="relative">
                   <input
+                    id="address-search"
                     type="text"
                     value={searchQuery}
                     onChange={(e) => {
@@ -810,23 +822,26 @@ export default function ReportIncidentPage() {
                       }
                     }}
                     placeholder="Search Gujarat city, locality, village or landmark (e.g. Navrangpura, Ahmedabad)..."
-                    className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-sky-500"
+                    aria-label="Search Gujarat locality, city or landmark"
+                    className="w-full min-h-[40px] bg-slate-900 border border-slate-700 rounded-lg px-3.5 py-2 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400"
                   />
                   {isSearching && (
-                    <div className="absolute right-3 top-2.5 text-xs text-slate-400 animate-spin">⌛</div>
+                    <div className="absolute right-3 top-2.5 text-xs text-slate-400 animate-spin" aria-label="Searching">⌛</div>
                   )}
 
                   {/* Search Dropdown */}
                   {searchResults.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl z-30 overflow-hidden">
+                    <div role="listbox" aria-label="Search results" className="absolute top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl z-30 overflow-hidden">
                       {searchResults.map((item, idx) => (
                         <button
                           key={idx}
                           type="button"
+                          role="option"
+                          aria-selected={false}
                           onClick={() => handleSelectSearchResult(item)}
-                          className="w-full px-3.5 py-2 text-left text-xs text-slate-300 hover:bg-slate-800 hover:text-white border-b border-slate-800/60 last:border-b-0 transition flex items-center gap-2 cursor-pointer"
+                          className="w-full min-h-[40px] px-3.5 py-2 text-left text-xs text-slate-200 hover:bg-slate-800 hover:text-white border-b border-slate-800/60 last:border-b-0 transition flex items-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:bg-slate-800 focus-visible:ring-1 focus-visible:ring-sky-400"
                         >
-                          <span>📌</span>
+                          <span aria-hidden="true">📌</span>
                           <span className="truncate">{item.display_name}</span>
                         </button>
                       ))}
@@ -845,10 +860,11 @@ export default function ReportIncidentPage() {
                 {/* Coordinate Fields & Verification Badge */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                    <label htmlFor="incident-lat" className="block text-[11px] font-semibold text-slate-300 mb-1">
                       Latitude (°N)
                     </label>
                     <input
+                      id="incident-lat"
                       type="number"
                       step="0.0001"
                       value={latitude}
@@ -857,14 +873,15 @@ export default function ReportIncidentPage() {
                         setLatitude(val);
                         setLocationSource("MAP_PIN");
                       }}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-sky-500"
+                      className="w-full min-h-[38px] bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400"
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-400 mb-1">
+                    <label htmlFor="incident-lon" className="block text-[11px] font-semibold text-slate-300 mb-1">
                       Longitude (°E)
                     </label>
                     <input
+                      id="incident-lon"
                       type="number"
                       step="0.0001"
                       value={longitude}
@@ -873,24 +890,24 @@ export default function ReportIncidentPage() {
                         setLongitude(val);
                         setLocationSource("MAP_PIN");
                       }}
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-sky-500"
+                      className="w-full min-h-[38px] bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-white focus:outline-none focus:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400"
                     />
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between text-xs pt-1">
+                <div className="flex flex-wrap items-center justify-between text-xs pt-1 gap-2">
                   <div className="flex items-center gap-2">
                     {validLocation ? (
                       <span className="text-emerald-400 flex items-center gap-1 font-medium">
                         ✓ Inside Gujarat Boundary ({latitude.toFixed(4)}°N, {longitude.toFixed(4)}°E)
                       </span>
                     ) : (
-                      <span className="text-red-400 flex items-center gap-1 font-medium">
+                      <span className="text-rose-400 flex items-center gap-1 font-medium">
                         ✕ Coordinates Outside Gujarat
                       </span>
                     )}
                   </div>
-                  <span className="text-slate-500 font-mono text-[11px]">
+                  <span className="text-slate-400 font-mono text-[11px]">
                     Source: {locationSource}
                   </span>
                 </div>
@@ -899,20 +916,24 @@ export default function ReportIncidentPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
                   <div>
                     <input
+                      id="incident-address"
                       type="text"
                       value={addressText}
                       onChange={(e) => setAddressText(e.target.value)}
                       placeholder="Address / Locality (e.g. Near Usmanpura Underpass)"
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                      aria-label="Address or Locality text"
+                      className="w-full min-h-[38px] bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400"
                     />
                   </div>
                   <div>
                     <input
+                      id="incident-landmark"
                       type="text"
                       value={landmark}
                       onChange={(e) => setLandmark(e.target.value)}
                       placeholder="Landmark (e.g. Opposite Jain Temple)"
-                      className="w-full bg-slate-900 border border-slate-800 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-600 focus:outline-none focus:border-sky-500"
+                      aria-label="Landmark text"
+                      className="w-full min-h-[38px] bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:border-sky-500 focus-visible:ring-2 focus-visible:ring-sky-400"
                     />
                   </div>
                 </div>
@@ -923,18 +944,18 @@ export default function ReportIncidentPage() {
                 <button
                   type="submit"
                   disabled={isSubmitting || !validLocation}
-                  className="w-full bg-sky-600 hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3.5 px-6 rounded-xl text-sm transition shadow-lg shadow-sky-600/30 flex items-center justify-center gap-2 cursor-pointer"
+                  className="w-full min-h-[50px] bg-sky-600 hover:bg-sky-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold py-3 px-6 rounded-xl text-sm transition shadow-lg shadow-sky-600/30 flex items-center justify-center gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950"
                 >
                   {isSubmitting ? (
                     <>
-                      <span className="animate-spin text-base">⏳</span>
+                      <span className="animate-spin text-base" aria-hidden="true">⏳</span>
                       <span>Transmitting Report to SEOC...</span>
                     </>
                   ) : (
                     <>
-                      <span>🚨</span>
+                      <span aria-hidden="true">🚨</span>
                       <span>Dispatch Incident Report</span>
-                      <span>→</span>
+                      <span aria-hidden="true">→</span>
                     </>
                   )}
                 </button>

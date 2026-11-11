@@ -176,7 +176,14 @@ export default function FieldPage() {
     <div className="space-y-6">
       <PageHeader
         title="Active Assignments"
-        description="Your team's active dispatches in the field. Glove-friendly controls."
+        description={
+          <span className="flex flex-wrap items-center gap-2">
+            <span>Your team&apos;s active dispatches in the field. Glove-friendly controls.</span>
+            <span aria-live="polite" className="text-xs font-mono text-muted">
+              • Auto-refreshes every 15s
+            </span>
+          </span>
+        }
         actions={
           <Button
             size="md"
@@ -352,14 +359,14 @@ export default function FieldPage() {
             <div className="flex gap-2">
               <Button
                 variant="ghost"
-                className="min-h-10 px-4 text-sm"
+                className="min-h-11 px-4 text-sm font-medium"
                 onClick={() => setActiveDialog(null)}
               >
                 Cancel
               </Button>
               <Button
                 variant={activeDialog.type === "reject" ? "danger" : "primary"}
-                className="min-h-10 px-5 text-sm font-semibold"
+                className="min-h-11 px-5 text-sm font-semibold"
                 busy={busyId === activeDialog.dispatch.dispatch_id}
                 onClick={handleDialogSubmit}
               >
@@ -369,7 +376,7 @@ export default function FieldPage() {
           }
         >
           <div className="space-y-4">
-            {dialogError && <p className="text-xs text-critical font-medium">{dialogError}</p>}
+            {dialogError && <p role="alert" className="text-xs text-critical font-medium">{dialogError}</p>}
 
             {activeDialog.type === "reject" && (
               <Field label="Rejection Reason" hint="Minimum 3 characters explaining why the team cannot respond.">

@@ -229,7 +229,7 @@ Until an enterprise transactional email provider is connected, public password r
 ### 4.1 Ingestion Trigger Endpoint
 * **Path:** `POST /api/v1/internal/ingest/run`
 * **Auth:** Header `X-Ingest-Token` or `Authorization: Bearer <INGEST_TOKEN>`
-* **Query Parameters:** `source` *(optional string: `USGS`, `SACHET`, `REPLAY`, `ALL`)*
+* **Query Parameters:** `source` *(optional string: `USGS`, `SACHET`, `REPLAY`, `GNEWS`, `BLUESKY`, `ALL`)*
 * **Response (200 OK):** a single run for a named source; an array of per-source runs for `ALL`.
 ```json
 {
@@ -241,7 +241,7 @@ Until an enterprise transactional email provider is connected, public password r
 }
 ```
 
-The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm/ingestion/poll` starts an immediate poll for staff with `DISPATCH` or `SUPERVISOR`; `GET /api/v1/dm/ingestion/health` returns each source's latest run, 24-hour counts and latest error. Both require an MFA-verified staff session. `REPLAY` rows are always marked simulated; the public alerts API returns only unexpired SACHET, USGS, GDACS or IMD alerts and includes the source and fallback flag.
+The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm/ingestion/poll` starts an immediate poll for staff with `DISPATCH` or `SUPERVISOR`; `GET /api/v1/dm/ingestion/health` returns each source's latest run, 24-hour counts and latest error. Both require an MFA-verified staff session. `REPLAY` rows are always marked simulated; `GNEWS` and `BLUESKY` are live text sources, off unless `NEWS_RSS_ENABLED` / `BLUESKY_SEARCH_ENABLED` is set, and their rows are marked not simulated; the public alerts API returns only unexpired SACHET, USGS, GDACS or IMD alerts and includes the source and fallback flag.
 
 ### 4.2 Raw Signals Queue (DM Workspace)
 * **Path:** `GET /api/v1/dm/signals`
@@ -278,6 +278,13 @@ The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm
 }
 ```
 *(Promoted incidents start as `SUBMITTED` and are NOT publicly visible until verified by a dispatcher).*
+
+### 4.4 Related Signal Suggestions (advisory)
+* **Path:** `GET /api/v1/dm/signals/related`
+* **Auth:** Staff Session (`DISASTER_MGMT`)
+* **Query Parameters:** `signal_id` *(optional UUID)*, `limit` *(1-500, default 100)*
+* **Response (200 OK):** `{ method: "heuristic", advisory: true, requires_human_review: true, rules, pairs[], pairs_total, groups[], unlocated[], unlocated_total, truncated }`. Each pair has `signal_a`, `signal_b`, `distance_m`, `minutes_apart`, `label_agreement`, `ranking_score` (0-100 sort hint, not a probability), `reasons[]`, `warnings[]`.
+* Read-only: it never promotes, dismisses, merges or dispatches. Full rules, thresholds, example and limitations: [signal-matching.md](signal-matching.md).
 
 ---
 
