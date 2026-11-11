@@ -7,7 +7,8 @@ on:
 
 concurrency:
   group: cd-${{ github.ref }}
-  cancel-in-progress: false
+  # Only the newest push to main deploys; older queued/running runs are cancelled.
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -192,12 +193,15 @@ jobs:
           cache-to: type=gha,mode=max,scope=ai-workers
 
   # ============================================================================
-  # 4. Production Deployment: Trigger Respective Deployments
+  # 4. Production Deployment (Vercel and Render run in parallel)
   # ============================================================================
-  deploy:
-    name: Deploy to Production
+  # Secrets cannot be read in a job-level `if`, so this job reports which deploy
+  # hooks are configured. Deploy jobs gate on it, so a missing hook shows the job
+  # as "Skipped" instead of a misleading green "Success".
+  check-hooks:
+    name: Check Deploy Hooks
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 5
     needs: [detect-changes, publish-frontend, publish-backend, publish-ai-workers]
     if: |
       always() &&
@@ -206,42 +210,73 @@ jobs:
       (needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch')
     environment:
       name: production
+    outputs:
+      vercel: ${{ steps.hooks.outputs.vercel }}
+      render: ${{ steps.hooks.outputs.render }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - name: Detect configured hooks
+        id: hooks
+        env:
+          VERCEL_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+          RENDER_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+        run: |
+          if [ -n "$VERCEL_HOOK" ]; then echo "vercel=true" >> "$GITHUB_OUTPUT"; else
+            echo "vercel=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::VERCEL_DEPLOY_HOOK secret not set. Vercel deployment will be skipped."
+          fi
+          if [ -n "$RENDER_HOOK" ]; then echo "render=true" >> "$GITHUB_OUTPUT"; else
+            echo "render=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::RENDER_DEPLOY_HOOK secret not set. Render deployment will be skipped."
+          fi
 
-      - name: Trigger Vercel Production Deployment (Frontend Only)
-        if: ${{ needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch' }}
+  deploy-vercel:
+    name: Deploy Frontend / Vercel
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [detect-changes, check-hooks]
+    if: |
+      always() &&
+      needs.check-hooks.result == 'success' &&
+      needs.check-hooks.outputs.vercel == 'true' &&
+      (needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch')
+    environment:
+      name: production
+    steps:
+      - name: Trigger Vercel Production Deployment
         env:
           VERCEL_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
         run: |
-          if [ -n "$VERCEL_HOOK" ]; then
-            echo "🚀 Triggering Vercel frontend deployment..."
-            response=$(curl -s -L -o /dev/null -w "%{http_code}" -X POST "$VERCEL_HOOK")
-            if [ "$response" -ge 200 ] && [ "$response" -lt 300 ]; then
-              echo "✅ Successfully dispatched Vercel build (HTTP $response)."
-            else
-              echo "⚠️ Vercel hook responded with HTTP $response. Please check secret VERCEL_DEPLOY_HOOK."
-            fi
+          echo "🚀 Triggering Vercel frontend deployment..."
+          response=$(curl -s -L -o /dev/null -w "%{http_code}" -X POST "$VERCEL_HOOK")
+          if [ "$response" -ge 200 ] && [ "$response" -lt 300 ]; then
+            echo "✅ Successfully dispatched Vercel build (HTTP $response)."
           else
-            echo "ℹ️ VERCEL_DEPLOY_HOOK secret not set. Skipping Vercel trigger."
+            echo "⚠️ Vercel hook responded with HTTP $response. Please check secret VERCEL_DEPLOY_HOOK."
           fi
 
-      - name: Trigger Render Production Deployment (Backend Only)
-        if: ${{ needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch' }}
+  deploy-render:
+    name: Deploy Backend / Render
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [detect-changes, check-hooks]
+    if: |
+      always() &&
+      needs.check-hooks.result == 'success' &&
+      needs.check-hooks.outputs.render == 'true' &&
+      (needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch')
+    environment:
+      name: production
+    steps:
+      - name: Trigger Render Production Deployment
         env:
           RENDER_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
         run: |
-          if [ -n "$RENDER_HOOK" ]; then
-            echo "🚀 Triggering Render backend deployment..."
-            response=$(curl -s -L -o /dev/null -w "%{http_code}" -X POST "$RENDER_HOOK")
-            if [ "$response" -ge 200 ] && [ "$response" -lt 300 ]; then
-              echo "✅ Successfully dispatched Render deployment (HTTP $response)."
-            else
-              echo "⚠️ Render hook responded with HTTP $response. Please check secret RENDER_DEPLOY_HOOK."
-            fi
+          echo "🚀 Triggering Render backend deployment..."
+          response=$(curl -s -L -o /dev/null -w "%{http_code}" -X POST "$RENDER_HOOK")
+          if [ "$response" -ge 200 ] && [ "$response" -lt 300 ]; then
+            echo "✅ Successfully dispatched Render deployment (HTTP $response)."
           else
-            echo "ℹ️ RENDER_DEPLOY_HOOK secret not set. Skipping Render trigger."
+            echo "⚠️ Render hook responded with HTTP $response. Please check secret RENDER_DEPLOY_HOOK."
           fi
 
       - name: Verify Backend Production Health
@@ -276,14 +311,13 @@ jobs:
   # ============================================================================
   smoke:
     name: Staging Smoke / Live SHA Verification
-    needs: [detect-changes, deploy]
+    needs: [detect-changes, deploy-render]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: staging
     if: |
       always() &&
-      !contains(needs.*.result, 'failure') &&
-      !contains(needs.*.result, 'cancelled') &&
+      needs.deploy-render.result == 'success' &&
       (needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch')
     steps:
       - name: Checkout repository
