@@ -213,12 +213,14 @@ jobs:
     outputs:
       vercel: ${{ steps.hooks.outputs.vercel }}
       render: ${{ steps.hooks.outputs.render }}
+      staging: ${{ steps.hooks.outputs.staging }}
     steps:
       - name: Detect configured hooks
         id: hooks
         env:
           VERCEL_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
           RENDER_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+          STAGING_URL: ${{ secrets.STAGING_BACKEND_URL }}
         run: |
           if [ -n "$VERCEL_HOOK" ]; then echo "vercel=true" >> "$GITHUB_OUTPUT"; else
             echo "vercel=false" >> "$GITHUB_OUTPUT"
@@ -227,6 +229,10 @@ jobs:
           if [ -n "$RENDER_HOOK" ]; then echo "render=true" >> "$GITHUB_OUTPUT"; else
             echo "render=false" >> "$GITHUB_OUTPUT"
             echo "::notice::RENDER_DEPLOY_HOOK secret not set. Render deployment will be skipped."
+          fi
+          if [ -n "$STAGING_URL" ]; then echo "staging=true" >> "$GITHUB_OUTPUT"; else
+            echo "staging=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::STAGING_BACKEND_URL secret not set. Staging smoke will be skipped."
           fi
 
   deploy-vercel:
@@ -251,7 +257,8 @@ jobs:
           if [ "$response" -ge 200 ] && [ "$response" -lt 300 ]; then
             echo "✅ Successfully dispatched Vercel build (HTTP $response)."
           else
-            echo "⚠️ Vercel hook responded with HTTP $response. Please check secret VERCEL_DEPLOY_HOOK."
+            echo "::error::Vercel hook responded with HTTP $response. Please check secret VERCEL_DEPLOY_HOOK."
+            exit 1
           fi
 
   deploy-render:
@@ -271,12 +278,17 @@ jobs:
         env:
           RENDER_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
         run: |
-          echo "🚀 Triggering Render backend deployment..."
-          response=$(curl -s -L -o /dev/null -w "%{http_code}" -X POST "$RENDER_HOOK")
+          # Pin the exact image built for this commit. A bare hook may redeploy a
+          # cached ":latest", leaving the old build (version "dev") running.
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/drch_backend:sha-${GITHUB_SHA:0:7}"
+          SEP="?"; case "$RENDER_HOOK" in *\?*) SEP="&";; esac
+          echo "🚀 Triggering Render backend deployment of $IMAGE..."
+          response=$(curl -s -L -o /dev/null -w "%{http_code}" -X POST "${RENDER_HOOK}${SEP}imgURL=${IMAGE}")
           if [ "$response" -ge 200 ] && [ "$response" -lt 300 ]; then
             echo "✅ Successfully dispatched Render deployment (HTTP $response)."
           else
-            echo "⚠️ Render hook responded with HTTP $response. Please check secret RENDER_DEPLOY_HOOK."
+            echo "::error::Render hook responded with HTTP $response. Please check secret RENDER_DEPLOY_HOOK."
+            exit 1
           fi
 
       - name: Verify Backend Production Health
@@ -301,7 +313,8 @@ jobs:
               echo "Polling $PROD_BACKEND_URL/health - attempt $i/30 (got HTTP $HTTP_STATUS), retrying in 5s..."
               sleep 5
             done
-            echo "⚠️ Health check timed out or failed on $PROD_BACKEND_URL"
+            echo "::error::Health check timed out or failed on $PROD_BACKEND_URL"
+            exit 1
           else
             echo "ℹ️ PROD_BACKEND_URL secret not set. Skipping live health verification."
           fi
@@ -311,13 +324,14 @@ jobs:
   # ============================================================================
   smoke:
     name: Staging Smoke / Live SHA Verification
-    needs: [detect-changes, deploy-render]
+    needs: [detect-changes, check-hooks, deploy-render]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     environment: staging
     if: |
       always() &&
       needs.deploy-render.result == 'success' &&
+      needs.check-hooks.outputs.staging == 'true' &&
       (needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch')
     steps:
       - name: Checkout repository
@@ -368,9 +382,9 @@ jobs:
             sleep 10
           done
 
-          echo "::warning::New build $COMMIT_SHA not live on $API_URL after 6 minutes."
+          echo "::error::New build $COMMIT_SHA not live on $API_URL after 6 minutes (last reported version: '$v')."
           echo "is_live=false" >> "$GITHUB_OUTPUT"
-          exit 0
+          exit 1
 
       - name: Run Staging Smoke Test
         if: ${{ steps.wait_live.outputs.is_live == 'true' }}
