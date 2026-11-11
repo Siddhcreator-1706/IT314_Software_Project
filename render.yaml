@@ -49,3 +49,22 @@ services:
         sync: false
       - key: SACHET_FEED_URL
         value: https://sachet.ndma.gov.in/cap_public_website/rss/rss_gujarat.xml
+
+  # S2-06 / S3-12: advisory triage service (ai-workers image, published by cd.yml). The backend reaches it
+  # through AI_TRIAGE_URL = https://<this service>.onrender.com/triage. Both services must share the same
+  # AI_TRIAGE_TOKEN value. Without this service the backend answers triage with UNAVAILABLE and staff
+  # continue manually. The service is advisory only: it never changes an incident.
+  - type: web
+    name: drch-ai-triage
+    runtime: image
+    image:
+      url: ghcr.io/siddhcreator-1706/it314_software_project/drch_ai_workers:latest
+    plan: free
+    region: ohio
+    autoDeploy: false
+    healthCheckPath: /health
+    envVars:
+      - key: PORT
+        value: "8001"        # the image listens on 8001 (ai-workers/Dockerfile)
+      - key: AI_TRIAGE_TOKEN
+        sync: false          # same value as AI_TRIAGE_TOKEN on drch-backend
