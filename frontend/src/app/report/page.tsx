@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import { SiteHeader, NavLink } from "@/components/Brand";
 import Link from "next/link";
 import { isInGujarat, GUJARAT_CENTER } from "@/lib/geo";
 import { createReport, fetchPublicIncidents, type PublicIncident, type Scenario } from "@/services/citizenApi";
@@ -223,29 +224,11 @@ Urgent needs: ${needs.join(", ")}` : description.trim(),
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans overflow-y-auto">
       {/* Header */}
-      <header className="min-h-16 bg-slate-900 border-b border-slate-800 px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3 sticky top-0 z-20">
-        <div className="flex items-center gap-2 sm:gap-3">
-          <Link href="/" className="flex items-center gap-2 hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 rounded-lg p-1 transition">
-            <span className="text-xl" aria-hidden="true">🛡️</span>
-            <span className="font-bold text-white text-base tracking-wide">ResQ Gujarat</span>
-          </Link>
-          <span className="text-slate-600 hidden sm:inline">/</span>
-          <span className="text-[11px] sm:text-xs uppercase tracking-wider font-semibold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded border border-amber-400/20">
-            Citizen Emergency Dispatch
-          </span>
-        </div>
-        <nav aria-label="Citizen navigation" className="flex items-center gap-2 sm:gap-4 text-xs font-medium">
-          <Link href="/my-reports" className="text-slate-300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 rounded px-2 py-1 transition flex items-center gap-1.5">
-            <span aria-hidden="true">📋</span> My Reports
-          </Link>
-          <Link href="/citizen/dashboard" className="text-slate-300 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 rounded px-2 py-1 transition flex items-center gap-1.5">
-            <span aria-hidden="true">🏠</span> Dashboard
-          </Link>
-          <Link href="/" className="text-slate-400 hover:text-slate-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400 rounded px-2 py-1 transition hidden sm:inline">
-            Public Map
-          </Link>
-        </nav>
-      </header>
+      <SiteHeader subtitle="Citizen Emergency Dispatch" maxWidth="max-w-5xl">
+        <NavLink href="/my-reports">My Reports</NavLink>
+        <NavLink href="/citizen/dashboard" hideBelow="sm">Dashboard</NavLink>
+        <NavLink href="/" hideBelow="sm">Public Map</NavLink>
+      </SiteHeader>
 
       {/* Main Container */}
       <main className="flex-1 max-w-4xl w-full mx-auto p-4 sm:p-6 md:p-8">

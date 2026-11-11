@@ -3,6 +3,11 @@ name: Continuous Deployment (CD)
 on:
   push:
     branches: [ "main" ]
+    # S3-12 / S3-18: a release tag (vX.Y.Z or vX.Y.Z-rcN) builds every image from that exact commit and
+    # tags it with the version, so a release can be deployed and rolled back by version. Tag builds do
+    # not deploy and do not move `latest`; the release is deployed by pointing Render at the version
+    # tag (docs/release-runbook.md section 4).
+    tags: [ "v*.*.*" ]
   workflow_dispatch:
 
 concurrency:
@@ -34,6 +39,8 @@ jobs:
 
       - name: Check for file changes
         id: filter
+        # Release tags build every image, so path filtering (which needs a base commit) is skipped.
+        if: ${{ github.ref_type == 'branch' }}
         uses: dorny/paths-filter@v3
         with:
           filters: |
@@ -60,7 +67,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: detect-changes
-    if: ${{ needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
     permissions:
       contents: read
       packages: write
@@ -84,8 +91,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}/drch_frontend
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ github.ref_type == 'branch' }}
             type=sha,format=short,prefix=sha-
+            type=ref,event=tag
 
       - name: Build and push verified container to GHCR
         uses: docker/build-push-action@v6
@@ -106,7 +114,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: detect-changes
-    if: ${{ needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
     permissions:
       contents: read
       packages: write
@@ -130,8 +138,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}/drch_backend
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ github.ref_type == 'branch' }}
             type=sha,format=short,prefix=sha-
+            type=ref,event=tag
 
       - name: Build and push verified container to GHCR
         uses: docker/build-push-action@v6
@@ -154,7 +163,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: detect-changes
-    if: ${{ needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
     permissions:
       contents: read
       packages: write
@@ -178,8 +187,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}/drch_ai_workers
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ github.ref_type == 'branch' }}
             type=sha,format=short,prefix=sha-
+            type=ref,event=tag
 
       - name: Build and push verified container to GHCR
         uses: docker/build-push-action@v6
@@ -193,7 +203,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=ai-workers
 
   # ============================================================================
-  # 4. Production Deployment (Vercel and Render run in parallel)
+  # 4. Production Deployment (Vercel, Render backend and Render AI run in parallel)
   # ============================================================================
   # Secrets cannot be read in a job-level `if`, so this job reports which deploy
   # hooks are configured. Deploy jobs gate on it, so a missing hook shows the job
@@ -205,6 +215,7 @@ jobs:
     needs: [detect-changes, publish-frontend, publish-backend, publish-ai-workers]
     if: |
       always() &&
+      github.ref_type == 'branch' &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
       (needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch')
@@ -213,14 +224,16 @@ jobs:
     outputs:
       vercel: ${{ steps.hooks.outputs.vercel }}
       render: ${{ steps.hooks.outputs.render }}
-      staging: ${{ steps.hooks.outputs.staging }}
+      render_ai: ${{ steps.hooks.outputs.render_ai }}
+      backend_url: ${{ steps.hooks.outputs.backend_url }}
     steps:
       - name: Detect configured hooks
         id: hooks
         env:
           VERCEL_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
           RENDER_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
-          STAGING_URL: ${{ secrets.STAGING_BACKEND_URL }}
+          RENDER_AI_HOOK: ${{ secrets.RENDER_AI_DEPLOY_HOOK }}
+          BACKEND_URL: ${{ secrets.PROD_BACKEND_URL }}
         run: |
           if [ -n "$VERCEL_HOOK" ]; then echo "vercel=true" >> "$GITHUB_OUTPUT"; else
             echo "vercel=false" >> "$GITHUB_OUTPUT"
@@ -230,9 +243,13 @@ jobs:
             echo "render=false" >> "$GITHUB_OUTPUT"
             echo "::notice::RENDER_DEPLOY_HOOK secret not set. Render deployment will be skipped."
           fi
-          if [ -n "$STAGING_URL" ]; then echo "staging=true" >> "$GITHUB_OUTPUT"; else
-            echo "staging=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::STAGING_BACKEND_URL secret not set. Staging smoke will be skipped."
+          if [ -n "$RENDER_AI_HOOK" ]; then echo "render_ai=true" >> "$GITHUB_OUTPUT"; else
+            echo "render_ai=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::RENDER_AI_DEPLOY_HOOK secret not set. AI triage deployment (drch-ai-triage) will be skipped."
+          fi
+          if [ -n "$BACKEND_URL" ]; then echo "backend_url=true" >> "$GITHUB_OUTPUT"; else
+            echo "backend_url=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::PROD_BACKEND_URL secret not set. Staging smoke will be skipped."
           fi
 
   deploy-vercel:
@@ -270,7 +287,7 @@ jobs:
       always() &&
       needs.check-hooks.result == 'success' &&
       needs.check-hooks.outputs.render == 'true' &&
-      (needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch')
+      (needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch')
     environment:
       name: production
     steps:
@@ -291,32 +308,78 @@ jobs:
             exit 1
           fi
 
-      - name: Verify Backend Production Health
-        if: ${{ (needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch') }}
+      - name: Trigger Render AI Triage Deployment (AI Workers Only)
+        if: ${{ needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch' }}
         env:
-          PROD_BACKEND_URL: ${{ secrets.PROD_BACKEND_URL }}
+          RENDER_AI_HOOK: ${{ secrets.RENDER_AI_DEPLOY_HOOK }}
         run: |
-          if [ -n "$PROD_BACKEND_URL" ]; then
-            PROD_BACKEND_URL="${PROD_BACKEND_URL%/}"
-            PROD_BACKEND_URL="${PROD_BACKEND_URL%/api/v1}"
-            echo "Waiting for production backend to complete deployment rollout at $PROD_BACKEND_URL..."
+          if [ -n "$RENDER_AI_HOOK" ]; then
+            echo "🚀 Triggering Render AI triage deployment..."
+            response=$(curl -s -L -o /dev/null -w "%{http_code}" -X POST "$RENDER_AI_HOOK")
+            if [ "$response" -ge 200 ] && [ "$response" -lt 300 ]; then
+              echo "✅ Successfully dispatched Render AI triage deployment (HTTP $response)."
+            else
+              echo "⚠️ Render AI hook responded with HTTP $response. Please check secret RENDER_AI_DEPLOY_HOOK."
+            fi
+          else
+            echo "ℹ️ RENDER_AI_DEPLOY_HOOK secret not set. Skipping AI triage deployment (drch-ai-triage in render.yaml)."
+          fi
+
+      - name: Verify Backend Health
+        env:
+          BACKEND_URL: ${{ secrets.PROD_BACKEND_URL }}
+        run: |
+          if [ -n "$BACKEND_URL" ]; then
+            BACKEND_URL="${BACKEND_URL%/}"
+            BACKEND_URL="${BACKEND_URL%/api/v1}"
+            echo "Waiting for backend to complete deployment rollout at $BACKEND_URL..."
             sleep 10
             for i in $(seq 1 30); do
-              HTTP_STATUS=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 15 "$PROD_BACKEND_URL/health" || echo "000")
+              HTTP_STATUS=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 15 "$BACKEND_URL/health" || echo "000")
               if [ "$HTTP_STATUS" != "200" ]; then
-                HTTP_STATUS=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 15 "$PROD_BACKEND_URL/api/v1/health" || echo "000")
+                HTTP_STATUS=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 15 "$BACKEND_URL/api/v1/health" || echo "000")
               fi
               if [ "$HTTP_STATUS" = "200" ]; then
-                echo "✅ Production backend healthcheck passed (HTTP 200)."
+                echo "✅ Backend healthcheck passed (HTTP 200)."
                 exit 0
               fi
-              echo "Polling $PROD_BACKEND_URL/health - attempt $i/30 (got HTTP $HTTP_STATUS), retrying in 5s..."
+              echo "Polling $BACKEND_URL/health - attempt $i/30 (got HTTP $HTTP_STATUS), retrying in 5s..."
               sleep 5
             done
-            echo "::error::Health check timed out or failed on $PROD_BACKEND_URL"
+            echo "::error::Health check timed out or failed on $BACKEND_URL"
             exit 1
+            echo "⚠️ Health check timed out or failed on $BACKEND_URL"
           else
             echo "ℹ️ PROD_BACKEND_URL secret not set. Skipping live health verification."
+          fi
+
+  deploy-render-ai:
+    name: Deploy AI Triage / Render
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: [detect-changes, check-hooks]
+    if: |
+      always() &&
+      needs.check-hooks.result == 'success' &&
+      needs.check-hooks.outputs.render_ai == 'true' &&
+      (needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch')
+    environment:
+      name: production
+    steps:
+      - name: Trigger Render AI Triage Deployment
+        env:
+          RENDER_AI_HOOK: ${{ secrets.RENDER_AI_DEPLOY_HOOK }}
+        run: |
+          # Pin the exact image built for this commit (see deploy-render).
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/drch_ai_workers:sha-${GITHUB_SHA:0:7}"
+          SEP="?"; case "$RENDER_AI_HOOK" in *\?*) SEP="&";; esac
+          echo "🚀 Triggering Render AI triage deployment of $IMAGE..."
+          response=$(curl -s -L -o /dev/null -w "%{http_code}" -X POST "${RENDER_AI_HOOK}${SEP}imgURL=${IMAGE}")
+          if [ "$response" -ge 200 ] && [ "$response" -lt 300 ]; then
+            echo "✅ Successfully dispatched Render AI triage deployment (HTTP $response)."
+          else
+            echo "::error::Render AI hook responded with HTTP $response. Please check secret RENDER_AI_DEPLOY_HOOK."
+            exit 1
           fi
 
   # ============================================================================
@@ -331,7 +394,11 @@ jobs:
     if: |
       always() &&
       needs.deploy-render.result == 'success' &&
-      needs.check-hooks.outputs.staging == 'true' &&
+      needs.check-hooks.outputs.backend_url == 'true' &&
+      github.ref_type == 'branch' &&
+      github.ref_type == 'branch' &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled') &&
       (needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch')
     steps:
       - name: Checkout repository
@@ -349,10 +416,10 @@ jobs:
       - name: Wait until this commit is live
         id: wait_live
         env:
-          STAGING_URL: ${{ secrets.STAGING_BACKEND_URL }}
+          STAGING_URL: ${{ secrets.PROD_BACKEND_URL }}
         run: |
           if [ -z "$STAGING_URL" ]; then
-            echo "::notice::STAGING_BACKEND_URL secret not set in GitHub Secrets. Skipping staging live version verification."
+            echo "::notice::PROD_BACKEND_URL secret not set in GitHub Secrets. Skipping staging live version verification."
             echo "is_live=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -394,4 +461,4 @@ jobs:
           SMOKE_STAFF_PASSWORD: ${{ secrets.SMOKE_STAFF_PASSWORD }}
           SMOKE_STAFF_TOTP_SECRET: ${{ secrets.SMOKE_STAFF_TOTP_SECRET }}
         run: |
-          python scripts/smoke.py --base-url "$API_URL" --scenario field-loop
+          python scripts/smoke.py --base-url "$API_URL"
