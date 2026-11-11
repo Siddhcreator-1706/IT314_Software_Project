@@ -321,5 +321,34 @@ To maintain factual engineering clarity, capabilities in the repository are cata
 | **English Crisis Text Model** | **Experimental / Optional** | Real-data event-held-out baseline at `ai-workers/text_model`; separate `/analyze-text` endpoint, not connected to ingestion |
 | **Image Disaster Classifier** | **Prototype / Isolated** | PyTorch service in `ai-workers/model/app.py`, evaluated offline on split data |
 | **Payment Gateway Integration** | **Simulated (Sandbox)** | Sandbox `MockGateway` only; live Razorpay/Stripe integration is planned |
-| **Live External Alert Ingestion** | **Simulated / Fixture** | Uses fallback database fixtures (`is_fallback = TRUE`); live CAP/USGS worker planned |
+| **External Alert & Signal Ingestion** | **Implemented (Real feeds) + Replay** | USGS and SACHET CAP adapters (`app/services/ingest/`) run on the scheduler and the `ingest-cron.yml` workflow; social posts are a replay fixture; `GNEWS` and `BLUESKY` adapters exist but are off by default (`NEWS_RSS_ENABLED`, `BLUESKY_SEARCH_ENABLED`); fallback alerts stay labelled `is_fallback = TRUE` |
 | **Simulated Demo Incidents** | **Simulated** | 4 seeded Gujarat demo incidents flagged with `is_simulated = TRUE` |
+
+---
+
+## 8. Deployment & Release Overview (S3-12, S3-18)
+
+```mermaid
+flowchart LR
+    Dev["Pull request"] --> CI["ci.yml<br/>lint, tests on postgis/postgis:16-3.4,<br/>gitleaks, bandit, audits, image scan"]
+    CI -->|merge to main| CD["cd.yml"]
+    CD --> GHCR[("GHCR images<br/>drch_backend, drch_frontend, drch_ai_workers<br/>tags: latest, sha-&lt;short&gt;")]
+    CD -->|deploy hooks| Render["Render<br/>drch-backend (FastAPI)<br/>drch-ai-triage (advisory)"]
+    CD -->|deploy hook| Vercel["Vercel<br/>Next.js frontend + BFF"]
+    Render --> Neon[("Neon PostgreSQL 16 + PostGIS")]
+    CD -->|after deploy| Smoke["scripts/smoke.py on staging<br/>(waits until the new GIT_SHA is live)"]
+    Cron["ingest-cron.yml<br/>every 10 min: wake + ingest"] --> Render
+    Tag["git tag vX.Y.Z[-rcN]"] --> CDTag["cd.yml (tag build)"] --> GHCRv[("GHCR images tagged vX.Y.Z")]
+```
+
+| Concern | How it is handled | Reference |
+|---|---|---|
+| Hosting | Neon (database), Render free web services for the backend and the AI triage service (`render.yaml`), Vercel (frontend and the BFF proxies) | `render.yaml`, [release-runbook.md](release-runbook.md) §1 |
+| Configuration and secrets | Every secret is entered by Siddh in the Render, Vercel and GitHub consoles; the repository lists names only | [env-variables.md](env-variables.md) |
+| Migrations | Forward-only SQL files applied by `python -m app.migrate` (also at backend start-up) under an advisory lock; a Neon branch is taken before each release | [runbook-migration.md](runbook-migration.md) |
+| Continuous deployment | Each merge to `main` publishes changed images, triggers the deploy hooks, waits for the new `GIT_SHA` on `/api/v1/health`, then runs the smoke test | `.github/workflows/cd.yml` |
+| Releases and rollback | A `vX.Y.Z` / `vX.Y.Z-rcN` tag builds all images from that commit with the version as the image tag; releases are deployed and rolled back by pointing Render at a version (or `sha-`) tag | [release-runbook.md](release-runbook.md) §2, §4 |
+| Cold start | Render free instances sleep; `ingest-cron.yml` wakes the backend every 10 minutes; open `/api/v1/health` before a demo | [release-runbook.md](release-runbook.md) §1 |
+| Fallback hosting | `docker-compose.prod.yml` runs the same images (PostGIS, backend, frontend, AI workers) on any Docker host; it refuses to start when a required secret is missing | `docker-compose.prod.yml` |
+| Backups | Neon branches before releases; `pg_dump` / `pg_restore` for a portable copy | [runbook-migration.md](runbook-migration.md) |
+| Demo and rehearsal | Roles, script, on-stage fallbacks and rehearsal log | [demo-script.md](demo-script.md) |

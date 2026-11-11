@@ -3,6 +3,11 @@ name: Continuous Deployment (CD)
 on:
   push:
     branches: [ "main" ]
+    # S3-12 / S3-18: a release tag (vX.Y.Z or vX.Y.Z-rcN) builds every image from that exact commit and
+    # tags it with the version, so a release can be deployed and rolled back by version. Tag builds do
+    # not deploy and do not move `latest`; the release is deployed by pointing Render at the version
+    # tag (docs/release-runbook.md section 4).
+    tags: [ "v*.*.*" ]
   workflow_dispatch:
 
 concurrency:
@@ -33,6 +38,8 @@ jobs:
 
       - name: Check for file changes
         id: filter
+        # Release tags build every image, so path filtering (which needs a base commit) is skipped.
+        if: ${{ github.ref_type == 'branch' }}
         uses: dorny/paths-filter@v3
         with:
           filters: |
@@ -59,7 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: detect-changes
-    if: ${{ needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
     permissions:
       contents: read
       packages: write
@@ -83,8 +90,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}/drch_frontend
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ github.ref_type == 'branch' }}
             type=sha,format=short,prefix=sha-
+            type=ref,event=tag
 
       - name: Build and push verified container to GHCR
         uses: docker/build-push-action@v6
@@ -105,7 +113,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     needs: detect-changes
-    if: ${{ needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
     permissions:
       contents: read
       packages: write
@@ -129,8 +137,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}/drch_backend
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ github.ref_type == 'branch' }}
             type=sha,format=short,prefix=sha-
+            type=ref,event=tag
 
       - name: Build and push verified container to GHCR
         uses: docker/build-push-action@v6
@@ -153,7 +162,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     needs: detect-changes
-    if: ${{ needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch' }}
+    if: ${{ needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
     permissions:
       contents: read
       packages: write
@@ -177,8 +186,9 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}/drch_ai_workers
           tags: |
-            type=raw,value=latest
+            type=raw,value=latest,enable=${{ github.ref_type == 'branch' }}
             type=sha,format=short,prefix=sha-
+            type=ref,event=tag
 
       - name: Build and push verified container to GHCR
         uses: docker/build-push-action@v6
@@ -201,6 +211,7 @@ jobs:
     needs: [detect-changes, publish-frontend, publish-backend, publish-ai-workers]
     if: |
       always() &&
+      github.ref_type == 'branch' &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
       (needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch')
@@ -244,6 +255,23 @@ jobs:
             echo "ℹ️ RENDER_DEPLOY_HOOK secret not set. Skipping Render trigger."
           fi
 
+      - name: Trigger Render AI Triage Deployment (AI Workers Only)
+        if: ${{ needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch' }}
+        env:
+          RENDER_AI_HOOK: ${{ secrets.RENDER_AI_DEPLOY_HOOK }}
+        run: |
+          if [ -n "$RENDER_AI_HOOK" ]; then
+            echo "🚀 Triggering Render AI triage deployment..."
+            response=$(curl -s -L -o /dev/null -w "%{http_code}" -X POST "$RENDER_AI_HOOK")
+            if [ "$response" -ge 200 ] && [ "$response" -lt 300 ]; then
+              echo "✅ Successfully dispatched Render AI triage deployment (HTTP $response)."
+            else
+              echo "⚠️ Render AI hook responded with HTTP $response. Please check secret RENDER_AI_DEPLOY_HOOK."
+            fi
+          else
+            echo "ℹ️ RENDER_AI_DEPLOY_HOOK secret not set. Skipping AI triage deployment (drch-ai-triage in render.yaml)."
+          fi
+
       - name: Verify Backend Health
         if: ${{ (needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch') }}
         env:
@@ -282,6 +310,7 @@ jobs:
     environment: staging
     if: |
       always() &&
+      github.ref_type == 'branch' &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
       (needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch')
