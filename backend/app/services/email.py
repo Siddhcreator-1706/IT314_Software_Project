@@ -10,6 +10,7 @@ import logging
 import smtplib
 from email.message import EmailMessage
 from typing import Any
+from urllib.parse import quote
 
 from app.config import get_settings
 
@@ -121,6 +122,18 @@ def send_invitation_email(
 </body>
 </html>"""
     return _send_raw_email(to_email, subject, text, html)
+
+
+def send_verification_email(to_email: str, recipient_name: str) -> bool:
+    """Citizen email-verification STUB (S1-03): the link is logged and outboxed only.
+
+    No token is stored and verification is not enforced; accounts are ACTIVE on registration.
+    """
+    settings = get_settings()
+    link = f"{settings.frontend_url}/verify-email?email={quote(to_email)}"
+    logger.info("Email verification stub link for %s: %s", to_email, link)
+    text = f"Hello {recipient_name},\n\nWelcome to ResQ. Confirm your email address: {link}\n"
+    return _send_raw_email(to_email, "Confirm your ResQ account email", text)
 
 
 def send_password_reset_email(
