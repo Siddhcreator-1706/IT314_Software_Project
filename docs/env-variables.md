@@ -79,6 +79,11 @@ When `APP_ENV` is `staging` or `production` the backend refuses to start unless 
 | Variable | Required | Purpose |
 |---|---|---|
 | `AI_TRIAGE_TOKEN` (S) | recommended | If set, `POST /triage` requires `Authorization: Bearer <token>`. |
+| `LLM_ENABLED` | no | `true` turns on the optional LLM adapter (`service/llm.py`). Off by default. |
+| `LLM_PROVIDER` | if enabled | `groq`, `gemini` or `ollama`. |
+| `LLM_API_KEY` (S) | if enabled | Provider key (not needed for `ollama`). Set in the hosting environment only, never in git. |
+| `LLM_MODEL` | no | Overrides the provider's default model. |
+| `OLLAMA_URL` | no | Base URL for `ollama` (default `http://localhost:11434`). |
 
 ## Database container
 

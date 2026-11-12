@@ -202,6 +202,14 @@ Until an enterprise transactional email provider is connected, public password r
 }
 ```
 * **Isolation Rule:** Attempting to access another citizen's incident returns `404 NOT_FOUND` (no existence leak). Internal dispatcher notes and rationale are stripped.
+* **Readable labels:** the incident has `status_label` and every timeline entry has `label` (for example "Report submitted", "More information requested"); clients show these instead of raw status codes.
+
+### 2.5 Information Response
+* **Path:** `POST /api/v1/me/incidents/{id}/information-response` (the earlier `/information` path still works)
+* **Auth:** Bearer Token (`require_citizen`); own incident only (others return `404`)
+* **Request Body:** `message` and/or a corrected `latitude` + `longitude` (with optional `address_text`); at least one is required.
+* **Response (201 Created):** `{"incident_id": "...", "status": "SUBMITTED", "status_label": "Report submitted"}`; the incident returns to `SUBMITTED` and a history row and audit entry are written.
+* **Errors:** `409 NOT_AWAITING_INFORMATION` unless the incident is in `NEEDS_INFORMATION`; `422 OUTSIDE_GUJARAT` for a corrected point outside Gujarat; `429 RATE_LIMITED` (the response does not state the limit).
 
 ---
 
@@ -757,6 +765,16 @@ The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm
 ### 8.3 AI Service Health
 * **Path:** `GET /health`
 * **Response (200 OK):** `{"status": "ok", "service": "drch-ai-triage"}`
+
+### 8.4 Optional LLM Adapter (`ai-workers/service/llm.py`, S2-08)
+* Not an HTTP endpoint: a library the triage service can call. **Off by default** (`LLM_ENABLED`); the provider key is read from `LLM_API_KEY` only.
+* `second_opinion` runs only when the rules confidence is below 0.6 and returns `{"scenario", "priority", "source": "llm"}` limited to the allowed labels, otherwise nothing. `english_summary` summarises Hindi or Gujarati text. Replies that are not valid JSON or use other labels are rejected.
+* Only the report text is sent, with emails and phone numbers masked; no reporter identity. The result is advisory and never decides anything.
+
+### 8.5 AI Versus Human Decisions (`GET /api/v1/dm/analytics`, S3-06)
+* The `ai_by_decision` list counts AI suggestions by `scenario`, `human_action` and `confidence_band` (`n` per row). Filters: `scenario`, `from`, `to`.
+* **Definitions:** `human_action` is what the dispatcher recorded: `ACCEPTED` (suggestion used as given), `MODIFIED` (used with changes) or `REJECTED`; `UNDECIDED` means no decision yet. `confidence_band` is the AI confidence at suggestion time: `HIGH` 0.80 or more, `MEDIUM` 0.60 to 0.79, `LOW` below 0.60, `UNKNOWN` when none was recorded. The same wording is returned in `definitions.confidence_bands`.
+* Suggestions are advisory; this endpoint only counts what humans decided.
 
 ---
 
