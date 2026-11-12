@@ -14,7 +14,7 @@ from fastapi import APIRouter, Header
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from psycopg import sql
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 from app import audit, db
 from app.auth import Citizen
@@ -59,7 +59,42 @@ class IncidentCreate(BaseModel):
 
 
 class InformationReply(BaseModel):
-    message: str = Field(min_length=3, max_length=2000)
+    """Answer to a DM information request: text, a corrected location, or both (S2-13)."""
+
+    message: str | None = Field(default=None, min_length=3, max_length=2000)
+    latitude: float | None = Field(default=None, ge=-90, le=90)
+    longitude: float | None = Field(default=None, ge=-180, le=180)
+    address_text: str | None = Field(default=None, max_length=300)
+
+    @model_validator(mode="after")
+    def _needs_content(self):
+        if (self.latitude is None) != (self.longitude is None):
+            raise ValueError("latitude and longitude must be given together")
+        if not (self.message and self.message.strip()) and self.latitude is None:
+            raise ValueError("Provide a message or a corrected location")
+        return self
+
+
+# Readable timeline labels so clients never show raw status codes (S2-13).
+STATUS_LABELS = {
+    "SUBMITTED": "Report submitted",
+    "NEEDS_INFORMATION": "More information requested",
+    "VERIFIED": "Verified by the response team",
+    "REJECTED": "Report not accepted",
+    "DISPATCHED": "Help is on the way",
+    "IN_PROGRESS": "Response in progress",
+    "RESOLVED": "Incident resolved",
+    "CLOSED": "Report closed",
+}
+
+
+def _readable(item: dict) -> dict:
+    """Add a human-readable label to the incident status and every timeline entry."""
+    item["status_label"] = STATUS_LABELS.get(item["status"], item["status"].replace("_", " ").capitalize())
+    for entry in item.get("timeline") or []:
+        code = entry.get("status", "")
+        entry["label"] = STATUS_LABELS.get(code, code.replace("_", " ").capitalize())
+    return item
 
 
 def _created_body(row: dict) -> dict:
@@ -231,7 +266,7 @@ def my_incidents(principal: Citizen, page: Page):
             for inc in _DEMO_CITIZEN_INCIDENTS
             if inc["reporter_id"] == principal.user_id
         ]
-        return page_body(mine[page.offset : page.offset + page.limit], len(mine), page)
+        return page_body([_readable(i) for i in mine[page.offset : page.offset + page.limit]], len(mine), page)
 
     with db.transaction() as conn:
         total = conn.execute(
@@ -244,7 +279,7 @@ def my_incidents(principal: Citizen, page: Page):
             ).format(sql.SQL(_MY_COLUMNS)),
             (principal.user_id, page.limit, page.offset),
         ).fetchall()
-    return page_body(items, total, page)
+    return page_body([_readable(i) for i in items], total, page)
 
 
 def _own_incident(conn, incident_id: uuid.UUID, user_id: uuid.UUID) -> dict:
@@ -264,7 +299,7 @@ def my_incident(incident_id: uuid.UUID, principal: Citizen):
     if _is_demo_mode():
         for inc in _DEMO_CITIZEN_INCIDENTS:
             if inc["incident_id"] == incident_id and inc["reporter_id"] == principal.user_id:
-                return {
+                return _readable({
                     "incident_id": inc["incident_id"],
                     "incident_ref": inc["incident_ref"],
                     "scenario": inc["scenario"],
@@ -279,16 +314,31 @@ def my_incident(incident_id: uuid.UUID, principal: Citizen):
                     "latitude": inc["latitude"],
                     "longitude": inc["longitude"],
                     "timeline": inc["timeline"],
-                }
+                })
         raise not_found("Incident")
 
     with db.transaction() as conn:
-        return _own_incident(conn, incident_id, principal.user_id)
+        return _readable(_own_incident(conn, incident_id, principal.user_id))
 
 
-@router.post("/me/incidents/{incident_id}/information", status_code=201)
+@router.post(
+    "/me/incidents/{incident_id}/information-response",
+    status_code=201,
+    dependencies=[rate_limit("information-response", 20, 3600)],
+)
+@router.post(
+    "/me/incidents/{incident_id}/information",  # earlier path, kept for existing clients
+    status_code=201,
+    dependencies=[rate_limit("information-response", 20, 3600)],
+)
 def reply_to_information_request(incident_id: uuid.UUID, body: InformationReply, principal: Citizen):
-    """The reporter answers a DM information request; the reply is stored on the incident timeline."""
+    """The reporter answers a DM information request (own incident, NEEDS_INFORMATION only).
+
+    Stores the text and/or a corrected Gujarat location, returns the incident to SUBMITTED for
+    the dispatcher to review again, and writes status history plus an audit entry.
+    """
+    if body.latitude is not None and not is_in_gujarat(body.latitude, body.longitude):
+        raise ApiError(422, "OUTSIDE_GUJARAT", "The corrected location is outside Gujarat")
     with db.transaction() as conn:
         _own_incident(conn, incident_id, principal.user_id)
         row = conn.execute(
@@ -296,14 +346,41 @@ def reply_to_information_request(incident_id: uuid.UUID, body: InformationReply,
         ).fetchone()
         if row["status"] != "NEEDS_INFORMATION":
             raise ApiError(409, "NOT_AWAITING_INFORMATION", "No information has been requested for this report")
+        reason_parts = []
+        if body.message and body.message.strip():
+            reason_parts.append("Reporter reply: " + body.message.strip())
+        if body.latitude is not None:
+            district = district_for(body.latitude, body.longitude)
+            conn.execute(
+                """
+                UPDATE incidents
+                SET latitude = %s, longitude = %s,
+                    geom = ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography,
+                    district = COALESCE(%s, district),
+                    address_text = COALESCE(%s, address_text),
+                    location_source = 'MANUAL'
+                WHERE incident_id = %s
+                """,
+                (
+                    body.latitude, body.longitude, body.longitude, body.latitude,
+                    district, body.address_text.strip() if body.address_text else None, incident_id,
+                ),
+            )
+            reason_parts.append("Reporter corrected the location")
+        conn.execute(
+            """
+            UPDATE incidents SET status = 'SUBMITTED', version = version + 1, updated_at = now()
+            WHERE incident_id = %s
+            """,
+            (incident_id,),
+        )
         conn.execute(
             """
             INSERT INTO incident_status_history (incident_id, from_status, to_status, changed_by, reason)
-            VALUES (%s, 'NEEDS_INFORMATION', 'NEEDS_INFORMATION', %s, %s)
+            VALUES (%s, 'NEEDS_INFORMATION', 'SUBMITTED', %s, %s)
             """,
-            (incident_id, principal.user_id, "Reporter reply: " + body.message.strip()),
+            (incident_id, principal.user_id, "; ".join(reason_parts)),
         )
-        conn.execute("UPDATE incidents SET version = version + 1 WHERE incident_id = %s", (incident_id,))
         audit.record(
             conn,
             actor=principal,
@@ -313,7 +390,7 @@ def reply_to_information_request(incident_id: uuid.UUID, body: InformationReply,
             rationale="Reporter replied to an information request",
             ip=principal.ip,
         )
-    return {"incident_id": incident_id, "status": "NEEDS_INFORMATION"}
+    return {"incident_id": incident_id, "status": "SUBMITTED", "status_label": STATUS_LABELS["SUBMITTED"]}
 
 
 @router.get("/me/notifications")
