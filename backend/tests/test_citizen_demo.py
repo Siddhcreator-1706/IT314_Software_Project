@@ -8,18 +8,22 @@ Covers:
 5. Reporter isolation: citizen cannot view another citizen's reported incident (404).
 """
 
-import os
 import uuid
+
 import pytest
 
-os.environ["DEMO_MODE"] = "true"
-
-from starlette.requests import Request
-from app.auth import Principal, CITIZEN_ROLE
+from app.auth import CITIZEN_ROLE, Principal
+from app.common import PageParams
 from app.errors import ApiError
 from app.routers import citizen as citizen_router
 from app.routers.citizen import IncidentCreate
-from app.common import PageParams
+
+
+@pytest.fixture(autouse=True)
+def _demo_mode(monkeypatch):
+    """Demo mode only for this module; a module-level os.environ write would leak into DB-backed tests."""
+    monkeypatch.setenv("DEMO_MODE", "true")
+
 
 # Demo citizen principals
 CITIZEN_A = Principal(
