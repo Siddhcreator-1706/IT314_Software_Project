@@ -194,15 +194,19 @@ export default function ReportIncidentPage() {
           zoomControl: true,
           attributionControl: false,
           minZoom: 6,
-          maxZoom: 18,
+          maxZoom: 19,
           maxBounds: GUJARAT_BOUNDS,
           maxBoundsViscosity: 0.9,
         }).setView([latitude, longitude], 8);
 
         mapRef.current = map;
 
+        // Street level for placing a pin: no stretched tiles while zooming. (No detectRetina: it requests zoom 20 tiles, which OSM does not have.)
         L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
           maxZoom: 19,
+          maxNativeZoom: 19,
+          updateWhenZooming: false,
+          keepBuffer: 4,
         }).addTo(map);
 
         // Marker with custom pin icon

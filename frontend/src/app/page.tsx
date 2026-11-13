@@ -131,7 +131,7 @@ export default function PublicPortalPage() {
           zoomControl: false,
           attributionControl: true,
           minZoom: 6,
-          maxZoom: 18,
+          maxZoom: 19,
           maxBounds: GUJARAT_BOUNDS,
           maxBoundsViscosity: 1.0,
         }).setView(GUJARAT_CENTER, GUJARAT_DEFAULT_ZOOM);
@@ -141,6 +141,11 @@ export default function PublicPortalPage() {
         const cfg = TILE_LAYERS[activeBaseLayer];
         L.tileLayer(cfg.base, {
           maxZoom: cfg.maxZoom,
+          maxNativeZoom: cfg.maxZoom,
+          // Street level: no stretched low-detail tiles while zooming, and a wider tile buffer so panning
+          // along a street does not show blank squares. (detectRetina is not used: it asks OSM for zoom 20, which does not exist.)
+          updateWhenZooming: false,
+          keepBuffer: 4,
           subdomains: cfg.subdomains,
           attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
         }).addTo(map);
