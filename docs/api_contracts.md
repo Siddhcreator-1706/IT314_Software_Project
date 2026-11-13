@@ -82,6 +82,12 @@
 ]
 ```
 
+### 1.4 Published Safety Guidance & Public Updates (NU-FR-08)
+* **Paths:** `GET /api/v1/public/safety-content` and `GET /api/v1/public/updates`. No authentication. Optional `scenario` filter (`cyclone`, `industrial_fire`, `urban_flooding`; anything else is `422`).
+* **safety-content:** only guidance a publisher has published. Fields: `content_id`, `scenario`, `title`, `body`, `source`, `version`, `published_at`. Drafts, approved-but-unpublished and superseded versions are never returned.
+* **updates:** only published broadcast updates. Fields: `update_id`, `scenario`, `title`, `body`, `area_label`, `published_at`; newest first, at most 50.
+* **Privacy:** no author or approver names, no linked incident, no internal notes. The `/safety` page shows these above its general guidance and falls back to the general guidance when the service is unreachable.
+
 ---
 
 ## 2. Citizen Authentication & Reporting API (Owner: Zalak)
@@ -219,6 +225,12 @@ Until an enterprise transactional email provider is connected, public password r
 * **Limits:** 5 MB per photo, 5 photos per report. The type is checked from the file's bytes, not the header. `status` is `Awaiting review` until a moderator decides (`Approved`, `Held for review`); removed photos are not listed.
 * **Errors:** `413 FILE_TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE` / `INVALID_IMAGE`, `409 TOO_MANY_ATTACHMENTS` / `INCIDENT_CLOSED`, `404` for anyone else's report or photo, `429 RATE_LIMITED`, `503 ATTACHMENTS_UNAVAILABLE` in demo mode.
 * **Storage:** bytes live in `evidence_blobs` (migration 11); metadata and moderation state stay in `evidence_files`, so photos appear in the dispatcher incident detail and the moderation queue.
+
+### 2.7 Account: Profile, Password, Notifications
+* **Profile:** `GET /api/v1/me/profile` returns `{user_id, email, full_name, phone, preferred_language, alerts: {in_app, email, sms}, created_at}`. `PATCH /api/v1/me/profile` accepts any of `full_name`, `phone`, `preferred_language` (`en`, `hi`, `gu`), `email_alerts`, `sms_alerts`. The email is the sign-in identity and is not editable; in-app notifications cannot be turned off; email and SMS are stored preferences only. Invalid values return `422`; changes are audited.
+* **Password:** `POST /api/v1/me/password` with `{current_password, new_password}`. The new password follows the registration policy and must differ from the current one (`422 WEAK_PASSWORD` / `PASSWORD_UNCHANGED`); a wrong current password is `400 INVALID_CURRENT_PASSWORD` and is audited. On success every session, including this one, is ended and the response is `{"changed": true, "sign_in_required": true}`. Rate limited.
+* **Notifications:** `POST /api/v1/me/notifications/read-all` marks all of your in-app notifications read and returns `{"marked_read": n}`.
+* **Demo mode:** profile and password return `503 ACCOUNT_UNAVAILABLE` because they need the database.
 
 ---
 
