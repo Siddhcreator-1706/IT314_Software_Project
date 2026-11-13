@@ -18,13 +18,15 @@ from fastapi.responses import JSONResponse, Response
 from psycopg import sql
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-from app import audit, db
+from app import audit, db, security
 from app.auth import Citizen
 from app.common import Page, Priority, Scenario, next_incident_ref, notify, page_body, scenario_db
 from app.config import get_settings
 from app.errors import ApiError, conflict, not_found
 from app.geo import district_for, is_in_gujarat
 from app.ratelimit import rate_limit
+from app.routers.auth import _PHONE_RE
+from app.routers.auth import _check_password_policy as check_password_policy
 from app.routers.dm.ai import _read_capped_body, safe_filename, sniff_image_type
 
 router = APIRouter(prefix="/api/v1", tags=["citizen"])
@@ -422,9 +424,9 @@ def _attachment_body(row: dict) -> dict:
     }
 
 
-def _require_database() -> None:
+def _require_database(code: str = "ATTACHMENTS_UNAVAILABLE", what: str = "Photo attachments") -> None:
     if _is_demo_mode():
-        raise ApiError(503, "ATTACHMENTS_UNAVAILABLE", "Photo attachments need the database and are off in demo mode")
+        raise ApiError(503, code, f"{what} need the database and are off in demo mode")
 
 
 def _own_incident_status(conn, incident_id: uuid.UUID, user_id: uuid.UUID) -> str:
@@ -575,6 +577,159 @@ def remove_attachment(incident_id: uuid.UUID, evidence_id: uuid.UUID, principal:
             ip=principal.ip,
         )
     return {"evidence_id": evidence_id, "status": "Removed"}
+
+
+# --------------------------------------------------------------------------- account (profile, password)
+
+_LANGUAGES = ("en", "hi", "gu")
+_PROFILE_COLUMNS = "user_id, email, full_name, phone, preferred_language, alert_preferences, created_at"
+
+
+class ProfileUpdate(BaseModel):
+    full_name: str | None = Field(default=None, min_length=1, max_length=120)
+    phone: str | None = Field(default=None, max_length=32)
+    preferred_language: Literal["en", "hi", "gu"] | None = None
+    email_alerts: bool | None = None
+    sms_alerts: bool | None = None
+
+    @field_validator("full_name")
+    @classmethod
+    def _name_not_blank(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("Name must not be blank")
+        return value
+
+    @field_validator("phone")
+    @classmethod
+    def _valid_phone(cls, value: str | None) -> str | None:
+        if value is not None and value.strip() and not _PHONE_RE.fullmatch(value.strip()):
+            raise ValueError("Enter a valid phone number, for example +919876543210")
+        return value
+
+
+class PasswordChange(BaseModel):
+    current_password: str = Field(min_length=1, max_length=1024)
+    new_password: str = Field(min_length=1, max_length=1024)
+
+
+def _profile_body(row: dict) -> dict:
+    prefs = row["alert_preferences"] or {}
+    return {
+        "user_id": row["user_id"],
+        "email": row["email"],
+        "full_name": row["full_name"],
+        "phone": row["phone"],
+        "preferred_language": row["preferred_language"] or "en",
+        # In-app notifications are the source of truth and cannot be turned off.
+        "alerts": {"in_app": True, "email": bool(prefs.get("email", True)), "sms": bool(prefs.get("sms", False))},
+        "created_at": row["created_at"],
+    }
+
+
+@router.get("/me/profile")
+def my_profile(principal: Citizen):
+    _require_database("ACCOUNT_UNAVAILABLE", "Account settings")
+    with db.transaction() as conn:
+        row = conn.execute(f"SELECT {_PROFILE_COLUMNS} FROM users WHERE user_id = %s", (principal.user_id,)).fetchone()
+    if row is None:
+        raise not_found("Account")
+    return _profile_body(row)
+
+
+@router.patch("/me/profile", dependencies=[rate_limit("profile", 30, 3600)])
+def update_my_profile(body: ProfileUpdate, principal: Citizen):
+    """Change your own name, phone, language or alert preferences. The email address is your sign-in identity and is not editable here."""
+    _require_database("ACCOUNT_UNAVAILABLE", "Account settings")
+    with db.transaction() as conn:
+        before = conn.execute(
+            f"SELECT {_PROFILE_COLUMNS} FROM users WHERE user_id = %s FOR UPDATE", (principal.user_id,)
+        ).fetchone()
+        if before is None:
+            raise not_found("Account")
+        prefs = dict(before["alert_preferences"] or {})
+        if body.email_alerts is not None:
+            prefs["email"] = body.email_alerts
+        if body.sms_alerts is not None:
+            prefs["sms"] = body.sms_alerts
+        prefs["in_app"] = True
+        phone = before["phone"] if body.phone is None else (body.phone.strip() or None)
+        after = conn.execute(
+            f"""
+            UPDATE users SET full_name = %s, phone = %s, preferred_language = %s, alert_preferences = %s::jsonb
+            WHERE user_id = %s RETURNING {_PROFILE_COLUMNS}
+            """,
+            (
+                body.full_name.strip() if body.full_name else before["full_name"],
+                phone,
+                body.preferred_language or before["preferred_language"] or "en",
+                json.dumps(prefs),
+                principal.user_id,
+            ),
+        ).fetchone()
+        audit.record(
+            conn,
+            actor=principal,
+            action="PROFILE_UPDATED",
+            entity_type="user",
+            entity_id=principal.user_id,
+            rationale="Citizen updated their profile",
+            before={"preferred_language": before["preferred_language"], "alerts": _profile_body(before)["alerts"]},
+            after={"preferred_language": after["preferred_language"], "alerts": _profile_body(after)["alerts"]},
+            ip=principal.ip,
+        )
+    return _profile_body(after)
+
+
+@router.post("/me/password", dependencies=[rate_limit("password-change", 10, 900)])
+def change_my_password(body: PasswordChange, principal: Citizen):
+    """Change your password. Every signed-in session, including this one, is ended so you sign in again."""
+    _require_database("ACCOUNT_UNAVAILABLE", "Account settings")
+    check_password_policy(body.new_password)
+    with db.transaction() as conn:
+        row = conn.execute(
+            "SELECT password_hash FROM user_auth WHERE user_id = %s FOR UPDATE", (principal.user_id,)
+        ).fetchone()
+        wrong_current = row is None or not security.verify_password(row["password_hash"], body.current_password)
+    if wrong_current:
+        # Audited in its own transaction: raising inside the one above would roll the audit row back.
+        audit.record_standalone(
+            actor=principal, action="PASSWORD_CHANGE_FAILED", entity_type="user", entity_id=principal.user_id,
+            result="FAILURE", rationale="Wrong current password", ip=principal.ip,
+        )
+        raise ApiError(400, "INVALID_CURRENT_PASSWORD", "Your current password is not correct")
+    with db.transaction() as conn:
+        row = conn.execute(
+            "SELECT password_hash FROM user_auth WHERE user_id = %s FOR UPDATE", (principal.user_id,)
+        ).fetchone()
+        if security.verify_password(row["password_hash"], body.new_password):
+            raise ApiError(422, "PASSWORD_UNCHANGED", "Choose a password different from your current one")
+        conn.execute(
+            """
+            UPDATE user_auth
+            SET password_hash = %s, token_version = token_version + 1, password_changed_at = now(),
+                failed_login_count = 0, locked_until = NULL
+            WHERE user_id = %s
+            """,
+            (security.hash_password(body.new_password), principal.user_id),
+        )
+        audit.record(
+            conn, actor=principal, action="PASSWORD_CHANGED", entity_type="user",
+            entity_id=principal.user_id, rationale="Citizen changed their password", ip=principal.ip,
+        )
+    return {"changed": True, "sign_in_required": True}
+
+
+@router.post("/me/notifications/read-all", status_code=200)
+def mark_all_notifications_read(principal: Citizen):
+    with db.transaction() as conn:
+        updated = conn.execute(
+            """
+            UPDATE notifications SET read_at = now(), status = 'READ'
+            WHERE user_id = %s AND channel = 'IN_APP' AND read_at IS NULL
+            """,
+            (principal.user_id,),
+        ).rowcount
+    return {"marked_read": updated}
 
 
 @router.get("/me/notifications")
