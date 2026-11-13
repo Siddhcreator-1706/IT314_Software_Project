@@ -167,6 +167,40 @@ export async function replyToInformationRequest(
   );
 }
 
+// ── Photo attachments (NU-FR-05) ───────────────────────────────
+
+export interface AttachmentData {
+  evidence_id: string;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  status: string;
+  uploaded_at: string;
+}
+
+/** Client-side limits; the server enforces its own (5 MB, 5 photos, JPEG/PNG/WebP). 4 MB stays under the hosting proxy body limit. */
+export const ATTACHMENT_LIMITS = { maxBytes: 4 * 1024 * 1024, maxFiles: 5, types: ["image/jpeg", "image/png", "image/webp"] };
+
+export function attachmentUrl(incidentId: string, evidenceId: string): string {
+  return `/api/citizen/me/incidents/${encodeURIComponent(incidentId)}/attachments/${encodeURIComponent(evidenceId)}`;
+}
+
+export async function uploadAttachment(incidentId: string, file: File): Promise<ApiResult<AttachmentData>> {
+  return apiFetch<AttachmentData>(
+    `/api/citizen/me/incidents/${encodeURIComponent(incidentId)}/attachments`,
+    undefined,
+    { method: "POST", body: file, headers: { "Content-Type": file.type, "X-Filename": encodeURIComponent(file.name) } }
+  );
+}
+
+export async function fetchAttachments(incidentId: string): Promise<ApiResult<{ items: AttachmentData[]; max_attachments: number }>> {
+  return apiFetch(`/api/citizen/me/incidents/${encodeURIComponent(incidentId)}/attachments`);
+}
+
+export async function removeAttachment(incidentId: string, evidenceId: string): Promise<ApiResult<{ evidence_id: string; status: string }>> {
+  return apiFetch(attachmentUrl(incidentId, evidenceId), undefined, { method: "DELETE" });
+}
+
 // ── Public endpoints (no auth) ─────────────────────────────────
 
 /** Contract: GET /api/v1/public/incidents */

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from "react";
 import { SiteHeader, NavLink } from "@/components/Brand";
 import Link from "next/link";
 import { fetchMyReports, replyToInformationRequest, ReportData } from "@/services/citizenApi";
+import { ReportPhotos } from "@/components/ReportPhotos";
 
 const STATUS_CONFIG: Record<
   string,
@@ -383,6 +384,7 @@ export default function MyReportsPage() {
                   {/* Detailed Timeline Drawer */}
                   {isSelected && (
                     <div className="mt-5 pt-4 border-t border-slate-800 text-xs space-y-2">
+                      <ReportPhotos incidentId={report.id} closed={["CLOSED", "REJECTED"].includes(report.status)} />
                       <div className="font-semibold text-slate-200 mb-2">Detailed Event Audit:</div>
                       <div className="space-y-1.5 font-mono text-[11px] text-slate-300">
                         <div className="flex items-center gap-2">

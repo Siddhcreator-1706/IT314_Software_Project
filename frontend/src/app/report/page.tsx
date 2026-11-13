@@ -4,7 +4,14 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { SiteHeader, NavLink } from "@/components/Brand";
 import Link from "next/link";
 import { isInGujarat, GUJARAT_CENTER, GUJARAT_BOUNDS, GUJARAT_DEFAULT_ZOOM } from "@/lib/geo";
-import { createReport, fetchPublicIncidents, type PublicIncident, type Scenario } from "@/services/citizenApi";
+import {
+  ATTACHMENT_LIMITS,
+  createReport,
+  fetchPublicIncidents,
+  uploadAttachment,
+  type PublicIncident,
+  type Scenario,
+} from "@/services/citizenApi";
 import { findNearbyIncidents } from "@/services/duplicateDetection";
 import { URGENT_NEEDS, preTriage } from "@/services/preTriage";
 
@@ -87,7 +94,9 @@ export default function ReportIncidentPage() {
   // Submission States
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [successResult, setSuccessResult] = useState<{ reference: string; status: string } | null>(null);
+  const [successResult, setSuccessResult] = useState<{ reference: string; status: string; photoNote?: string } | null>(null);
+  const [photos, setPhotos] = useState<File[]>([]);
+  const [photoError, setPhotoError] = useState<string | null>(null);
 
   // Validation
   const validLocation = isInGujarat(latitude, longitude);
@@ -448,7 +457,20 @@ export default function ReportIncidentPage() {
         setErrorMessage("The server did not confirm your report. Please try again.");
         return;
       }
-      setSuccessResult({ reference: refNumber, status: res.data?.status || "SUBMITTED" });
+      // The report is already filed; photos are added afterwards and a failure never undoes the report.
+      let photoNote: string | undefined;
+      if (photos.length > 0 && res.data?.incident_id) {
+        let sent = 0;
+        for (const photo of photos) {
+          const uploaded = await uploadAttachment(res.data.incident_id, photo);
+          if (!uploaded.error) sent += 1;
+        }
+        photoNote =
+          sent === photos.length
+            ? `${sent} photo${sent === 1 ? "" : "s"} attached. A moderator will review them.`
+            : `${sent} of ${photos.length} photos attached. You can add the rest later from My Reports.`;
+      }
+      setSuccessResult({ reference: refNumber, status: res.data?.status || "SUBMITTED", photoNote });
       sessionStorage.removeItem(DRAFT_STORAGE_KEY);
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Failed to submit report. Please try again.");
@@ -535,6 +557,9 @@ export default function ReportIncidentPage() {
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" aria-hidden="true" />
                 Status: {successResult.status}
               </div>
+              {successResult.photoNote && (
+                <div role="status" className="text-xs text-slate-300 mt-2">{successResult.photoNote}</div>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
@@ -548,6 +573,7 @@ export default function ReportIncidentPage() {
                 type="button"
                 onClick={() => {
                   setSuccessResult(null);
+                  setPhotos([]);
                   setDescription("");
                   if (typeof crypto !== "undefined" && crypto.randomUUID) {
                     setIdempotencyKey(crypto.randomUUID());
@@ -745,6 +771,52 @@ export default function ReportIncidentPage() {
                     </label>
                   ))}
                 </div>
+              </div>
+
+              {/* Photos (optional, NU-FR-05): sent after the report is filed */}
+              <div>
+                <label htmlFor="report-photos" className="block text-xs font-bold text-slate-200 uppercase tracking-wider mb-2">
+                  Photos (optional)
+                </label>
+                <input
+                  id="report-photos"
+                  type="file"
+                  accept={ATTACHMENT_LIMITS.types.join(",")}
+                  multiple
+                  onChange={(e) => {
+                    const chosen = Array.from(e.target.files ?? []);
+                    e.target.value = "";
+                    const tooBig = chosen.find((f) => f.size > ATTACHMENT_LIMITS.maxBytes);
+                    const wrongType = chosen.find((f) => !ATTACHMENT_LIMITS.types.includes(f.type));
+                    if (wrongType) return setPhotoError(`${wrongType.name} is not a JPEG, PNG or WebP image.`);
+                    if (tooBig) return setPhotoError(`${tooBig.name} is larger than ${ATTACHMENT_LIMITS.maxBytes / (1024 * 1024)} MB.`);
+                    const next = [...photos, ...chosen].slice(0, ATTACHMENT_LIMITS.maxFiles);
+                    setPhotoError(photos.length + chosen.length > ATTACHMENT_LIMITS.maxFiles ? `At most ${ATTACHMENT_LIMITS.maxFiles} photos.` : null);
+                    setPhotos(next);
+                  }}
+                  className="block w-full text-xs text-slate-300 file:mr-3 file:rounded-lg file:border-0 file:bg-slate-800 file:px-3 file:py-2 file:text-slate-200 hover:file:bg-slate-700"
+                />
+                <p className="text-xs text-slate-400 mt-1">
+                  Up to {ATTACHMENT_LIMITS.maxFiles} JPEG, PNG or WebP photos, {ATTACHMENT_LIMITS.maxBytes / (1024 * 1024)} MB each. Moderators review photos before they are used.
+                </p>
+                {photoError && <p role="alert" className="text-xs text-red-300 mt-1">{photoError}</p>}
+                {photos.length > 0 && (
+                  <ul className="mt-2 space-y-1">
+                    {photos.map((photo, index) => (
+                      <li key={`${photo.name}-${index}`} className="flex items-center justify-between gap-2 text-xs bg-slate-950/60 border border-slate-800 rounded-lg px-3 py-1.5">
+                        <span className="truncate">{photo.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setPhotos(photos.filter((_, i) => i !== index))}
+                          className="text-slate-400 hover:text-white cursor-pointer"
+                          aria-label={`Remove ${photo.name}`}
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </div>
 
               {hint.level && (
