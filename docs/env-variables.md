@@ -98,6 +98,22 @@ When `APP_ENV` is `staging` or `production` the backend refuses to start unless 
 | `SMOKE_DONATION_WEBHOOK_SECRET` (S), `SMOKE_STAGING_WEBHOOK_URL` | Webhook probe (W1) against staging. |
 | `SMOKE_SKIP_<STEP>` | `1` skips one smoke step (see `scripts/README.md` section 3). |
 
+## GitHub Actions secrets (CI/CD)
+
+Entered by Siddh under the repository's Settings > Secrets and variables > Actions; the workflows refer to them by name only.
+
+| Secret | Used by | Purpose |
+|---|---|---|
+| `PROD_BACKEND_URL` | `cd.yml` (health check, smoke), `ingest-cron.yml` | Base URL of the deployed backend (`https://<backend>.onrender.com`). |
+| `RENDER_DEPLOY_HOOK` | `cd.yml` | Render deploy hook of `drch-backend`; unset = no backend redeploy. |
+| `RENDER_AI_DEPLOY_HOOK` | `cd.yml` | Render deploy hook of `drch-ai-triage`; unset = the AI service is redeployed by hand. |
+| `VERCEL_DEPLOY_HOOK` | `cd.yml` | Vercel deploy hook for the frontend. |
+| `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` | `ci.yml` | Vercel preview build. |
+| `INGEST_TOKEN` | `ingest-cron.yml` | Same value as the backend's `INGEST_TOKEN`. |
+| `SMOKE_STAFF_EMAIL`, `SMOKE_STAFF_PASSWORD`, `SMOKE_STAFF_TOTP_SECRET` | `cd.yml` | Staging smoke account (a `DISASTER_MGMT` user created with `app.cli create-staff`). |
+
+`GITHUB_TOKEN` is provided by GitHub and publishes the images to GHCR.
+
 ## Not used (removed)
 
 `DEMO_MODE`, `REDIS_URL`, `RABBITMQ_*`, `OPENAI_API_KEY`, `HUGGINGFACE_API_KEY` - no code reads them.
