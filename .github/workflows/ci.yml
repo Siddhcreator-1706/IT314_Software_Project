@@ -117,7 +117,7 @@ jobs:
           NEXT_PUBLIC_API_URL: http://localhost:8000
 
       - name: Dependency vulnerability audit (High+Critical)
-        run: npm audit --audit-level=high || true
+        run: npm audit --audit-level=high
 
   # ============================================================================
   # 2. Python Backend & AI Workers Quality Scan
@@ -155,13 +155,14 @@ jobs:
         run: ruff check backend/ ai-workers/ --no-fix
 
       - name: Run Bandit security scan (SAST)
-        run: >
-          bandit -r backend/ ai-workers/
-          -ll -ii
-          --skip B101,B311,B105,B106,B107,B301,B403,B404,B603,B607
+        run: |
+          bandit -r backend/ ai-workers/ -ll -ii
+          # scripts/ are developer tools: B104 (0.0.0.0 in an allow-list) and B608
+          # (SQL built from internal table names) are reviewed false positives there.
+          bandit -r scripts/ -ll -ii --skip B104,B608
 
       - name: Run pip-audit for known CVEs
-        run: pip-audit -r backend/requirements.txt || true
+        run: pip-audit -r backend/requirements.txt -r ai-workers/requirements.txt
 
   # ============================================================================
   # 2b. AI Workers Test Suite (runs when ai-workers changes, without the database job)
@@ -400,7 +401,8 @@ jobs:
           scan-type: 'image'
           image-ref: ${{ matrix.image_name }}:test
           severity: 'CRITICAL,HIGH'
-          exit-code: '0'
+          exit-code: '1'
+          ignore-unfixed: true
           cache: true
 
   # ============================================================================
