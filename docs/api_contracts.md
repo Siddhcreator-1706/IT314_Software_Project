@@ -162,7 +162,7 @@
 * **Auth:** Bearer Token (`require_citizen`)
 * **Headers:**
   * `Authorization: Bearer <token>`
-  * `Idempotency-Key: <unique-uuid-or-client-key>`
+  * `Idempotency-Key: <unique-uuid-or-client-key>` — **required** (max 100 characters). Generate one key per report draft and reuse it on every retry of that draft.
 * **Request Body:**
 ```json
 {
@@ -189,7 +189,8 @@
 ```
 * **Validation & Security:**
   * Rejects locations outside Gujarat state boundaries with `422 OUTSIDE_GUJARAT`.
-  * Idempotent: repeated calls with same `Idempotency-Key` return identical response.
+  * A missing or blank `Idempotency-Key` is rejected with `422 IDEMPOTENCY_KEY_REQUIRED` (same rule as `POST /api/v1/donations`); nothing is created.
+  * Idempotent: a repeated call with the same `Idempotency-Key` returns `200 OK` with the same incident body instead of creating a duplicate.
 
 ### 2.4 My Incidents Listing & Timeline
 * **Path:** `GET /api/v1/me/incidents`
