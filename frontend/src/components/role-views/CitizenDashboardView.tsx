@@ -108,6 +108,7 @@ export const CitizenDashboardView: React.FC<CitizenDashboardViewProps> = ({
     try {
       const saved = localStorage.getItem("resq_lang") as LanguageCode | null;
       if (saved && (saved === "en" || saved === "hi" || saved === "gu")) {
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- restore the saved language after mount (localStorage is client-only)
         setLang(saved);
       }
     } catch {

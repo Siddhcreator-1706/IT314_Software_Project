@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { SiteHeader, NavLink } from "@/components/Brand";
 import Link from "next/link";
-import { isInGujarat, GUJARAT_CENTER, GUJARAT_BOUNDS, GUJARAT_DEFAULT_ZOOM } from "@/lib/geo";
+import { isInGujarat, GUJARAT_CENTER, GUJARAT_BOUNDS } from "@/lib/geo";
 import {
   ATTACHMENT_LIMITS,
   createReport,
@@ -118,11 +118,12 @@ export default function ReportIncidentPage() {
       })
       .catch(() => setSession({ authenticated: false, role: null, name: null }));
 
-    // Restore draft if saved
+    // Restore draft if saved (sessionStorage is client-only, so this has to run after mount)
     try {
       const raw = sessionStorage.getItem(DRAFT_STORAGE_KEY);
       if (raw) {
         const d = JSON.parse(raw);
+        /* eslint-disable react-hooks/set-state-in-effect -- restoring the saved draft after mount */
         if (d.scenario) setScenario(d.scenario);
         if (d.description) setDescription(d.description);
         if (d.peopleAffected) setPeopleAffected(d.peopleAffected);
@@ -134,6 +135,7 @@ export default function ReportIncidentPage() {
         if (d.addressText) setAddressText(d.addressText);
         if (d.landmark) setLandmark(d.landmark);
         if (Array.isArray(d.needs)) setNeeds(d.needs);
+        /* eslint-enable react-hooks/set-state-in-effect */
       }
     } catch {
       // Ignore sessionStorage errors

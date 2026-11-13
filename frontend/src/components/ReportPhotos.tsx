@@ -27,6 +27,7 @@ export function ReportPhotos({ incidentId, closed }: { incidentId: string; close
   }, [incidentId]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- load this report's photos once it is shown
     load();
   }, [load]);
 
