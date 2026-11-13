@@ -95,7 +95,7 @@ export function GoogleSignInButton({
         script.addEventListener("load", () => setTimeout(initGoogle, 100));
       }
     }
-  }, [mode, next, onSuccess, onError]);
+  }, [mode, next, onSuccess, onError, router]);
 
   return (
     <div className="w-full flex flex-col items-center">

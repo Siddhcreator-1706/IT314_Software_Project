@@ -123,6 +123,7 @@ export const CitizenDashboardView: React.FC<CitizenDashboardViewProps> = ({
   const [formLocation, setFormLocation] = useState("");
   const [formLat, setFormLat] = useState(20.5937);
   const [formLon, setFormLon] = useState(78.9629);
+  const [gpsError, setGpsError] = useState<string | null>(null);
   const [formAffected, setFormAffected] = useState(1);
   const [formNeeds, setFormNeeds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
@@ -895,22 +896,30 @@ export const CitizenDashboardView: React.FC<CitizenDashboardViewProps> = ({
                         <button
                           type="button"
                           onClick={() => {
-                            if (navigator.geolocation) {
-                              navigator.geolocation.getCurrentPosition(
-                                (pos) => {
-                                  setFormLat(pos.coords.latitude);
-                                  setFormLon(pos.coords.longitude);
-                                },
-                                () => alert("Could not access location."),
-                                { enableHighAccuracy: true, timeout: 5000 }
-                              );
+                            setGpsError(null);
+                            if (!navigator.geolocation) {
+                              setGpsError("This browser cannot share your location. Pick the spot on the map instead.");
+                              return;
                             }
+                            navigator.geolocation.getCurrentPosition(
+                              (pos) => {
+                                setFormLat(pos.coords.latitude);
+                                setFormLon(pos.coords.longitude);
+                              },
+                              () => setGpsError("Could not access your location. Allow location access or pick the spot on the map."),
+                              { enableHighAccuracy: true, timeout: 5000 }
+                            );
                           }}
                           className="text-[10px] text-sky-700 hover:underline font-bold cursor-pointer"
                         >
                           📍 Detect My GPS
                         </button>
                       </div>
+                      {gpsError && (
+                        <p role="alert" className="mb-1.5 text-[11px] font-semibold text-red-600">
+                          {gpsError}
+                        </p>
+                      )}
                       <div className="grid grid-cols-2 gap-2">
                         <input
                           type="number"
