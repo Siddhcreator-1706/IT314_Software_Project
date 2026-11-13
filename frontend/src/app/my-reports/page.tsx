@@ -3,7 +3,8 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { SiteHeader, NavLink } from "@/components/Brand";
 import Link from "next/link";
-import { fetchMyReports, replyToInformationRequest, ReportData } from "@/services/citizenApi";
+import { InformationRequestReply } from "@/components/citizen/InformationRequestReply";
+import { fetchMyReports, ReportData } from "@/services/citizenApi";
 
 const STATUS_CONFIG: Record<
   string,
@@ -67,12 +68,6 @@ export default function MyReportsPage() {
   // Null until the first load finishes: a time rendered on the server never matches the browser locale (hydration error).
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [selectedReport, setSelectedReport] = useState<ReportData | null>(null);
-
-  // Information response state (SRS Requirement S2-13)
-  const [replyText, setReplyText] = useState<Record<string, string>>({});
-  const [replyingId, setReplyingId] = useState<string | null>(null);
-  const [replyError, setReplyError] = useState<{ id: string; message: string } | null>(null);
-  const [replySuccess, setReplySuccess] = useState<string | null>(null);
 
   const loadReports = useCallback(async () => {
     try {
@@ -265,68 +260,8 @@ export default function MyReportsPage() {
                     {report.description}
                   </p>
 
-                  {/* Citizen Information Response Form (SRS S2-13) */}
-                  {currentStatus === "NEEDS_INFORMATION" && (
-                    <div className="mb-5 p-4 rounded-xl border border-orange-700/60 bg-orange-950/40 text-orange-200">
-                      <div className="flex items-center gap-2 mb-2 font-bold text-xs text-orange-300">
-                        <span aria-hidden="true">⚠️</span>
-                        <span>Action Required: Command Center requested additional information</span>
-                      </div>
-                      <p className="text-xs text-orange-200/90 mb-3">
-                        Please clarify situation details, stranded counts, or nearby landmarks to assist response dispatchers.
-                      </p>
-                      {replySuccess === report.id ? (
-                        <div role="status" aria-live="polite" className="text-xs text-emerald-400 font-semibold py-1">
-                          ✓ Your response has been submitted to dispatchers.
-                        </div>
-                      ) : (
-                        <form
-                          onSubmit={async (e) => {
-                            e.preventDefault();
-                            const text = replyText[report.id]?.trim();
-                            if (!text || text.length < 3) return;
-                            setReplyingId(report.id);
-                            setReplyError(null);
-                            const res = await replyToInformationRequest(report.id, text);
-                            setReplyingId(null);
-                            if (res.error) {
-                              setReplyError({ id: report.id, message: res.error });
-                            } else {
-                              setReplySuccess(report.id);
-                              setReplyText((prev) => ({ ...prev, [report.id]: "" }));
-                              loadReports();
-                            }
-                          }}
-                          className="space-y-2"
-                        >
-                          <label htmlFor={`reply-text-${report.id}`} className="sr-only">
-                            Additional incident details for dispatchers
-                          </label>
-                          <textarea
-                            id={`reply-text-${report.id}`}
-                            value={replyText[report.id] || ""}
-                            onChange={(e) => setReplyText((prev) => ({ ...prev, [report.id]: e.target.value }))}
-                            placeholder="Provide additional details or landmark info..."
-                            rows={2}
-                            className="w-full min-h-[60px] rounded-lg bg-slate-900 border border-orange-800/80 p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus-visible:ring-2 focus-visible:ring-orange-500"
-                            required
-                          />
-                          {replyError?.id === report.id && (
-                            <div role="alert" className="text-[11px] text-red-400 font-medium">{replyError.message}</div>
-                          )}
-                          <div className="flex justify-end">
-                            <button
-                              type="submit"
-                              disabled={replyingId === report.id}
-                              className="min-h-[44px] px-4 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white text-xs font-semibold shadow transition disabled:opacity-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
-                            >
-                              {replyingId === report.id ? "Submitting..." : "Send Response"}
-                            </button>
-                          </div>
-                        </form>
-                      )}
-                    </div>
-                  )}
+                  {/* Citizen reply to a NEEDS_INFORMATION request (issue #99, SRS S2-13) */}
+                  <InformationRequestReply report={report} onReplied={loadReports} className="mb-5" />
 
                   {/* Visual 4-Stage Progression Timeline */}
                   <div className="pt-2">

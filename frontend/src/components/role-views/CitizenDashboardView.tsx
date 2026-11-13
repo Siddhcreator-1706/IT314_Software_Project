@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { SiteHeader } from "../Brand";
 import { DisasterCategory } from "../../types/resq";
+import { InformationRequestReply } from "@/components/citizen/InformationRequestReply";
 import * as CitizenApi from "../../services/citizenApi";
 
 interface CitizenDashboardViewProps {
@@ -37,7 +38,10 @@ function statusBadge(status: string) {
     case "LINKED_TO_INCIDENT":
       return { label: "Help Dispatched", bg: "bg-sky-50 text-sky-700 border-sky-200" };
     case "PENDING":
+    case "SUBMITTED":
       return { label: "Under Review", bg: "bg-amber-50 text-amber-700 border-amber-200" };
+    case "NEEDS_INFORMATION":
+      return { label: "Info Requested", bg: "bg-orange-50 text-orange-700 border-orange-300" };
     case "NEEDS_FIELD_CHECK":
       return { label: "Field Check", bg: "bg-purple-50 text-purple-700 border-purple-200" };
     case "REJECTED":
@@ -1075,6 +1079,9 @@ export const CitizenDashboardView: React.FC<CitizenDashboardViewProps> = ({
                             <span className="text-xs text-slate-400 font-bold">{isExpanded ? "▲" : "▼"}</span>
                           </div>
                         </div>
+
+                        {/* Reply to a dispatcher's information request (issue #99); shown without expanding */}
+                        <InformationRequestReply report={report} onReplied={handleRefresh} theme="light" className="mx-4 mb-4" />
 
                         {/* Expandable Details */}
                         {isExpanded && (
