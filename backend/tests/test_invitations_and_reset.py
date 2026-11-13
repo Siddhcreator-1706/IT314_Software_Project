@@ -218,6 +218,74 @@ def test_operator_without_supervisor_cannot_invite(client, make):
     assert resp.status_code == 403
 
 
+# ----------------------------------------------------------------------- invitation management (issue #100)
+
+
+def _invite_dm(client, headers, email=None):
+    email = email or f"invitee-{uuid.uuid4().hex[:8]}@test.drch"
+    resp = _invite(client, headers, DM_ROLE, email, permissions=["DISPATCH"])
+    assert resp.status_code == 201, resp.text
+    return resp.json()["user_id"], email
+
+
+def test_list_shows_pending_invitations_with_scope(client, make):
+    admin = make.token(make.user(APP_MGMT_ROLE))
+    supervisor = make.staff("SUPERVISOR", "DISPATCH")["headers"]
+    dm_id, _ = _invite_dm(client, admin)
+    admin_invite = _invite(client, admin, APP_MGMT_ROLE, f"adm-{uuid.uuid4().hex[:8]}@test.drch").json()["user_id"]
+
+    as_admin = {i["user_id"]: i for i in client.get("/api/v1/auth/invitations", headers=admin).json()["items"]}
+    assert as_admin[dm_id]["permissions"] == ["DISPATCH"] and as_admin[dm_id]["expired"] is False
+    assert admin_invite in as_admin
+
+    as_supervisor = {i["user_id"] for i in client.get("/api/v1/auth/invitations", headers=supervisor).json()["items"]}
+    assert dm_id in as_supervisor and admin_invite not in as_supervisor
+    # A supervisor cannot act on an administrator invitation; it is not even revealed.
+    assert client.post(f"/api/v1/auth/invitations/{admin_invite}/resend", headers=supervisor).status_code == 404
+
+
+def test_resend_replaces_the_link(client, make):
+    admin = make.token(make.user(APP_MGMT_ROLE))
+    user_id, _ = _invite_dm(client, admin)
+    old_token = _token_from_outbox("setup-account?token=")
+
+    resp = client.post(f"/api/v1/auth/invitations/{user_id}/resend", headers=admin)
+    assert resp.status_code == 200, resp.text
+    new_token = _token_from_outbox("setup-account?token=")
+    assert new_token != old_token
+    assert client.get("/api/v1/auth/invitation/verify", params={"token": old_token}).status_code == 400
+    assert client.get("/api/v1/auth/invitation/verify", params={"token": new_token}).status_code == 200
+
+
+def test_revoke_removes_the_pending_account_and_allows_reinvite(client, make, sql):
+    admin = make.token(make.user(APP_MGMT_ROLE))
+    user_id, email = _invite_dm(client, admin)
+    token = _token_from_outbox("setup-account?token=")
+
+    assert client.delete(f"/api/v1/auth/invitations/{user_id}", headers=admin).status_code == 204
+    assert sql.execute("SELECT 1 FROM users WHERE user_id = %s", (user_id,)).fetchone() is None
+    assert client.get("/api/v1/auth/invitation/verify", params={"token": token}).status_code == 400
+    assert client.delete(f"/api/v1/auth/invitations/{user_id}", headers=admin).status_code == 404
+    _invite_dm(client, admin, email)  # the email is free again
+
+
+def test_active_accounts_cannot_be_resent_or_revoked(client, make):
+    admin = make.token(make.user(APP_MGMT_ROLE))
+    active = make.staff("DISPATCH")
+    assert client.post(f"/api/v1/auth/invitations/{active['user_id']}/resend", headers=admin).status_code == 404
+    assert client.delete(f"/api/v1/auth/invitations/{active['user_id']}", headers=admin).status_code == 404
+
+
+def test_team_picker_lists_team_resources_for_inviters_only(client, make):
+    team = make.resource()
+    admin = make.token(make.user(APP_MGMT_ROLE))
+    ids = {t["resource_id"] for t in client.get("/api/v1/auth/invitations/teams", headers=admin).json()["items"]}
+    assert str(team["resource_id"]) in ids
+    operator = make.staff("DISPATCH")["headers"]
+    assert client.get("/api/v1/auth/invitations/teams", headers=operator).status_code == 403
+    assert client.get("/api/v1/auth/invitations", headers=operator).status_code == 403
+
+
 # ----------------------------------------------------------------------- password reset (database)
 
 GENERIC = "If this email is registered and active, a password reset link has been sent."

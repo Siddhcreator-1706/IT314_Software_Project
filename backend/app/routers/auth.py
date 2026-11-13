@@ -617,6 +617,130 @@ def invite_user(body: InviteUserRequest, principal: InviterUser, request: Reques
     }
 
 
+def _invitable_roles(principal) -> tuple[str, ...]:
+    """Roles the caller may invite, list, resend or revoke (same anti-escalation rule as invite_user)."""
+    if principal.role == APP_MGMT_ROLE:
+        return (APP_MGMT_ROLE, DM_ROLE, FIELD_TEAM_ROLE)
+    return (DM_ROLE, FIELD_TEAM_ROLE)
+
+
+def _pending_invitation(conn, user_id: uuid.UUID, principal):
+    """A PENDING_SETUP account the caller manages, locked for update; 404 otherwise (never 403)."""
+    row = conn.execute(
+        """
+        SELECT u.user_id, u.email, u.full_name, u.status, r.code AS role
+        FROM users u JOIN roles r ON r.role_id = u.role_id
+        WHERE u.user_id = %s
+        FOR UPDATE OF u
+        """,
+        (user_id,),
+    ).fetchone()
+    if row is None or row["status"] != "PENDING_SETUP" or row["role"] not in _invitable_roles(principal):
+        raise ApiError(404, "NOT_FOUND", "Pending invitation not found")
+    return row
+
+
+@router.get("/auth/invitations")
+def list_invitations(principal: InviterUser):
+    """Accounts invited but not yet set up, limited to the roles the caller may invite."""
+    with db.transaction() as conn:
+        rows = conn.execute(
+            """
+            SELECT u.user_id, u.email, u.full_name, r.code AS role, u.created_at,
+                   a.invitation_expires_at, inviter.full_name AS invited_by_name,
+                   COALESCE(
+                       (SELECT json_agg(sp.permission::text ORDER BY sp.permission)
+                        FROM staff_permissions sp WHERE sp.user_id = u.user_id),
+                       '[]'
+                   ) AS permissions,
+                   (SELECT res.name FROM field_team_members m
+                    JOIN resources res ON res.resource_id = m.resource_id
+                    WHERE m.user_id = u.user_id LIMIT 1) AS team_name
+            FROM users u
+            JOIN roles r ON r.role_id = u.role_id
+            JOIN user_auth a ON a.user_id = u.user_id
+            LEFT JOIN users inviter ON inviter.user_id = a.invited_by
+            WHERE u.status = 'PENDING_SETUP' AND r.code = ANY(%s)
+            ORDER BY u.created_at DESC
+            """,
+            (list(_invitable_roles(principal)),),
+        ).fetchall()
+    now = datetime.now(UTC)
+    return {
+        "items": [
+            {
+                **row,
+                "user_id": str(row["user_id"]),
+                "expired": row["invitation_expires_at"] is None or row["invitation_expires_at"] < now,
+            }
+            for row in rows
+        ]
+    }
+
+
+@router.get("/auth/invitations/teams")
+def list_invitation_teams(principal: InviterUser):
+    """Team resources a Field Team invitation can join (for the invite form's team picker)."""
+    with db.transaction() as conn:
+        rows = conn.execute(
+            """
+            SELECT r.resource_id, r.name, a.name AS agency_name, r.status
+            FROM resources r LEFT JOIN agencies a ON a.agency_id = r.agency_id
+            WHERE r.type = 'TEAM'
+            ORDER BY r.name
+            """
+        ).fetchall()
+    return {"items": [{**row, "resource_id": str(row["resource_id"])} for row in rows]}
+
+
+@router.post("/auth/invitations/{user_id}/resend", dependencies=[rate_limit("invite-resend", 20, 3600)])
+def resend_invitation(user_id: uuid.UUID, principal: InviterUser, request: Request):
+    """Issue a fresh invitation link. The previous link stops working immediately."""
+    token = security.generate_secure_token(32)
+    expires_at = datetime.now(UTC) + timedelta(hours=get_settings().invitation_token_hours)
+    with db.transaction() as conn:
+        account = _pending_invitation(conn, user_id, principal)
+        conn.execute(
+            "UPDATE user_auth SET invitation_token_hash = %s, invitation_expires_at = %s WHERE user_id = %s",
+            (security.hash_token(token), expires_at, user_id),
+        )
+        audit.record(
+            conn,
+            actor=principal,
+            action="INVITATION_RESENT",
+            entity_type="user",
+            entity_id=user_id,
+            rationale=f"Invitation link reissued by {principal.email}",
+            ip=_ip(request),
+        )
+    email_service.send_invitation_email(account["email"], account["full_name"], account["role"], token)
+    return {
+        "user_id": str(user_id),
+        "status": "PENDING_SETUP",
+        "invitation_expires_at": expires_at,
+        "message": "A new invitation email was sent. The previous link no longer works.",
+    }
+
+
+@router.delete("/auth/invitations/{user_id}", status_code=204)
+def revoke_invitation(user_id: uuid.UUID, principal: InviterUser, request: Request):
+    """Revoke an unused invitation: the never-activated account is removed, so the email can be re-invited."""
+    with db.transaction() as conn:
+        account = _pending_invitation(conn, user_id, principal)
+        audit.record(
+            conn,
+            actor=principal,
+            action="INVITATION_REVOKED",
+            entity_type="user",
+            entity_id=user_id,
+            rationale=f"Pending invitation revoked by {principal.email}",
+            before={"email": account["email"], "role": account["role"], "status": "PENDING_SETUP"},
+            ip=_ip(request),
+        )
+        # user_auth, staff_permissions and field_team_members rows cascade with the user.
+        conn.execute("DELETE FROM users WHERE user_id = %s", (user_id,))
+
+
 @router.get("/auth/invitation/verify")
 def verify_invitation(token: str):
     """Verify an invitation token link before displaying the password setup form."""
