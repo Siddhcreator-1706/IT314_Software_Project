@@ -6,7 +6,7 @@ import { fetchPublicIncidents, fetchPublicAlerts, PublicIncident, PublicAlert } 
 import { LiveOperationsLayer } from "../components/dm/LiveOperationsLayer";
 import { signOut } from "./login/actions";
 import { NavLink, SiteHeader } from "../components/Brand";
-import { GUJARAT_BOUNDS, GUJARAT_CENTER, GUJARAT_DEFAULT_ZOOM, GUJARAT_DISTRICTS } from "../lib/geo";
+import { GUJARAT_CENTER, GUJARAT_DEFAULT_ZOOM, GUJARAT_DISTRICTS, INDIA_BOUNDS } from "../lib/geo";
 
 interface SessionInfo {
   authenticated: boolean;
@@ -134,13 +134,20 @@ export default function PublicPortalPage() {
         const map = L.map(mapContainerRef.current, {
           zoomControl: false,
           attributionControl: true,
-          minZoom: 6,
+          minZoom: 4,
           maxZoom: 19,
-          maxBounds: GUJARAT_BOUNDS,
+          // Panning limit: India plus a wide margin. It must be roomy, because a Gujarat-centred view on a wide screen reaches
+          // well west of India's edge; a tight limit pushed the opening view east so Gujarat sat on the left. The lowest zoom
+          // (fitIndiaZoom below) still shows exactly all of India.
+          maxBounds: L.latLngBounds(INDIA_BOUNDS).pad(0.4),
           maxBoundsViscosity: 1.0,
         }).setView(viewRef.current?.center ?? GUJARAT_CENTER, viewRef.current?.zoom ?? GUJARAT_DEFAULT_ZOOM);
 
         mapRef.current = map;
+        // The lowest zoom is the one at which all of India just fits the screen, so it stays centred at any window size.
+        const fitIndiaZoom = () => map.setMinZoom(map.getBoundsZoom(INDIA_BOUNDS));
+        fitIndiaZoom();
+        map.on("resize", fitIndiaZoom);
         map.on("moveend", () => {
           const c = map.getCenter();
           viewRef.current = { center: [c.lat, c.lng], zoom: map.getZoom() };
@@ -156,7 +163,20 @@ export default function PublicPortalPage() {
           attribution: OSM_ATTRIBUTION,
         }).addTo(map);
 
-        L.control.zoom({ position: "bottomright" }).addTo(map);
+        const zoomControl = L.control.zoom({ position: "bottomright" }).addTo(map);
+        // From the all-India view the middle of the screen is central India, so zooming in there would leave Gujarat
+        // stuck on the left. While zoomed out further than the Gujarat view, the + button zooms in towards Gujarat instead.
+        zoomControl.getContainer()?.addEventListener(
+          "click",
+          (event: Event) => {
+            const button = (event.target as HTMLElement).closest(".leaflet-control-zoom-in");
+            if (!button || button.classList.contains("leaflet-disabled") || map.getZoom() >= GUJARAT_DEFAULT_ZOOM) return;
+            event.stopPropagation();
+            event.preventDefault();
+            map.flyTo(GUJARAT_CENTER, Math.min(map.getZoom() + 1, GUJARAT_DEFAULT_ZOOM), { duration: 0.6 });
+          },
+          true
+        );
         L.control.scale({ imperial: false, position: "bottomleft" }).addTo(map);
 
         markersLayerRef.current = L.layerGroup().addTo(map);
