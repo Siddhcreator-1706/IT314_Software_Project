@@ -217,3 +217,24 @@ def test_no_email_copy_when_email_alerts_are_off(client, make):
     _report(client, citizen)
     time.sleep(1.5)
     assert [m for m in email_service.get_outbox() if m["to"] == citizen["email"]] == []
+
+
+def test_email_copy_is_sent_after_commit_and_dropped_on_rollback(make):
+    import time
+
+    from app import db
+    from app.common import notify
+    from app.services import email as email_service
+
+    citizen = make.citizen()
+    with pytest.raises(RuntimeError), db.transaction() as conn:
+        notify(conn, user_id=citizen["user_id"], event_code="INCIDENT_RECEIVED", title="Rolled back", body="Never sent.")
+        raise RuntimeError("the action failed after queuing the notification")
+    with db.transaction() as conn:
+        notify(conn, user_id=citizen["user_id"], event_code="INCIDENT_RECEIVED", title="Committed", body="Sent.")
+    mail = _wait_for_mail(citizen["email"])
+    time.sleep(0.5)
+    subjects = [m["subject"] for m in email_service.get_outbox() if m["to"] == citizen["email"]]
+    assert mail and any("Committed" in s for s in subjects)
+    assert not any("Rolled back" in s for s in subjects)
+

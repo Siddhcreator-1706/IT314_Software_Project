@@ -564,6 +564,18 @@ class PasswordChange(BaseModel):
     new_password: str = Field(min_length=1, max_length=1024)
 
 
+_NO_PASSWORD_MESSAGE = (
+    "Your account uses Google sign-in and has no password yet. Set one with Forgot password on the sign-in page "
+    "(the link goes to your Google email), then try again."
+)
+
+
+def _require_password_set(row: dict | None) -> None:
+    """A Google-only account has no password to confirm with: point it to the reset link instead of 'wrong password'."""
+    if row is not None and row["password_hash"] is None:
+        raise conflict("NO_PASSWORD_SET", _NO_PASSWORD_MESSAGE)
+
+
 def _profile_body(row: dict) -> dict:
     prefs = row["alert_preferences"] or {}
     return {
@@ -575,6 +587,8 @@ def _profile_body(row: dict) -> dict:
         # In-app notifications are the source of truth and cannot be turned off.
         "alerts": {"in_app": True, "email": bool(prefs.get("email", True)), "sms": bool(prefs.get("sms", False))},
         "created_at": row["created_at"],
+        # False for an account created with Google sign-in that never set a password.
+        "has_password": bool(row.get("has_password", True)),
     }
 
 
@@ -582,7 +596,8 @@ def _profile_body(row: dict) -> dict:
 def my_profile(principal: Citizen):
     with db.transaction() as conn:
         row = conn.execute(
-            "SELECT user_id, email, full_name, phone, preferred_language, alert_preferences, created_at "
+            "SELECT user_id, email, full_name, phone, preferred_language, alert_preferences, created_at, "
+            "(SELECT a.password_hash IS NOT NULL FROM user_auth a WHERE a.user_id = users.user_id) AS has_password "
             "FROM users WHERE user_id = %s",
             (principal.user_id,),
         ).fetchone()
@@ -613,7 +628,8 @@ def update_my_profile(body: ProfileUpdate, principal: Citizen):
             """
             UPDATE users SET full_name = %s, phone = %s, preferred_language = %s, alert_preferences = %s::jsonb
             WHERE user_id = %s
-            RETURNING user_id, email, full_name, phone, preferred_language, alert_preferences, created_at
+            RETURNING user_id, email, full_name, phone, preferred_language, alert_preferences, created_at,
+                      (SELECT a.password_hash IS NOT NULL FROM user_auth a WHERE a.user_id = users.user_id) AS has_password
             """,
             (
                 body.full_name.strip() if body.full_name else before["full_name"],
@@ -645,6 +661,7 @@ def change_my_password(body: PasswordChange, principal: Citizen):
         row = conn.execute(
             "SELECT password_hash FROM user_auth WHERE user_id = %s FOR UPDATE", (principal.user_id,)
         ).fetchone()
+        _require_password_set(row)
         wrong_current = row is None or not security.verify_password(row["password_hash"], body.current_password)
     if wrong_current:
         # Audited in its own transaction: raising inside the one above would roll the audit row back.
@@ -691,6 +708,7 @@ def delete_my_account(body: AccountDeletion, principal: Citizen):
         row = conn.execute(
             "SELECT password_hash FROM user_auth WHERE user_id = %s FOR UPDATE", (principal.user_id,)
         ).fetchone()
+        _require_password_set(row)
         wrong = row is None or not security.verify_password(row["password_hash"], body.password)
     if wrong:
         audit.record_standalone(

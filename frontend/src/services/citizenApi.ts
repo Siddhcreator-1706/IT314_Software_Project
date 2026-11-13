@@ -223,6 +223,8 @@ export interface ProfileData {
   preferred_language: "en" | "hi" | "gu";
   alerts: { in_app: boolean; email: boolean; sms: boolean };
   created_at: string;
+  /** False for a Google sign-in account that never set a password. */
+  has_password: boolean;
 }
 
 export interface ProfileUpdate {

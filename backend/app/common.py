@@ -104,13 +104,15 @@ def _email_copy(conn, user_id, title: str, body: str) -> None:
         ).fetchone()
         if row is None or not (row["alert_preferences"] or {}).get("email", True):
             return
+        from app import db
         from app.services import email as email_service
 
-        threading.Thread(
+        # Only after the commit: a rolled-back action must never produce an email about it.
+        db.after_commit(conn, lambda: threading.Thread(
             target=email_service.send_notification_email,
             args=(row["email"], row["full_name"], title, body),
             daemon=True,
-        ).start()
+        ).start())
     except Exception:  # notifying by email must never break the action that triggered it
         logging.getLogger("drch.email").warning("Could not queue the email copy of a notification", exc_info=True)
 

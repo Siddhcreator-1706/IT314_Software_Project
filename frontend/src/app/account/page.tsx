@@ -162,6 +162,15 @@ export default function AccountPage() {
               </div>
             </form>
 
+            {!profile.has_password && (
+              <div role="note" className="rounded-2xl border border-sky-800/60 bg-sky-950/40 p-5 text-sm text-sky-100 sm:p-6">
+                <h2 className="mb-1 text-xl font-bold text-white">Password</h2>
+                You sign in with Google, so your account has no password yet. To change it or delete your account, first set a password with{" "}
+                <Link href="/forgot-password" className="font-semibold underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-300">Forgot password</Link>
+                ; the link goes to {profile.email}.
+              </div>
+            )}
+            {profile.has_password && (
             <form onSubmit={onChangePassword} className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900 p-5 sm:p-6">
               <h2 className="text-xl font-bold text-white">Change password</h2>
               <p className="text-xs text-slate-400">At least 8 characters with a digit and a special symbol. You will be signed out everywhere and sign in again.</p>
@@ -176,6 +185,8 @@ export default function AccountPage() {
               {passwordError && <p role="alert" className="text-sm text-red-300">{passwordError}</p>}
               <button type="submit" disabled={changing} className={button}>{changing ? "Changing…" : "Change password"}</button>
             </form>
+            )}
+            {profile.has_password && (
             <form onSubmit={onDelete} className="space-y-4 rounded-2xl border border-red-900/60 bg-slate-900 p-5 sm:p-6">
               <h2 className="text-xl font-bold text-white">Delete account</h2>
               <p className="text-xs text-slate-400">
@@ -191,6 +202,7 @@ export default function AccountPage() {
                 {deleting ? "Deleting…" : "Delete my account"}
               </button>
             </form>
+            )}
           </>
         )}
       </main>

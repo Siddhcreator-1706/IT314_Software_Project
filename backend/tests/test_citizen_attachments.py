@@ -137,3 +137,35 @@ def test_photos_require_a_citizen_login(client, make):
     assert client.get(f"/api/v1/me/incidents/{iid}/attachments").status_code == 401
     staff = make.staff()
     assert client.get(f"/api/v1/me/incidents/{iid}/attachments", headers=staff["headers"]).status_code == 403
+
+
+def test_moderator_can_open_the_photo_and_the_view_is_audited(client, make, sql):
+    citizen = make.citizen()
+    iid = _incident(client, citizen)
+    evidence_id = _upload(client, citizen, iid, data=_png(3)).json()["evidence_id"]
+    moderator = make.staff("MODERATOR")
+
+    queue = client.get("/api/v1/dm/moderation/queue", headers=moderator["headers"]).json()["items"]
+    assert next(i for i in queue if i["evidence_id"] == evidence_id)["has_preview"] is True
+
+    r = client.get(f"/api/v1/dm/moderation/{evidence_id}/content", headers=moderator["headers"])
+    assert r.status_code == 200 and r.content == _png(3)
+    assert r.headers["content-type"] == "image/png" and r.headers["x-content-type-options"] == "nosniff"
+    assert "no-store" in r.headers["cache-control"]
+    viewed = sql.execute(
+        "SELECT actor_id FROM audit_logs WHERE entity_id = %s AND action = 'EVIDENCE_VIEWED'", (evidence_id,)
+    ).fetchall()
+    assert [v["actor_id"] for v in viewed] == [moderator["user_id"]]
+
+
+def test_only_moderators_can_open_photos_and_removed_photos_are_gone(client, make):
+    citizen = make.citizen()
+    iid = _incident(client, citizen)
+    evidence_id = _upload(client, citizen, iid, data=_png(4)).json()["evidence_id"]
+    url = f"/api/v1/dm/moderation/{evidence_id}/content"
+
+    assert client.get(url, headers=make.staff("DISPATCH")["headers"]).status_code == 403
+    assert client.get(url, headers=citizen["headers"]).status_code == 403
+
+    client.delete(f"/api/v1/me/incidents/{iid}/attachments/{evidence_id}", headers=citizen["headers"])
+    assert client.get(url, headers=make.staff("MODERATOR")["headers"]).status_code == 404
