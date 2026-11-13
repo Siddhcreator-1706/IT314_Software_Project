@@ -227,7 +227,7 @@
 ```json
 { "message": "It is next to the Jain temple, water is waist deep." }
 ```
-* **Response (201 Created):** `{"incident_id": "3c0b05b3-…", "status": "NEEDS_INFORMATION"}`. The reply is stored in the incident status history as `Reporter reply: <message>` and is visible to dispatchers on the incident.
+* **Response (201 Created):** `{"incident_id": "3c0b05b3-…", "status": "SUBMITTED"}`. The reply returns the report to `SUBMITTED` so it re-enters the verification queue. The reply is stored in the incident status history as `Reporter reply: <message>` and is visible to dispatchers on the incident.
 * **Errors:** `404 NOT_FOUND` (not the caller's incident), `409 NOT_AWAITING_INFORMATION` (no question is open), `422 VALIDATION_FAILED` (`message` must be 3–2000 characters).
 
 ### 2.6 Attach Evidence to a Report
