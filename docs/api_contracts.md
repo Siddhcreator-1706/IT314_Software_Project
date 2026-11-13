@@ -93,8 +93,9 @@
 ## 2. Citizen Authentication & Reporting API (Owner: Zalak)
 
 ### 2.1 Citizen Registration
-* **Path:** `POST /api/v1/auth/register`
+* **Path:** `POST /api/v1/auth/register` (alias: `POST /api/v1/auth/signup`)
 * **Auth:** None (Public)
+* **Rate limit:** 10 requests per hour per client IP (`429 RATE_LIMITED`).
 * **Request Headers:** `Content-Type: application/json`
 * **Request Body:**
 ```json
@@ -106,14 +107,17 @@
   "preferred_language": "gu"
 }
 ```
-* **Response (201 Created):**
+* **Response (201 Created):** the account fields below plus the sign-in fields of 2.2 (`access_token`, `expires_in`, `user`, …), so the client can start a session immediately.
 ```json
 {
   "user_id": "7a35eb42-6362-47d3-8e41-0f7300c14b43",
   "email": "citizen@example.in",
   "full_name": "Ramesh Patel",
   "role": "NORMAL_USER",
-  "status": "ACTIVE"
+  "status": "ACTIVE",
+  "access_token": "eyJhbGciOi...",
+  "token_type": "bearer",
+  "expires_in": 3600
 }
 ```
 * **Errors:**
@@ -121,9 +125,10 @@
   * `422 WEAK_PASSWORD`: Password does not meet security policy (minimum 8 chars, 1 digit, 1 special symbol).
   * `429 RATE_LIMITED`: Rate limit exceeded on registration attempts.
 
-### 2.2 Citizen Login
+### 2.2 Sign In (citizens and staff)
 * **Path:** `POST /api/v1/auth/login`
 * **Auth:** None (Public)
+* **Rate limit:** 20 requests per 5 minutes per client IP.
 * **Request Body:**
 ```json
 {
@@ -131,30 +136,39 @@
   "password": "StrongPassword123!"
 }
 ```
-* **Response (200 OK):**
+* **Response (200 OK), citizen** — citizens do not use MFA, so the token is issued immediately:
 ```json
 {
+  "mfa_required": false,
   "access_token": "eyJhbGciOi...",
+  "token": "eyJhbGciOi...",
   "token_type": "bearer",
+  "expires_in": 3600,
+  "role": "NORMAL_USER",
   "user": {
-    "user_id": "7a35eb42-6362-47d3-8e41-0f7300c14b43",
+    "id": "7a35eb42-6362-47d3-8e41-0f7300c14b43",
     "email": "citizen@example.in",
-    "role": "NORMAL_USER",
-    "full_name": "Ramesh Patel"
+    "name": "Ramesh Patel",
+    "role": "NORMAL_USER"
   }
 }
 ```
-
-### 2.3 Password Reset Policy
-Until an enterprise transactional email provider is connected, public password reset endpoints (`POST /api/v1/auth/password-reset`) are deferred. Password or MFA resets must be requested through an authorized administrator using `python -m app.cli reset-mfa` or administrative staff tooling. Session tokens are automatically revoked upon credential replacement by incrementing the user's `token_version`.
-*(Citizens do NOT have MFA enabled by default; token is issued immediately).*
+* **Response (200 OK), staff** (`DISASTER_MGMT`, `FIELD_TEAM`, `APP_MGMT`): `{"mfa_required": true, "mfa_token": "eyJ..."}`. The client then calls `POST /api/v1/auth/mfa/verify` with `{"mfa_token", "code"}` (6-digit TOTP; 20 requests per 5 minutes) and receives the citizen-shaped response above with `"mfa_required": false`. The `mfa_token` is valid for `MFA_TOKEN_MINUTES` (default 5).
+* **Lifetimes:** access tokens last `ACCESS_TOKEN_MINUTES` (default 60; `expires_in` is in seconds). Repeated failures lock the account for `LOGIN_LOCKOUT_MINUTES` (default 15).
+* **Errors:**
+  * `401 INVALID_CREDENTIALS`: wrong email or password, locked or disabled account (one generic message, so account existence is not revealed).
+  * `403 ACCOUNT_NOT_SETUP`: an invited account has not finished setup; use the emailed invitation link (9.2).
+  * `403 MFA_NOT_ENROLLED`: a staff account has no authenticator enrolled.
+  * `401 MFA_CHALLENGE_INVALID` / `401 MFA_INVALID` (MFA step): the challenge expired / the code is wrong.
+  * `429 RATE_LIMITED`.
+* **Password reset, invitations and Google sign-in:** see section 9. Replacing a password increments the user's `token_version`, which revokes every session issued before.
 
 ### 2.3 Submit Incident Report
 * **Path:** `POST /api/v1/incidents`
 * **Auth:** Bearer Token (`require_citizen`)
 * **Headers:**
   * `Authorization: Bearer <token>`
-  * `Idempotency-Key: <unique-uuid-or-client-key>`
+  * `Idempotency-Key: <unique-uuid-or-client-key>` — **required** (max 100 characters). Generate one key per report draft and reuse it on every retry of that draft.
 * **Request Body:**
 ```json
 {
@@ -181,7 +195,8 @@ Until an enterprise transactional email provider is connected, public password r
 ```
 * **Validation & Security:**
   * Rejects locations outside Gujarat state boundaries with `422 OUTSIDE_GUJARAT`.
-  * Idempotent: repeated calls with same `Idempotency-Key` return identical response.
+  * A missing or blank `Idempotency-Key` is rejected with `422 IDEMPOTENCY_KEY_REQUIRED` (same rule as `POST /api/v1/donations`); nothing is created.
+  * Idempotent: a repeated call with the same `Idempotency-Key` returns `200 OK` with the same incident body instead of creating a duplicate.
 
 ### 2.4 My Incidents Listing & Timeline
 * **Path:** `GET /api/v1/me/incidents`
@@ -233,6 +248,39 @@ Until an enterprise transactional email provider is connected, public password r
 * **Email copy:** a citizen with email alerts on is also emailed each in-app notification (sent in the background, never blocks the action; simulated and logged when no SMTP is configured). SMS is only a stored preference; there is no SMS provider.
 * **Withdraw request:** `POST /api/v1/me/incidents/{id}/withdrawal-request` with optional `{reason}`. Allowed for your own report while `SUBMITTED`, `NEEDS_INFORMATION` or `VERIFIED`; it only records the request (history row and audit entry, `withdrawal_requested: true` on the report) and never changes the status, because a dispatcher decides. `409 NOT_WITHDRAWABLE` after dispatch or closure, `409 ALREADY_REQUESTED`, `404` for another citizen's report. Rate limited.
 * **Delete account:** `POST /api/v1/me/account/deletion` with `{password}`. Refused with `409 OPEN_REPORTS` while any report is not `RESOLVED`, `CLOSED` or `REJECTED`; a wrong password is `400 INVALID_CURRENT_PASSWORD` and audited. On success the name, email, phone and address are erased, photos and notifications deleted, the account disabled and every session ended (`{"deleted": true, "sign_in_required": true}`). Reports stay on record for the audit trail without a link to an identity. Rate limited.
+
+### 2.5 Reply to an Information Request
+* **Path:** `POST /api/v1/me/incidents/{id}/information`
+* **Auth:** Bearer Token (`require_citizen`); only the reporter of the incident.
+* **Note:** this is the citizen reply endpoint the sprint plan calls `information-response`; that name does not exist in the API.
+* **When:** the incident is `NEEDS_INFORMATION` (a dispatcher asked a question with `POST /api/v1/dm/incidents/{id}/information-requests`). The question appears in the incident `timeline` (2.4) as the `message` of the `NEEDS_INFORMATION` entry.
+* **Request Body:**
+```json
+{ "message": "It is next to the Jain temple, water is waist deep." }
+```
+* **Response (201 Created):** `{"incident_id": "3c0b05b3-…", "status": "SUBMITTED"}`. The reply returns the report to `SUBMITTED` so it re-enters the verification queue. The reply is stored in the incident status history as `Reporter reply: <message>` and is visible to dispatchers on the incident.
+* **Errors:** `404 NOT_FOUND` (not the caller's incident), `409 NOT_AWAITING_INFORMATION` (no question is open), `422 VALIDATION_FAILED` (`message` must be 3–2000 characters).
+
+### 2.6 Attach Evidence to a Report
+* **Policy:** `GET /api/v1/incidents/evidence-policy` (Bearer, `require_citizen`) → `{"enabled": true, "max_bytes": 5242880, "allowed_types": ["image/jpeg", "image/png"]}`. `enabled` is `false` while no storage service is configured (`EVIDENCE_STORAGE`).
+* **Upload:** `POST /api/v1/incidents/{id}/evidence` (Bearer, `require_citizen`; only the reporter of the incident). Rate limit 20 per hour per client IP.
+* **Request:** the image is the raw request body. Headers: `Content-Type: image/jpeg` or `image/png`; optional `X-Filename` (percent-encoded original name). The type is verified from the file bytes, not the header.
+* **Response (201 Created):**
+```json
+{
+  "evidence_id": "5b0c…",
+  "incident_id": "3c0b05b3-3a1e-450e-a226-bcfe69d0d939",
+  "file_name": "flood photo.jpg",
+  "mime_type": "image/jpeg",
+  "size_bytes": 482113,
+  "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+  "scan_state": "PENDING",
+  "moderation_state": "PENDING",
+  "uploaded_at": "2026-11-12T15:07:29Z"
+}
+```
+* The item enters the DM moderation queue (`GET /api/v1/dm/moderation/queue`) as `PENDING`; it is never shown publicly before a moderator approves it.
+* **Errors:** `404 NOT_FOUND` (not the caller's incident), `409 INCIDENT_CLOSED` (report is `CLOSED` or `REJECTED`), `413 FILE_TOO_LARGE` (over 5 MB), `415 UNSUPPORTED_MEDIA_TYPE` (header type not JPEG/PNG), `415 INVALID_IMAGE` (bytes are not a JPEG/PNG), `503 EVIDENCE_STORAGE_UNAVAILABLE`, `429 RATE_LIMITED`.
 
 ---
 
@@ -717,8 +765,12 @@ The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm
 }
 ```
 
+* **Gateway:** selected with `PAYMENT_GATEWAY` (`mock` or `razorpay`); `gateway_name` is `MOCK_GATEWAY` or `RAZORPAY`. `is_sandbox` comes from the gateway: always `true` for the mock gateway, `true` for Razorpay test keys, `false` only for `rzp_live` keys.
+* **Errors:** `422 IDEMPOTENCY_KEY_REQUIRED`, `409 IDEMPOTENCY_CONFLICT`, `409 CAMPAIGN_NOT_ACTIVE`, `502 GATEWAY_UNAVAILABLE` (the gateway refused or could not be reached; nothing is stored).
+
 ### 7.2 Verify Payment & Issue Receipt
 * **Path:** `POST /api/v1/donations/{id}/verify`
+* **Signature:** mock gateway: HMAC-SHA256 (`MOCK_GATEWAY_SECRET`) over `<order_id>|<payment_id>|<amount with 2 decimals>|<currency>`, so a signature for another amount or currency is rejected. Razorpay: Razorpay's checkout signature over `<order_id>|<payment_id>`; the amount is fixed by the server-created order.
 * **Request Body:**
 ```json
 {
@@ -733,6 +785,48 @@ The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm
   "status": "CONFIRMED",
   "receipt_no": "REC-2026-000412",
   "receipt_issued_at": "2026-10-24T15:30:00Z"
+}
+```
+* **Errors:** `400 INVALID_SIGNATURE` (audited; donation stays `PENDING`), `409 ALREADY_CONFIRMED` (confirmed with a different payment), `409 DONATION_NOT_PENDING`, `409 GATEWAY_MISMATCH` (created under another gateway).
+* **Idempotent:** if the webhook (7.3) confirmed the donation first, the same payment returns `200` with the same receipt.
+
+### 7.3 Payment Webhook (server-to-server)
+* **Path:** `POST /api/v1/payments/webhook/{gateway}` — `{gateway}` is `mock` or `razorpay` and must match `PAYMENT_GATEWAY` (otherwise `404`).
+* **Auth:** none; authenticated by an HMAC-SHA256 signature over the raw body: `X-Mock-Signature` (`MOCK_GATEWAY_SECRET`) or `X-Razorpay-Signature` (`RAZORPAY_WEBHOOK_SECRET`).
+* **Event id:** `X-Razorpay-Event-Id` / `X-Mock-Event-Id` header (mock also accepts a top-level `id`); without one, a SHA-256 of the body is used. Each event id is processed once (`payment_webhook_events`, migration 11).
+* **Body:** Razorpay payment event shape for both gateways:
+```json
+{
+  "event": "payment.captured",
+  "payload": {"payment": {"entity": {"id": "pay_123", "order_id": "order_123", "amount": 250000, "currency": "INR"}}}
+}
+```
+* **Response (200 OK):** `{"received": true, "event_id": "evt_1", "outcome": "CONFIRMED", "donation_id": "…"}`. Every verified event answers 200 so the gateway stops retrying; `outcome` is one of `CONFIRMED`, `ALREADY_CONFIRMED`, `DUPLICATE_EVENT`, `AMOUNT_MISMATCH` (amount in paise or currency differs from the donation; nothing changes, audited), `PAYMENT_CONFLICT`, `FAILED` (`payment.failed` on a `PENDING` donation), `UNKNOWN_ORDER`, `IGNORED_EVENT_TYPE`, `IGNORED_NOT_PENDING`.
+* **Errors:** `400 INVALID_SIGNATURE` (audited, nothing changes).
+
+### 7.4 My Donations & Receipts
+* **Path:** `GET /api/v1/me/donations?page=1&limit=25`
+* **Auth:** Bearer Token (`require_citizen`). Guest donations have no account and are not listed.
+* **Response (200 OK):**
+```json
+{
+  "items": [
+    {
+      "donation_id": "a189f782-b7e1-45df-911b-3ca976ebff12",
+      "campaign_id": "c0000000-0000-0000-0000-000000000001",
+      "campaign_title": "Cyclone relief - Porbandar",
+      "amount": 2500.00,
+      "currency": "INR",
+      "status": "CONFIRMED",
+      "is_anonymous": false,
+      "is_sandbox": true,
+      "receipt_no": "REC-2026-000412",
+      "receipt_issued_at": "2026-10-24T15:30:00Z",
+      "created_at": "2026-10-24T15:28:00Z",
+      "confirmed_at": "2026-10-24T15:30:00Z"
+    }
+  ],
+  "page": 1, "limit": 25, "total": 1, "pages": 1
 }
 ```
 
@@ -801,7 +895,68 @@ The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm
 
 ---
 
-## 9. Owner Sign-Off Matrix
+## 9. Account Security API: Password Reset, Invitations & Google Sign-In (Owner: Zalak / Siddh)
+
+All endpoints below are under `/api/v1`, use the standard error format, and never reveal whether an email is registered. Tokens in links are single-use, random (32 bytes) and stored only as SHA-256 hashes. Links in emails are built from `FRONTEND_URL`.
+
+| Item | Value | Setting |
+| :--- | :--- | :--- |
+| Password-reset link lifetime | 15 minutes | `PASSWORD_RESET_TOKEN_MINUTES` |
+| Invitation link lifetime | 48 hours | `INVITATION_TOKEN_HOURS` |
+| MFA setup session (after accepting an invitation) | 15 minutes | fixed |
+| Access token | 60 minutes | `ACCESS_TOKEN_MINUTES` |
+
+Rate limits are per client IP (sliding window, `429 RATE_LIMITED` with `details.retry_after_seconds`).
+
+### 9.1 Password Reset
+1. **Request a link** — `POST /auth/forgot-password`, body `{"email": "user@example.in"}`. Rate limit 5 per 15 minutes. Always `200 OK` with `{"message": "If this email is registered and active, a password reset link has been sent."}`; an email (link `…/reset-password?token=…`) is sent only to an active, unlocked account.
+2. **Check the link** — `GET /auth/reset-password/verify?token=…` → `200 {"valid": true, "message": "Password reset token is valid"}` or `400 RESET_TOKEN_INVALID`.
+3. **Set the password** — `POST /auth/reset-password`, body `{"token": "…", "new_password": "…"}` (`new_password` 12–1024 characters). Rate limit 10 per 15 minutes. `200 {"message": "…"}`; the token is cleared and `token_version` is incremented, so all existing sessions are revoked. MFA enrolment is kept. Errors: `400 RESET_TOKEN_INVALID` (unknown, used or expired), `422 VALIDATION_FAILED`.
+
+### 9.2 Staff Invitations
+Staff accounts (`DISASTER_MGMT`, `FIELD_TEAM`, `APP_MGMT`) are never created with a password chosen by someone else: they are invited and finish setup themselves.
+
+* **Invite** — `POST /auth/invitations`
+  * **Auth:** Bearer Token with verified MFA: an `APP_MGMT` administrator, or a `DISASTER_MGMT` user with the `SUPERVISOR` permission.
+  * **Body:** `{"email", "full_name", "role": "DISASTER_MGMT" | "FIELD_TEAM" | "APP_MGMT", "phone"?, "designation"?, "permissions"?: ["DISPATCH", …]}` (`permissions` apply to `DISASTER_MGMT` only).
+  * **Response (201 Created):** `{"user_id", "email", "role", "status": "PENDING_SETUP", "message"}`; an email with `…/setup-account?token=…` is sent.
+  * **Errors:** `400 CANNOT_INVITE_CITIZEN` (citizens self-register, 2.1), `400 INVALID_ROLE`, `400 UNKNOWN_PERMISSION`, `403 PRIVILEGE_ESCALATION` (only `APP_MGMT` may invite `APP_MGMT`; a supervisor cannot grant permissions they do not hold), `403 INVITER_REQUIRED`, `401 MFA_REQUIRED`, `409 EMAIL_TAKEN`.
+* **Check the link** — `GET /auth/invitation/verify?token=…` → `200 {"valid": true, "email", "full_name", "role", "requires_mfa": true}` or `400 INVITATION_INVALID` (unknown, used, expired, or the account is no longer `PENDING_SETUP`).
+* **Accept** — `POST /auth/invitation/accept`, body `{"token", "password"}` (`password` 12–1024 characters). Rate limit 10 per 15 minutes. The token is cleared at once. For staff roles the response is `200 {"mfa_required": true, "mfa_setup_token", "mfa_secret", "mfa_uri", "message"}`: the invitee adds the secret to an authenticator app. Errors: `400 INVITATION_INVALID`, `422 VALIDATION_FAILED`.
+* **Enrol TOTP and activate** — `POST /auth/invitation/verify-totp`, body `{"mfa_setup_token", "code"}`. Rate limit 20 per 5 minutes. On success the account becomes `ACTIVE` and the response is the signed-in response of 2.2 (with MFA verified). Errors: `401 MFA_SETUP_EXPIRED` (setup session older than 15 minutes: restart from the link), `401 MFA_INVALID` (wrong code; the account stays `PENDING_SETUP`), `401 INVALID_CREDENTIALS`.
+* Until setup is complete, `POST /auth/login` answers `403 ACCOUNT_NOT_SETUP`.
+
+### 9.3 Google Sign-In (citizens only)
+* **Path:** `POST /auth/google`, body `{"credential": "<Google Identity Services ID token>"}`. Rate limit 20 per 5 minutes.
+* **Behaviour:** the ID token is verified with Google and its audience must equal `GOOGLE_CLIENT_ID`; the Google email must be verified. An existing **citizen** is signed in; an unknown email is registered as a new citizen (`NORMAL_USER`) and signed in. The response is the signed-in response of 2.2.
+* **Citizen-only rule:** a Google identity never yields a staff session. If the email belongs to a staff account the request is refused with `403 GOOGLE_STAFF_NOT_ALLOWED`; staff sign in with password and TOTP (2.2).
+* **Errors:** `503 GOOGLE_AUTH_UNAVAILABLE` (`GOOGLE_CLIENT_ID` not configured), `401 GOOGLE_AUTH_FAILED` (invalid token, wrong audience or no email), `401 GOOGLE_EMAIL_NOT_VERIFIED`, `502 GOOGLE_SERVICE_UNAVAILABLE` (Google could not be reached), `401 INVALID_CREDENTIALS` (locked or inactive citizen), `403 GOOGLE_STAFF_NOT_ALLOWED`, `429 RATE_LIMITED`.
+
+### 9.4 Auth Error Codes
+| Code | HTTP | Meaning |
+| :--- | :--- | :--- |
+| `INVALID_CREDENTIALS` | 401 | Sign-in failed (generic on purpose) |
+| `ACCOUNT_NOT_SETUP` | 403 | Invited account has not completed setup |
+| `MFA_NOT_ENROLLED` | 403 | Staff account without an authenticator |
+| `MFA_CHALLENGE_INVALID` | 401 | MFA sign-in challenge expired or invalid |
+| `MFA_INVALID` | 401 | Wrong TOTP code |
+| `MFA_SETUP_EXPIRED` | 401 | Invitation MFA setup session expired |
+| `MFA_REQUIRED` | 401 | Route needs an MFA-verified session |
+| `RESET_TOKEN_INVALID` | 400 | Password-reset link unknown, used or expired |
+| `INVITATION_INVALID` | 400 | Invitation link unknown, used or expired |
+| `CANNOT_INVITE_CITIZEN` / `INVALID_ROLE` / `UNKNOWN_PERMISSION` | 400 | Invalid invitation request |
+| `PRIVILEGE_ESCALATION` / `INVITER_REQUIRED` | 403 | Caller may not issue this invitation |
+| `EMAIL_TAKEN` / `DUPLICATE_EMAIL` | 409 | Email already registered (invitation / registration) |
+| `WEAK_PASSWORD` | 422 | Registration password policy not met |
+| `GOOGLE_AUTH_UNAVAILABLE` | 503 | Google sign-in not configured |
+| `GOOGLE_AUTH_FAILED` / `GOOGLE_EMAIL_NOT_VERIFIED` | 401 | Google token rejected |
+| `GOOGLE_SERVICE_UNAVAILABLE` | 502 | Google could not be reached |
+| `GOOGLE_STAFF_NOT_ALLOWED` | 403 | Google sign-in attempted for a staff account |
+| `RATE_LIMITED` | 429 | Too many requests from this IP |
+
+---
+
+## 10. Owner Sign-Off Matrix
 
 | Endpoint Domain | Responsible Owner | Contract Status |
 | :--- | :--- | :--- |
