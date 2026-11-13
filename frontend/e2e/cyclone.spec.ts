@@ -32,7 +32,7 @@ test.describe("End-to-End Cyclone Scenario (Sprint 3)", () => {
 
     // Negative check: Out of Gujarat submission with citizen auth
     const outOfStateRes = await request.post(`${apiUrl}/api/v1/incidents`, {
-      headers: citizenHeaders,
+      headers: { ...citizenHeaders, "Idempotency-Key": crypto.randomUUID() },
       data: {
         scenario: "cyclone",
         description: "Jaipur high winds",
@@ -55,7 +55,7 @@ test.describe("End-to-End Cyclone Scenario (Sprint 3)", () => {
     const porbandarLat = 21.6417;
     const porbandarLon = 69.6293;
     const submitRes = await request.post(`${apiUrl}/api/v1/incidents`, {
-      headers: citizenHeaders,
+      headers: { ...citizenHeaders, "Idempotency-Key": crypto.randomUUID() },
       data: {
         scenario: "cyclone",
         description: "Severe cyclonic storm causing coastal inundation and fallen power lines in Porbandar.",

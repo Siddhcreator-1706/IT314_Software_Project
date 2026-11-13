@@ -19,7 +19,7 @@ test.describe("End-to-End Urban Flooding Scenario (Sprint 3)", () => {
 
     // Negative check: Out of bounds (Mumbai) coordinates refused
     const mumbaiCoordRes = await request.post(`${apiUrl}/api/v1/incidents`, {
-      headers: citizenHeaders,
+      headers: { ...citizenHeaders, "Idempotency-Key": crypto.randomUUID() },
       data: {
         scenario: "urban_flooding",
         description: "Severe waterlogging in Dadar, Mumbai",
@@ -41,7 +41,7 @@ test.describe("End-to-End Urban Flooding Scenario (Sprint 3)", () => {
     const ahmedabadLat = 23.0225;
     const ahmedabadLon = 72.5714;
     const submitRes = await request.post(`${apiUrl}/api/v1/incidents`, {
-      headers: citizenHeaders,
+      headers: { ...citizenHeaders, "Idempotency-Key": crypto.randomUUID() },
       data: {
         scenario: "urban_flooding",
         description: "Underpass submerged under 5 feet of flood water after cloudburst.",

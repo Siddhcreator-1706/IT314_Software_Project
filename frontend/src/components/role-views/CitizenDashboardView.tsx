@@ -294,6 +294,9 @@ export const CitizenDashboardView: React.FC<CitizenDashboardViewProps> = ({
   }, [publicIncidents]);
 
   // Report Submission Handler
+  // One Idempotency-Key per report draft: retries reuse it, a successful submit starts a new draft.
+  const reportKeyRef = useRef<string>(crypto.randomUUID());
+
   const handleReportSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!currentUser) return;
@@ -321,9 +324,10 @@ export const CitizenDashboardView: React.FC<CitizenDashboardViewProps> = ({
       details: { urgent_needs: formNeeds },
     };
 
-    const res = await CitizenApi.createReport(payload, { idempotencyKey: crypto.randomUUID() });
+    const res = await CitizenApi.createReport(payload, { idempotencyKey: reportKeyRef.current });
 
     if (res.data) {
+      reportKeyRef.current = crypto.randomUUID();
       setSubmitResult({ success: true, reportId: res.data.incident_ref });
       setFormDescription("");
       setFormLocation("");

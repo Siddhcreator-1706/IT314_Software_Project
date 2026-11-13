@@ -135,7 +135,12 @@ function toReport(i: MyIncident): ReportData {
   };
 }
 
-export async function createReport(payload: IncidentReportPayload, options?: ApiOptions) {
+/**
+ * Submit a report. The Idempotency-Key is required by the backend (422 IDEMPOTENCY_KEY_REQUIRED
+ * otherwise): keep ONE key per form session and reuse it on retries, so a resubmission after a
+ * network failure returns the same incident instead of creating a duplicate.
+ */
+export async function createReport(payload: IncidentReportPayload, options: ApiOptions & { idempotencyKey: string }) {
   return apiFetch<CreatedIncident>("/api/citizen/incidents", options, { method: "POST", body: JSON.stringify(payload) });
 }
 
