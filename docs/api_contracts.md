@@ -230,6 +230,27 @@
 * **Response (201 Created):** `{"incident_id": "3c0b05b3-…", "status": "NEEDS_INFORMATION"}`. The reply is stored in the incident status history as `Reporter reply: <message>` and is visible to dispatchers on the incident.
 * **Errors:** `404 NOT_FOUND` (not the caller's incident), `409 NOT_AWAITING_INFORMATION` (no question is open), `422 VALIDATION_FAILED` (`message` must be 3–2000 characters).
 
+### 2.6 Attach Evidence to a Report
+* **Policy:** `GET /api/v1/incidents/evidence-policy` (Bearer, `require_citizen`) → `{"enabled": true, "max_bytes": 5242880, "allowed_types": ["image/jpeg", "image/png"]}`. `enabled` is `false` while no storage service is configured (`EVIDENCE_STORAGE`).
+* **Upload:** `POST /api/v1/incidents/{id}/evidence` (Bearer, `require_citizen`; only the reporter of the incident). Rate limit 20 per hour per client IP.
+* **Request:** the image is the raw request body. Headers: `Content-Type: image/jpeg` or `image/png`; optional `X-Filename` (percent-encoded original name). The type is verified from the file bytes, not the header.
+* **Response (201 Created):**
+```json
+{
+  "evidence_id": "5b0c…",
+  "incident_id": "3c0b05b3-3a1e-450e-a226-bcfe69d0d939",
+  "file_name": "flood photo.jpg",
+  "mime_type": "image/jpeg",
+  "size_bytes": 482113,
+  "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+  "scan_state": "PENDING",
+  "moderation_state": "PENDING",
+  "uploaded_at": "2026-11-12T15:07:29Z"
+}
+```
+* The item enters the DM moderation queue (`GET /api/v1/dm/moderation/queue`) as `PENDING`; it is never shown publicly before a moderator approves it.
+* **Errors:** `404 NOT_FOUND` (not the caller's incident), `409 INCIDENT_CLOSED` (report is `CLOSED` or `REJECTED`), `413 FILE_TOO_LARGE` (over 5 MB), `415 UNSUPPORTED_MEDIA_TYPE` (header type not JPEG/PNG), `415 INVALID_IMAGE` (bytes are not a JPEG/PNG), `503 EVIDENCE_STORAGE_UNAVAILABLE`, `429 RATE_LIMITED`.
+
 ---
 
 ## 3. Field Team Responder API (Owner: Nisarg)
