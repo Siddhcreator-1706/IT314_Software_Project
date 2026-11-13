@@ -45,6 +45,11 @@ class InviteUserRequest(BaseModel):
     phone: str | None = Field(default=None, max_length=32)
     designation: str | None = Field(default=None, max_length=120)
     permissions: list[str] = Field(default_factory=list)
+    # FIELD_TEAM only: the team the responder joins. Required for FIELD_TEAM, refused otherwise,
+    # so an invited responder can never finish setup without a team (issue #101).
+    team_resource_id: uuid.UUID | None = None
+    callsign: str | None = Field(default=None, max_length=100)
+    is_leader: bool = False
 
 
 class AcceptInvitationRequest(BaseModel):
@@ -493,6 +498,18 @@ def invite_user(body: InviteUserRequest, principal: InviterUser, request: Reques
             "Only Application Management administrators can create administrator accounts",
         )
 
+    # Team membership: a FIELD_TEAM account without a team is rejected by require_field
+    # (403 NO_TEAM_ASSIGNED), so the team must be chosen at invitation time.
+    callsign = body.callsign.strip() if body.callsign and body.callsign.strip() else None
+    if target_role == FIELD_TEAM_ROLE and body.team_resource_id is None:
+        raise ApiError(422, "TEAM_REQUIRED", "A team (team_resource_id) is required to invite a Field Team user")
+    if target_role != FIELD_TEAM_ROLE and (body.team_resource_id or callsign or body.is_leader):
+        raise ApiError(
+            422,
+            "TEAM_NOT_APPLICABLE",
+            "team_resource_id, callsign and is_leader apply only to Field Team invitations",
+        )
+
     # Permission validation for DISASTER_MGMT
     clean_perms: list[str] = []
     if target_role == DM_ROLE:
@@ -524,6 +541,15 @@ def invite_user(body: InviteUserRequest, principal: InviterUser, request: Reques
         if conn.execute("SELECT 1 FROM users WHERE email = %s::citext", (email,)).fetchone():
             raise ApiError(409, "EMAIL_TAKEN", f"An account with email {email} already exists")
 
+        team = None
+        if target_role == FIELD_TEAM_ROLE:
+            team = conn.execute(
+                "SELECT resource_id, name FROM resources WHERE resource_id = %s AND type = 'TEAM'",
+                (body.team_resource_id,),
+            ).fetchone()
+            if team is None:
+                raise ApiError(422, "TEAM_NOT_FOUND", "team_resource_id does not identify a team resource")
+
         user_id = conn.execute(
             """
             INSERT INTO users (role_id, email, full_name, phone, designation, status)
@@ -551,6 +577,24 @@ def invite_user(body: InviteUserRequest, principal: InviterUser, request: Reques
                     (user_id, perm, principal.user_id),
                 )
 
+        membership: dict | None = None
+        if team is not None:
+            # Same row the create-field CLI writes; in this transaction so there is never an
+            # invited responder without a team.
+            conn.execute(
+                """
+                INSERT INTO field_team_members (user_id, resource_id, callsign, is_leader)
+                VALUES (%s, %s, %s, %s)
+                """,
+                (user_id, team["resource_id"], callsign, body.is_leader),
+            )
+            membership = {
+                "team_resource_id": str(team["resource_id"]),
+                "team_name": team["name"],
+                "callsign": callsign,
+                "is_leader": body.is_leader,
+            }
+
         audit.record(
             conn,
             actor=principal,
@@ -558,7 +602,7 @@ def invite_user(body: InviteUserRequest, principal: InviterUser, request: Reques
             entity_type="user",
             entity_id=user_id,
             rationale=f"Account invited with role {target_role} by {principal.email}",
-            after={"role": target_role, "permissions": clean_perms},
+            after={"role": target_role, "permissions": clean_perms, "team": membership},
             ip=ip,
         )
 
@@ -568,6 +612,7 @@ def invite_user(body: InviteUserRequest, principal: InviterUser, request: Reques
         "email": email,
         "role": target_role,
         "status": "PENDING_SETUP",
+        "team": membership,
         "message": "Invitation email dispatched successfully",
     }
 

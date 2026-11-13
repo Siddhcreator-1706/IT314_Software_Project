@@ -67,6 +67,23 @@ def test_supervisor_cannot_grant_permissions_they_lack():
     assert exc.value.status == 403 and exc.value.code == "PRIVILEGE_ESCALATION"
 
 
+def test_field_team_invitation_without_a_team_is_rejected():
+    """Issue #101: the invitation must not create a responder that can never be assigned."""
+    body = auth_router.InviteUserRequest(email="f@test.drch", full_name="Responder", role=FIELD_TEAM_ROLE)
+    with pytest.raises(ApiError) as exc:
+        auth_router.invite_user(body, _principal(APP_MGMT_ROLE, PERMISSIONS), _request())
+    assert exc.value.status == 422 and exc.value.code == "TEAM_REQUIRED"
+
+
+def test_team_fields_are_refused_for_non_field_roles():
+    body = auth_router.InviteUserRequest(
+        email="d@test.drch", full_name="Dispatcher", role=DM_ROLE, team_resource_id=uuid.uuid4()
+    )
+    with pytest.raises(ApiError) as exc:
+        auth_router.invite_user(body, _principal(APP_MGMT_ROLE, PERMISSIONS), _request())
+    assert exc.value.status == 422 and exc.value.code == "TEAM_NOT_APPLICABLE"
+
+
 def test_token_hash_is_deterministic_sha256():
     assert security.hash_token("abc-123456") == security.hash_token("abc-123456")
     assert len(security.hash_token("abc-123456")) == 64
@@ -118,7 +135,7 @@ def test_invited_staff_sets_password_and_enrols_totp(client, make):
 def test_wrong_totp_does_not_activate_the_account(client, make, sql):
     admin = make.user(APP_MGMT_ROLE)
     email = f"invitee-{uuid.uuid4().hex[:8]}@test.drch"
-    _invite(client, make.token(admin), FIELD_TEAM_ROLE, email)
+    _invite(client, make.token(admin), FIELD_TEAM_ROLE, email, team_resource_id=str(make.resource()["resource_id"]))
     token = _token_from_outbox("setup-account?token=")
     body = client.post("/api/v1/auth/invitation/accept", json={"token": token, "password": "A-Long-Secure-Pass-1"}).json()
 
@@ -131,7 +148,7 @@ def test_wrong_totp_does_not_activate_the_account(client, make, sql):
 def test_expired_invitation_is_rejected(client, make, sql):
     admin = make.user(APP_MGMT_ROLE)
     email = f"invitee-{uuid.uuid4().hex[:8]}@test.drch"
-    _invite(client, make.token(admin), FIELD_TEAM_ROLE, email)
+    _invite(client, make.token(admin), FIELD_TEAM_ROLE, email, team_resource_id=str(make.resource()["resource_id"]))
     token = _token_from_outbox("setup-account?token=")
     sql.execute(
         "UPDATE user_auth SET invitation_expires_at = now() - interval '1 minute' "
@@ -139,6 +156,60 @@ def test_expired_invitation_is_rejected(client, make, sql):
         (email,),
     )
     assert client.get("/api/v1/auth/invitation/verify", params={"token": token}).status_code == 400
+
+
+def test_invited_field_team_user_is_linked_to_the_team_and_can_use_field_routes(client, make, sql):
+    """Issue #101 acceptance: invite with a team, accept, enrol TOTP, then GET /field/assignments is 200."""
+    admin = make.user(APP_MGMT_ROLE)
+    team = make.resource()
+    email = f"responder-{uuid.uuid4().hex[:8]}@test.drch"
+    resp = _invite(
+        client,
+        make.token(admin),
+        FIELD_TEAM_ROLE,
+        email,
+        team_resource_id=str(team["resource_id"]),
+        callsign="Delta-7",
+        is_leader=True,
+    )
+    assert resp.status_code == 201, resp.text
+    assert resp.json()["team"]["team_resource_id"] == str(team["resource_id"])
+
+    member = sql.execute(
+        "SELECT m.resource_id, m.callsign, m.is_leader FROM field_team_members m "
+        "JOIN users u ON u.user_id = m.user_id WHERE u.email = %s",
+        (email,),
+    ).fetchone()
+    assert member == {"resource_id": team["resource_id"], "callsign": "Delta-7", "is_leader": True}
+
+    token = _token_from_outbox("setup-account?token=")
+    accepted = client.post("/api/v1/auth/invitation/accept", json={"token": token, "password": "A-Long-Secure-Pass-1"}).json()
+    done = client.post(
+        "/api/v1/auth/invitation/verify-totp",
+        json={"mfa_setup_token": accepted["mfa_setup_token"], "code": pyotp.TOTP(accepted["mfa_secret"]).now()},
+    )
+    assert done.status_code == 200, done.text
+    headers = {"Authorization": f"Bearer {done.json()['access_token']}"}
+
+    assignments = client.get("/api/v1/field/assignments", headers=headers)
+    assert assignments.status_code == 200, assignments.text
+    profile = client.get("/api/v1/field/me", headers=headers)
+    assert profile.status_code == 200 and profile.json()["callsign"] == "Delta-7"
+
+
+def test_field_team_invitation_with_unknown_team_creates_nothing(client, make, sql):
+    admin = make.user(APP_MGMT_ROLE)
+    email = f"responder-{uuid.uuid4().hex[:8]}@test.drch"
+    resp = _invite(client, make.token(admin), FIELD_TEAM_ROLE, email, team_resource_id=str(uuid.uuid4()))
+    assert resp.status_code == 422 and resp.json()["error"]["code"] == "TEAM_NOT_FOUND"
+    assert sql.execute("SELECT 1 FROM users WHERE email = %s", (email,)).fetchone() is None
+    assert email_service.get_outbox() == []
+
+
+def test_field_team_invitation_over_http_without_team_is_422(client, make):
+    admin = make.user(APP_MGMT_ROLE)
+    resp = _invite(client, make.token(admin), FIELD_TEAM_ROLE, f"r-{uuid.uuid4().hex[:8]}@test.drch")
+    assert resp.status_code == 422 and resp.json()["error"]["code"] == "TEAM_REQUIRED"
 
 
 def test_operator_without_supervisor_cannot_invite(client, make):
