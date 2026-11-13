@@ -150,19 +150,20 @@ export async function fetchReportById(reportId: string): Promise<ApiResult<Repor
 }
 
 /**
- * Citizen response to a dispatcher information request (SRS Requirement S2-13).
- * POST /api/v1/me/incidents/{id}/information via BFF proxy.
+ * Citizen response to a dispatcher information request (S2-13): text, a corrected location, or both.
+ * POST /api/v1/me/incidents/{id}/information-response via the BFF proxy. The incident returns to SUBMITTED.
  */
 export async function replyToInformationRequest(
   incidentId: string,
-  message: string
+  message?: string,
+  location?: { latitude: number; longitude: number }
 ): Promise<ApiResult<{ incident_id: string; status: string }>> {
   return apiFetch<{ incident_id: string; status: string }>(
-    `/api/citizen/me/incidents/${encodeURIComponent(incidentId)}/information`,
+    `/api/citizen/me/incidents/${encodeURIComponent(incidentId)}/information-response`,
     undefined,
     {
       method: "POST",
-      body: JSON.stringify({ message }),
+      body: JSON.stringify({ ...(message ? { message } : {}), ...(location ?? {}) }),
     }
   );
 }

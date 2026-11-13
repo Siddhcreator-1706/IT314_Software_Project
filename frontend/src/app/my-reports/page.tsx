@@ -5,6 +5,7 @@ import { SiteHeader, NavLink } from "@/components/Brand";
 import Link from "next/link";
 import { fetchMyReports, replyToInformationRequest, ReportData } from "@/services/citizenApi";
 import { ReportPhotos } from "@/components/ReportPhotos";
+import { isInGujarat } from "@/lib/geo";
 
 const STATUS_CONFIG: Record<
   string,
@@ -74,6 +75,8 @@ export default function MyReportsPage() {
   const [replyingId, setReplyingId] = useState<string | null>(null);
   const [replyError, setReplyError] = useState<{ id: string; message: string } | null>(null);
   const [replySuccess, setReplySuccess] = useState<string | null>(null);
+  const [replyPlace, setReplyPlace] = useState<Record<string, { latitude: number; longitude: number } | undefined>>({});
+  const [placeError, setPlaceError] = useState<{ id: string; message: string } | null>(null);
 
   const loadReports = useCallback(async () => {
     try {
@@ -286,16 +289,18 @@ export default function MyReportsPage() {
                           onSubmit={async (e) => {
                             e.preventDefault();
                             const text = replyText[report.id]?.trim();
-                            if (!text || text.length < 3) return;
+                            const place = replyPlace[report.id];
+                            if ((!text || text.length < 3) && !place) return;
                             setReplyingId(report.id);
                             setReplyError(null);
-                            const res = await replyToInformationRequest(report.id, text);
+                            const res = await replyToInformationRequest(report.id, text && text.length >= 3 ? text : undefined, place);
                             setReplyingId(null);
                             if (res.error) {
                               setReplyError({ id: report.id, message: res.error });
                             } else {
                               setReplySuccess(report.id);
                               setReplyText((prev) => ({ ...prev, [report.id]: "" }));
+                              setReplyPlace((prev) => ({ ...prev, [report.id]: undefined }));
                               loadReports();
                             }
                           }}
@@ -311,8 +316,48 @@ export default function MyReportsPage() {
                             placeholder="Provide additional details or landmark info..."
                             rows={2}
                             className="w-full min-h-[60px] rounded-lg bg-slate-900 border border-orange-800/80 p-2.5 text-xs text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-orange-500 focus-visible:ring-2 focus-visible:ring-orange-500"
-                            required
+                            required={!replyPlace[report.id]}
                           />
+                          <div className="flex flex-wrap items-center gap-2 text-[11px]">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPlaceError(null);
+                                if (!navigator.geolocation) {
+                                  setPlaceError({ id: report.id, message: "This device cannot share its location." });
+                                  return;
+                                }
+                                navigator.geolocation.getCurrentPosition(
+                                  (pos) => {
+                                    const { latitude, longitude } = pos.coords;
+                                    if (!isInGujarat(latitude, longitude)) {
+                                      setPlaceError({ id: report.id, message: "Your current location is outside Gujarat." });
+                                      return;
+                                    }
+                                    setReplyPlace((prev) => ({ ...prev, [report.id]: { latitude, longitude } }));
+                                  },
+                                  () => setPlaceError({ id: report.id, message: "Could not read your location. Allow location access and try again." }),
+                                  { enableHighAccuracy: true, timeout: 10000 }
+                                );
+                              }}
+                              className="min-h-[44px] px-3 rounded-lg border border-orange-700/70 text-orange-200 hover:bg-orange-900/40 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-400"
+                            >
+                              <span aria-hidden="true">📍</span> Send my current location
+                            </button>
+                            {replyPlace[report.id] && (
+                              <span role="status" className="text-emerald-300">
+                                Location added ({replyPlace[report.id]!.latitude.toFixed(4)}, {replyPlace[report.id]!.longitude.toFixed(4)}){" "}
+                                <button
+                                  type="button"
+                                  onClick={() => setReplyPlace((prev) => ({ ...prev, [report.id]: undefined }))}
+                                  className="underline cursor-pointer"
+                                >
+                                  Remove
+                                </button>
+                              </span>
+                            )}
+                            {placeError?.id === report.id && <span role="alert" className="text-red-400">{placeError.message}</span>}
+                          </div>
                           {replyError?.id === report.id && (
                             <div role="alert" className="text-[11px] text-red-400 font-medium">{replyError.message}</div>
                           )}
