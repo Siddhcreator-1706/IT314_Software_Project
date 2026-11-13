@@ -243,8 +243,11 @@ _MY_COLUMNS = """
                        'timestamp', h.changed_at,
                        'message', CASE WHEN h.to_status IN ('NEEDS_INFORMATION', 'REJECTED') THEN h.reason END
                    ) ORDER BY h.changed_at, h.history_id)
-        FROM incident_status_history h WHERE h.incident_id = i.incident_id
-    ), '[]'::jsonb) AS timeline
+        FROM incident_status_history h
+        WHERE h.incident_id = i.incident_id AND h.from_status IS DISTINCT FROM h.to_status
+    ), '[]'::jsonb) AS timeline,
+    EXISTS (SELECT 1 FROM incident_status_history w WHERE w.incident_id = i.incident_id
+            AND w.reason LIKE 'Reporter asked to withdraw%%') AS withdrawal_requested
 """
 
 
@@ -579,6 +582,55 @@ def remove_attachment(incident_id: uuid.UUID, evidence_id: uuid.UUID, principal:
     return {"evidence_id": evidence_id, "status": "Removed"}
 
 
+# --------------------------------------------------------------------------- withdrawal request
+
+_WITHDRAWABLE = ("SUBMITTED", "NEEDS_INFORMATION", "VERIFIED")
+
+
+class WithdrawalRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=500)
+
+
+@router.post(
+    "/me/incidents/{incident_id}/withdrawal-request",
+    status_code=201,
+    dependencies=[rate_limit("withdrawal", 10, 3600)],
+)
+def request_withdrawal(incident_id: uuid.UUID, body: WithdrawalRequest, principal: Citizen):
+    """Ask the dispatchers to withdraw your report (for example a false alarm or a duplicate).
+
+    This only records the request. The status does not change: a dispatcher decides whether to
+    reject or close the report, because closing is always a human decision. Allowed before dispatch.
+    """
+    _require_database("WITHDRAWAL_UNAVAILABLE", "Withdrawal requests")
+    reason = "Reporter asked to withdraw this report" + (f": {body.reason.strip()}" if body.reason and body.reason.strip() else "")
+    with db.transaction() as conn:
+        _own_incident_status(conn, incident_id, principal.user_id)
+        status = conn.execute(
+            "SELECT status FROM incidents WHERE incident_id = %s FOR UPDATE", (incident_id,)
+        ).fetchone()["status"]
+        if status not in _WITHDRAWABLE:
+            raise conflict("NOT_WITHDRAWABLE", "Help has already been sent or the report is closed, so it cannot be withdrawn here")
+        if conn.execute(
+            "SELECT 1 FROM incident_status_history WHERE incident_id = %s AND reason LIKE 'Reporter asked to withdraw%%'",
+            (incident_id,),
+        ).fetchone():
+            raise conflict("ALREADY_REQUESTED", "You have already asked to withdraw this report")
+        conn.execute(
+            """
+            INSERT INTO incident_status_history (incident_id, from_status, to_status, changed_by, reason)
+            VALUES (%s, %s, %s, %s, %s)
+            """,
+            (incident_id, status, status, principal.user_id, reason),
+        )
+        conn.execute("UPDATE incidents SET version = version + 1, updated_at = now() WHERE incident_id = %s", (incident_id,))
+        audit.record(
+            conn, actor=principal, action="WITHDRAWAL_REQUESTED", entity_type="incident", entity_id=incident_id,
+            rationale=reason, ip=principal.ip,
+        )
+    return {"incident_id": incident_id, "status": status, "withdrawal_requested": True}
+
+
 # --------------------------------------------------------------------------- account (profile, password)
 
 _LANGUAGES = ("en", "hi", "gu")
@@ -717,6 +769,63 @@ def change_my_password(body: PasswordChange, principal: Citizen):
             entity_id=principal.user_id, rationale="Citizen changed their password", ip=principal.ip,
         )
     return {"changed": True, "sign_in_required": True}
+
+
+class AccountDeletion(BaseModel):
+    password: str = Field(min_length=1, max_length=1024)
+
+
+@router.post("/me/account/deletion", dependencies=[rate_limit("account-deletion", 5, 3600)])
+def delete_my_account(body: AccountDeletion, principal: Citizen):
+    """Delete your account: personal details are erased and every session ends.
+
+    Reports you filed stay on record for the response audit trail but no longer link to a name,
+    email or phone number, and your photos are deleted. Refused while a report of yours is still open,
+    so an emergency is never left without a contact.
+    """
+    _require_database("ACCOUNT_UNAVAILABLE", "Account settings")
+    with db.transaction() as conn:
+        row = conn.execute(
+            "SELECT password_hash FROM user_auth WHERE user_id = %s FOR UPDATE", (principal.user_id,)
+        ).fetchone()
+        wrong = row is None or not security.verify_password(row["password_hash"], body.password)
+    if wrong:
+        audit.record_standalone(
+            actor=principal, action="ACCOUNT_DELETION_FAILED", entity_type="user", entity_id=principal.user_id,
+            result="FAILURE", rationale="Wrong password", ip=principal.ip,
+        )
+        raise ApiError(400, "INVALID_CURRENT_PASSWORD", "Your password is not correct")
+    with db.transaction() as conn:
+        open_reports = conn.execute(
+            "SELECT COUNT(*) AS n FROM incidents WHERE reporter_id = %s AND status NOT IN ('RESOLVED', 'CLOSED', 'REJECTED')",
+            (principal.user_id,),
+        ).fetchone()["n"]
+        if open_reports:
+            raise conflict("OPEN_REPORTS", f"You still have {open_reports} open report(s). Wait until they are resolved or ask to withdraw them first.")
+        conn.execute(
+            "DELETE FROM evidence_blobs WHERE evidence_id IN (SELECT evidence_id FROM evidence_files WHERE uploaded_by = %s)",
+            (principal.user_id,),
+        )
+        conn.execute("UPDATE evidence_files SET scan_state = 'REJECTED' WHERE uploaded_by = %s", (principal.user_id,))
+        conn.execute("DELETE FROM notifications WHERE user_id = %s", (principal.user_id,))
+        conn.execute(
+            """
+            UPDATE users SET email = %s, full_name = 'Deleted user', phone = NULL, address_line = NULL, city = NULL,
+                state = NULL, postal_code = NULL, preferred_language = 'en', status = 'DISABLED'
+            WHERE user_id = %s
+            """,
+            (f"deleted-{principal.user_id}@deleted.invalid", principal.user_id),
+        )
+        conn.execute(
+            "UPDATE user_auth SET password_hash = %s, token_version = token_version + 1, mfa_enabled = FALSE, mfa_secret = NULL "
+            "WHERE user_id = %s",
+            (security.hash_password(uuid.uuid4().hex + "Aa1!"), principal.user_id),
+        )
+        audit.record(
+            conn, actor=principal, action="ACCOUNT_DELETED", entity_type="user", entity_id=principal.user_id,
+            rationale="Citizen deleted their account; personal details erased", ip=principal.ip,
+        )
+    return {"deleted": True, "sign_in_required": True}
 
 
 @router.post("/me/notifications/read-all", status_code=200)

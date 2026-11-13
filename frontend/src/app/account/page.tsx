@@ -5,7 +5,7 @@ import React, { useEffect, useState } from "react";
 
 import { signOut } from "@/app/login/actions";
 import { NavLink, SiteHeader } from "@/components/Brand";
-import { changePassword, fetchProfile, updateProfile, type ProfileData } from "@/services/citizenApi";
+import { changePassword, deleteAccount, fetchProfile, updateProfile, type ProfileData } from "@/services/citizenApi";
 
 const LANGUAGES: { code: "en" | "hi" | "gu"; label: string }[] = [
   { code: "en", label: "English" },
@@ -34,6 +34,9 @@ export default function AccountPage() {
   const [newPassword, setNewPassword] = useState("");
   const [changing, setChanging] = useState(false);
   const [passwordError, setPasswordError] = useState<string | null>(null);
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   function apply(p: ProfileData) {
     setProfile(p);
@@ -82,6 +85,20 @@ export default function AccountPage() {
       return;
     }
     // The server ended every session, so sign out here and ask the person to sign in with the new password.
+    await signOut();
+  }
+
+  async function onDelete(event: React.FormEvent) {
+    event.preventDefault();
+    if (!window.confirm("Delete your account? Your details are erased and this cannot be undone.")) return;
+    setDeleting(true);
+    setDeleteError(null);
+    const res = await deleteAccount(deletePassword);
+    if (res.error) {
+      setDeleting(false);
+      setDeleteError(res.error);
+      return;
+    }
     await signOut();
   }
 
@@ -135,7 +152,7 @@ export default function AccountPage() {
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={smsAlerts} onChange={(e) => setSmsAlerts(e.target.checked)} /> SMS alerts
                 </label>
-                <p className="text-xs text-slate-400">Email and SMS are saved as preferences. In-app notifications are what reliably reach you today.</p>
+                <p className="text-xs text-slate-400">Email alerts send a copy of each notification to your email address. SMS is saved as a preference but is not available yet. In-app notifications always work.</p>
               </fieldset>
               <div className="flex items-center gap-3">
                 <button type="submit" disabled={saving} className={button}>{saving ? "Saving…" : "Save changes"}</button>
@@ -158,6 +175,21 @@ export default function AccountPage() {
               </div>
               {passwordError && <p role="alert" className="text-sm text-red-300">{passwordError}</p>}
               <button type="submit" disabled={changing} className={button}>{changing ? "Changing…" : "Change password"}</button>
+            </form>
+            <form onSubmit={onDelete} className="space-y-4 rounded-2xl border border-red-900/60 bg-slate-900 p-5 sm:p-6">
+              <h2 className="text-xl font-bold text-white">Delete account</h2>
+              <p className="text-xs text-slate-400">
+                Your name, email, phone and photos are erased and you are signed out everywhere. Reports you filed stay on record for the
+                response audit trail without your identity. You can only delete your account when none of your reports is still open.
+              </p>
+              <div>
+                <label htmlFor="acc-delete" className="mb-1 block text-xs font-bold uppercase tracking-wider text-slate-300">Confirm with your password</label>
+                <input id="acc-delete" type="password" autoComplete="current-password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} required className={field} />
+              </div>
+              {deleteError && <p role="alert" className="text-sm text-red-300">{deleteError}</p>}
+              <button type="submit" disabled={deleting} className="min-h-[44px] rounded-lg bg-red-700 px-5 py-2 text-sm font-bold text-white transition hover:bg-red-600 disabled:opacity-50 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-300">
+                {deleting ? "Deleting…" : "Delete my account"}
+              </button>
             </form>
           </>
         )}

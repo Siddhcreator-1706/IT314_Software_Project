@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { SiteHeader, NavLink } from "@/components/Brand";
 import Link from "next/link";
-import { fetchMyReports, replyToInformationRequest, ReportData } from "@/services/citizenApi";
+import { fetchMyReports, replyToInformationRequest, requestWithdrawal, ReportData } from "@/services/citizenApi";
 import { ReportPhotos } from "@/components/ReportPhotos";
 import { isInGujarat } from "@/lib/geo";
 
@@ -76,6 +76,8 @@ export default function MyReportsPage() {
   const [replyError, setReplyError] = useState<{ id: string; message: string } | null>(null);
   const [replySuccess, setReplySuccess] = useState<string | null>(null);
   const [replyPlace, setReplyPlace] = useState<Record<string, { latitude: number; longitude: number } | undefined>>({});
+  const [withdrawing, setWithdrawing] = useState<string | null>(null);
+  const [withdrawError, setWithdrawError] = useState<{ id: string; message: string } | null>(null);
   const [placeError, setPlaceError] = useState<{ id: string; message: string } | null>(null);
 
   const loadReports = useCallback(async () => {
@@ -431,6 +433,33 @@ export default function MyReportsPage() {
                   {isSelected && (
                     <div className="mt-5 pt-4 border-t border-slate-800 text-xs space-y-2">
                       <ReportPhotos incidentId={report.id} closed={["CLOSED", "REJECTED"].includes(report.status)} />
+                      {["SUBMITTED", "NEEDS_INFORMATION", "VERIFIED"].includes(currentStatus) && (
+                        <div className="pt-2 text-xs">
+                          {report.withdrawal_requested ? (
+                            <p role="status" className="text-amber-300">
+                              You asked to withdraw this report. A dispatcher will review it; until then it stays active.
+                            </p>
+                          ) : (
+                            <button
+                              type="button"
+                              disabled={withdrawing === report.id}
+                              onClick={async () => {
+                                if (!window.confirm("Ask the dispatchers to withdraw this report? Use this for a false alarm or a duplicate.")) return;
+                                setWithdrawing(report.id);
+                                setWithdrawError(null);
+                                const res = await requestWithdrawal(report.id);
+                                setWithdrawing(null);
+                                if (res.error) setWithdrawError({ id: report.id, message: res.error });
+                                else loadReports();
+                              }}
+                              className="min-h-[44px] px-3 rounded-lg border border-slate-600 text-slate-300 hover:bg-slate-800 cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-sky-400"
+                            >
+                              {withdrawing === report.id ? "Sending…" : "Ask to withdraw this report"}
+                            </button>
+                          )}
+                          {withdrawError?.id === report.id && <p role="alert" className="mt-1 text-red-400">{withdrawError.message}</p>}
+                        </div>
+                      )}
                       <div className="font-semibold text-slate-200 mb-2">Detailed Event Audit:</div>
                       <div className="space-y-1.5 font-mono text-[11px] text-slate-300">
                         <div className="flex items-center gap-2">

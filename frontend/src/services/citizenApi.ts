@@ -85,6 +85,7 @@ export interface ReportData {
   linked_incident_id: string | null;
   source: string;
   timeline: TimelineEntry[];
+  withdrawal_requested?: boolean;
 }
 
 interface MyIncident {
@@ -101,6 +102,7 @@ interface MyIncident {
   latitude: number | null;
   longitude: number | null;
   timeline: TimelineEntry[];
+  withdrawal_requested?: boolean;
 }
 
 export const SCENARIO_LABEL: Record<Scenario, string> = {
@@ -132,6 +134,7 @@ function toReport(i: MyIncident): ReportData {
     linked_incident_id: null,
     source: "CITIZEN_APP",
     timeline: i.timeline ?? [],
+    withdrawal_requested: i.withdrawal_requested ?? false,
   };
 }
 
@@ -166,6 +169,14 @@ export async function replyToInformationRequest(
       body: JSON.stringify({ ...(message ? { message } : {}), ...(location ?? {}) }),
     }
   );
+}
+
+/** Ask the dispatchers to withdraw a report. Only records the request; a dispatcher decides. */
+export async function requestWithdrawal(incidentId: string, reason?: string): Promise<ApiResult<{ incident_id: string; status: string; withdrawal_requested: boolean }>> {
+  return apiFetch(`/api/citizen/me/incidents/${encodeURIComponent(incidentId)}/withdrawal-request`, undefined, {
+    method: "POST",
+    body: JSON.stringify(reason?.trim() ? { reason: reason.trim() } : {}),
+  });
 }
 
 // ── Photo attachments (NU-FR-05) ───────────────────────────────
@@ -236,6 +247,11 @@ export async function changePassword(currentPassword: string, newPassword: strin
     method: "POST",
     body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
   });
+}
+
+/** Erase personal details and end every session. Refused while a report is still open. */
+export async function deleteAccount(password: string): Promise<ApiResult<{ deleted: boolean; sign_in_required: boolean }>> {
+  return apiFetch("/api/citizen/me/account/deletion", undefined, { method: "POST", body: JSON.stringify({ password }) });
 }
 
 export async function markAllNotificationsRead(): Promise<ApiResult<{ marked_read: number }>> {

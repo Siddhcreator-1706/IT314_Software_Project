@@ -136,6 +136,21 @@ def send_verification_email(to_email: str, recipient_name: str) -> bool:
     return _send_raw_email(to_email, "Confirm your ResQ account email", text)
 
 
+def send_notification_email(to_email: str, recipient_name: str, title: str, body: str) -> bool:
+    """Email copy of an in-app notification for a citizen who turned email alerts on.
+
+    In-app notifications stay the source of truth; this is a convenience. With no SMTP_HOST it is only
+    outboxed and logged (simulated), like the other emails.
+    """
+    settings = get_settings()
+    text = (
+        f"Hello {recipient_name},\n\n{title}\n\n{body}\n\n"
+        f"See the full status in My Reports: {settings.frontend_url}/my-reports\n\n"
+        "You can turn email alerts off on your account page.\n"
+    )
+    return _send_raw_email(to_email, title[:150], text)
+
+
 def send_password_reset_email(
     to_email: str,
     recipient_name: str,
