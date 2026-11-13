@@ -29,35 +29,59 @@ jobs:
     name: Detect Changed Components
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
     outputs:
-      frontend: ${{ steps.filter.outputs.frontend }}
-      backend: ${{ steps.filter.outputs.backend }}
-      ai-workers: ${{ steps.filter.outputs.ai-workers }}
+      frontend: ${{ steps.detect.outputs.frontend }}
+      backend: ${{ steps.detect.outputs.backend }}
+      ai-workers: ${{ steps.detect.outputs.ai-workers }}
     steps:
-      - name: Checkout repository
+      - name: Checkout repository (full history)
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-
-      - name: Check for file changes
-        id: filter
-        # Release tags build every image, so path filtering (which needs a base commit) is skipped.
-        if: ${{ github.ref_type == 'branch' }}
-        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
         with:
-          filters: |
-            frontend:
-              - 'frontend/**'
-              - 'docker-compose*.yml'
-              - '.github/workflows/cd.yml'
-            backend:
-              - 'backend/**'
-              - 'docker-compose*.yml'
-              - 'render.yaml'
-              - 'scripts/**'
-              - '.github/workflows/cd.yml'
-            ai-workers:
-              - 'ai-workers/**'
-              - 'docker-compose*.yml'
-              - '.github/workflows/cd.yml'
+          fetch-depth: 0
+
+      # A newer push cancels an older CD run, and a run can also fail. Comparing each commit
+      # only with its parent would then lose the older run's changes, so compare with the
+      # commit of the last CD run that succeeded. Anything since then is built and deployed.
+      - name: Detect changed components
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set_all() {
+            echo "frontend=true" >> "$GITHUB_OUTPUT"
+            echo "backend=true" >> "$GITHUB_OUTPUT"
+            echo "ai-workers=true" >> "$GITHUB_OUTPUT"
+          }
+
+          # Release tags build every image; there is no base commit to compare with.
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then
+            set_all
+            exit 0
+          fi
+
+          BASE=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/cd.yml/runs?branch=main&status=success&per_page=1" \
+            --jq '.workflow_runs[0].head_sha // empty' 2>/dev/null || true)
+
+          if [ -z "$BASE" ] || ! git cat-file -e "${BASE}^{commit}" 2>/dev/null; then
+            echo "::notice::No earlier successful CD run found; treating every component as changed."
+            set_all
+            exit 0
+          fi
+
+          echo "Comparing $GITHUB_SHA with last successful CD run $BASE"
+          CHANGED=$(git diff --name-only "$BASE" "$GITHUB_SHA")
+          echo "Changed files:"; echo "$CHANGED"
+
+          check() {  # $1 = output name, $2 = extended regex of paths that affect it
+            if echo "$CHANGED" | grep -Eq "$2"; then echo "$1=true" >> "$GITHUB_OUTPUT"; else echo "$1=false" >> "$GITHUB_OUTPUT"; fi
+          }
+          COMMON='docker-compose[^/]*\.yml$|\.github/workflows/cd\.yml$'
+          check frontend   "^(frontend/|$COMMON)"
+          check backend    "^(backend/|scripts/|render\.yaml$|$COMMON)"
+          check ai-workers "^(ai-workers/|$COMMON)"
 
   # ============================================================================
   # 0b. Ref guard: only main and release tags may build or deploy. The "main" ruleset
@@ -363,6 +387,8 @@ jobs:
   # ============================================================================
   # 4. Production Deployment (Vercel, Render backend and Render AI run in parallel)
   # ============================================================================
+  # Each deploy job waits only for what it actually deploys: Vercel builds the frontend itself
+  # (it does not use the GHCR image) and starts immediately; Render jobs wait for their own image.
   # Secrets cannot be read in a job-level `if`, so this job reports which deploy
   # hooks are configured. Deploy jobs gate on it, so a missing hook shows the job
   # as "Skipped" instead of a misleading green "Success".
@@ -370,12 +396,12 @@ jobs:
     name: Check Deploy Hooks
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [detect-changes, verify-ref, publish-frontend, publish-backend, publish-ai-workers]
+    needs: [detect-changes, verify-ref]
     if: |
       always() &&
       github.ref == 'refs/heads/main' &&
-      !contains(needs.*.result, 'failure') &&
-      !contains(needs.*.result, 'cancelled') &&
+      needs.verify-ref.result == 'success' &&
+      needs.detect-changes.result == 'success' &&
       (needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch')
     environment:
       name: production
@@ -440,13 +466,14 @@ jobs:
     name: Deploy Backend / Render
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [detect-changes, check-hooks, deploy-staging, smoke]
+    needs: [detect-changes, check-hooks, publish-backend, deploy-staging, smoke]
     # Staging smoke must have passed. "Skipped" is accepted only when staging was
     # skipped too (not configured); a failed staging deploy or smoke blocks production.
     if: |
       always() &&
       needs.check-hooks.result == 'success' &&
       needs.check-hooks.outputs.render == 'true' &&
+      needs.publish-backend.result == 'success' &&
       (needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch') &&
       (needs.smoke.result == 'success' || (needs.smoke.result == 'skipped' && needs.deploy-staging.result == 'skipped'))
     environment:
@@ -501,11 +528,12 @@ jobs:
     name: Deploy AI Triage / Render
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [detect-changes, check-hooks]
+    needs: [detect-changes, check-hooks, publish-ai-workers]
     if: |
       always() &&
       needs.check-hooks.result == 'success' &&
       needs.check-hooks.outputs.render_ai == 'true' &&
+      needs.publish-ai-workers.result == 'success' &&
       (needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch')
     environment:
       name: production
