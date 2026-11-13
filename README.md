@@ -273,7 +273,7 @@ The repository separates verification (CI) from publication & deployment (CD):
    - **AI workers:** their own pytest suite.
    - **E2E:** Playwright against a real API and the built frontend.
    - **Containers:** each changed image is built, started, scanned with Trivy (critical and high fail) and, from same-repository pull requests, pushed as `ci-<head sha>` so CD can promote it.
-   - **Quality Gate:** `ci-gatekeeper` ("Pipeline Status / Quality Gate") is the required check on `main`; it fails when a required job failed or was skipped although its paths changed. The Vercel preview is a separate job and never blocks.
+   - **Quality Gate:** `ci-gatekeeper` ("Pipeline Status / Quality Gate") is the required check on `main`; it fails when a required job failed or was skipped although its paths changed. The Vercel preview runs after the gate passes (so only when every required check is green), is updated in place as one PR comment on each new commit, and never blocks.
 2. **Continuous Deployment ([`.github/workflows/cd.yml`](.github/workflows/cd.yml))**:
    - Runs on a push to `main` or a release tag (`vX.Y.Z`); manual runs from other branches are refused.
    - Finds what changed since the last successful CD run, retags the image CI already scanned when the merged tree equals the pull request head (otherwise builds it), and publishes to **GHCR** (`latest`, `sha-*`).

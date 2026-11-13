@@ -560,12 +560,12 @@ jobs:
     name: Preview / Vercel
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [detect-changes, frontend-check]
+    needs: [detect-changes, ci-gatekeeper]
     if: |
       always() &&
       github.event_name == 'pull_request' &&
       needs.detect-changes.outputs.frontend == 'true' &&
-      needs.frontend-check.result == 'success'
+      needs.ci-gatekeeper.result == 'success'
     # Reaching Vercel is best effort: a failure here is reported but does not block merging.
     continue-on-error: true
     permissions:
@@ -574,29 +574,17 @@ jobs:
       issues: write
     steps:
       - name: Checkout repository for Vercel deployment
-        if: |
-          github.event_name == 'pull_request' &&
-          needs.detect-changes.outputs.frontend == 'true' &&
-          needs.frontend-check.result == 'success'
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
 
       - name: Setup Node.js for Vercel CLI
-        if: |
-          github.event_name == 'pull_request' &&
-          needs.detect-changes.outputs.frontend == 'true' &&
-          needs.frontend-check.result == 'success'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: '22'
 
       - name: Deploy Verified Preview to Vercel
         id: vercel_deploy
-        if: |
-          github.event_name == 'pull_request' &&
-          needs.detect-changes.outputs.frontend == 'true' &&
-          needs.frontend-check.result == 'success'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
@@ -635,10 +623,11 @@ jobs:
         with:
           script: |
             const url = process.env.PREVIEW_URL;
+            const sha = (context.payload.pull_request ? context.payload.pull_request.head.sha : context.sha).substring(0, 7);
             if (!url) return;
             const prNumber = context.payload.pull_request ? context.payload.pull_request.number : context.issue.number;
             if (!prNumber) return;
-            const body = `## 🚀 Vercel Preview\n\n🔗 **Preview URL:** ${url}\n\n_Deployed from commit \`${context.sha.substring(0, 7)}\`_`;
+            const body = `## 🚀 Vercel Preview\n\n🔗 **Preview URL:** ${url}\n\n_Deployed from commit \`${sha}\` at ${new Date().toISOString()}_`;
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
