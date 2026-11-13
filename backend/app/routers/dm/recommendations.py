@@ -15,7 +15,7 @@ from app import audit, db
 from app.auth import Dispatcher, DMUser
 from app.common import notify
 from app.config import get_settings
-from app.errors import ApiError, not_found
+from app.errors import ApiError, database_unavailable, not_found
 from app.geo import get_district_centroid
 from app.schemas.recommendations import (
     TeamRecommendationResponse,
@@ -48,15 +48,7 @@ def get_incident_team_recommendations(
     Never creates a dispatch automatically. Dispatch creation requires human authorization.
     """
     if not get_settings().database_url:
-        # Offline/mock fallback for demo resilience
-        demo_teams = recommend_candidate_teams(23.0225, 72.5714, "URBAN_FLOODING", limit=limit)
-        return TeamRecommendationResponse(
-            incident_id=incident_id,
-            scenario="URBAN_FLOODING",
-            requires_confirmation=True,
-            recommendations=demo_teams,
-            generated_at=datetime.now(UTC),
-        )
+        raise database_unavailable()
 
     with db.transaction() as conn:
         row = conn.execute(
@@ -114,7 +106,7 @@ def list_team_requests(
 ) -> list[TeamRequestItem]:
     """List reinforcement and specialized backup requests submitted by field units."""
     if not get_settings().database_url:
-        return []
+        raise database_unavailable()
 
     with db.transaction() as conn:
         rows = conn.execute(
