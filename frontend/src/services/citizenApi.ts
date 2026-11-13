@@ -201,6 +201,46 @@ export async function removeAttachment(incidentId: string, evidenceId: string): 
   return apiFetch(attachmentUrl(incidentId, evidenceId), undefined, { method: "DELETE" });
 }
 
+// ── Account (profile, password) ────────────────────────────────
+
+export interface ProfileData {
+  user_id: string;
+  email: string;
+  full_name: string;
+  phone: string | null;
+  preferred_language: "en" | "hi" | "gu";
+  alerts: { in_app: boolean; email: boolean; sms: boolean };
+  created_at: string;
+}
+
+export interface ProfileUpdate {
+  full_name?: string;
+  phone?: string;
+  preferred_language?: "en" | "hi" | "gu";
+  email_alerts?: boolean;
+  sms_alerts?: boolean;
+}
+
+export async function fetchProfile(): Promise<ApiResult<ProfileData>> {
+  return apiFetch<ProfileData>("/api/citizen/me/profile");
+}
+
+export async function updateProfile(update: ProfileUpdate): Promise<ApiResult<ProfileData>> {
+  return apiFetch<ProfileData>("/api/citizen/me/profile", undefined, { method: "PATCH", body: JSON.stringify(update) });
+}
+
+/** On success every session ends (the server bumps the token version); the caller signs the user out. */
+export async function changePassword(currentPassword: string, newPassword: string): Promise<ApiResult<{ changed: boolean; sign_in_required: boolean }>> {
+  return apiFetch("/api/citizen/me/password", undefined, {
+    method: "POST",
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+}
+
+export async function markAllNotificationsRead(): Promise<ApiResult<{ marked_read: number }>> {
+  return apiFetch("/api/citizen/me/notifications/read-all", undefined, { method: "POST" });
+}
+
 // ── Public endpoints (no auth) ─────────────────────────────────
 
 /** Contract: GET /api/v1/public/incidents */

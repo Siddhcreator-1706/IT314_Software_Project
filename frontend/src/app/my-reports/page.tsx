@@ -136,6 +136,7 @@ export default function MyReportsPage() {
         </span>
         <NavLink href="/report" variant="primary">+ Report<span className="hidden sm:inline"> Incident</span></NavLink>
         <NavLink href="/citizen/dashboard" hideBelow="sm">Dashboard</NavLink>
+        <NavLink href="/account" hideBelow="sm">Account</NavLink>
       </SiteHeader>
 
       {/* Main Content */}
