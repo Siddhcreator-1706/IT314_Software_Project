@@ -260,6 +260,129 @@ jobs:
           cache-to: type=gha,mode=max,scope=ai-workers
 
   # ============================================================================
+  # 3b. Staging: deploy the commit's backend image, then smoke-test it.
+  #     Production deploys only after this passes (or when staging is not configured).
+  # ============================================================================
+  check-staging:
+    name: Check Staging Config
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [verify-ci, publish-backend]
+    if: |
+      always() &&
+      github.ref == 'refs/heads/main' &&
+      needs.publish-backend.result == 'success'
+    environment:
+      name: staging
+    outputs:
+      configured: ${{ steps.cfg.outputs.configured }}
+    steps:
+      - name: Detect staging secrets
+        id: cfg
+        env:
+          STAGING_HOOK: ${{ secrets.RENDER_STAGING_DEPLOY_HOOK }}
+          STAGING_URL: ${{ secrets.STAGING_BACKEND_URL }}
+        run: |
+          if [ -n "$STAGING_HOOK" ] && [ -n "$STAGING_URL" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::RENDER_STAGING_DEPLOY_HOOK or STAGING_BACKEND_URL not set. Staging deploy and smoke will be skipped."
+          fi
+
+  deploy-staging:
+    name: Deploy Backend / Staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [check-staging]
+    if: |
+      always() &&
+      needs.check-staging.result == 'success' &&
+      needs.check-staging.outputs.configured == 'true'
+    environment:
+      name: staging
+    steps:
+      - name: Trigger Render Staging Deployment
+        env:
+          STAGING_HOOK: ${{ secrets.RENDER_STAGING_DEPLOY_HOOK }}
+        run: |
+          # Same image that production will receive: built once, promoted by tag.
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/drch_backend:sha-${GITHUB_SHA:0:7}"
+          SEP="?"; case "$STAGING_HOOK" in *\?*) SEP="&";; esac
+          echo "Triggering Render staging deployment of $IMAGE..."
+          response=$(curl -s -L -o /dev/null -w "%{http_code}" -X POST "${STAGING_HOOK}${SEP}imgURL=${IMAGE}")
+          if [ "$response" -ge 200 ] && [ "$response" -lt 300 ]; then
+            echo "Dispatched staging deployment (HTTP $response)."
+          else
+            echo "::error::Render staging hook responded with HTTP $response. Please check secret RENDER_STAGING_DEPLOY_HOOK."
+            exit 1
+          fi
+
+  smoke:
+    name: Staging Smoke / Live SHA Verification
+    needs: [check-staging, deploy-staging]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    environment: staging
+    if: |
+      always() &&
+      needs.deploy-staging.result == 'success'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Smoke Test Dependencies
+        run: |
+          pip install httpx pyotp
+
+      - name: Wait until this commit is live on staging
+        id: wait_live
+        env:
+          STAGING_URL: ${{ secrets.STAGING_BACKEND_URL }}
+        run: |
+          # Normalize URL (strip trailing slashes and /api/v1 if included)
+          API_URL="${STAGING_URL%/}"
+          API_URL="${API_URL%/api/v1}"
+          echo "target_url=$API_URL" >> "$GITHUB_OUTPUT"
+
+          COMMIT_SHA="${{ github.sha }}"
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+          echo "Waiting for live commit $COMMIT_SHA ($SHORT_SHA) on staging..."
+
+          v="none"
+          for i in $(seq 1 60); do
+            HTTP_CODE=$(curl -s -L -o out.json -w "%{http_code}" --max-time 15 "$API_URL/api/v1/health" || echo "000")
+            if [ "$HTTP_CODE" = "200" ]; then
+              v=$(jq -r .version out.json 2>/dev/null || echo "unknown")
+              echo "Polling attempt $i/60: HTTP 200, version '$v'"
+              if [ "$v" = "$COMMIT_SHA" ] || [ "$v" = "$SHORT_SHA" ]; then
+                echo "Deployed build is live on staging."
+                exit 0
+              fi
+            else
+              echo "Polling attempt $i/60: got HTTP $HTTP_CODE"
+            fi
+            sleep 10
+          done
+
+          echo "::error::Build $COMMIT_SHA not live on staging after 10 minutes (last reported version: '$v')."
+          exit 1
+
+      - name: Run Staging Smoke Test
+        env:
+          API_URL: ${{ steps.wait_live.outputs.target_url }}
+          SMOKE_STAFF_EMAIL: ${{ secrets.SMOKE_STAFF_EMAIL }}
+          SMOKE_STAFF_PASSWORD: ${{ secrets.SMOKE_STAFF_PASSWORD }}
+          SMOKE_STAFF_TOTP_SECRET: ${{ secrets.SMOKE_STAFF_TOTP_SECRET }}
+        run: |
+          python scripts/smoke.py --base-url "$API_URL"
+
+  # ============================================================================
   # 4. Production Deployment (Vercel, Render backend and Render AI run in parallel)
   # ============================================================================
   # Secrets cannot be read in a job-level `if`, so this job reports which deploy
@@ -282,7 +405,6 @@ jobs:
       vercel: ${{ steps.hooks.outputs.vercel }}
       render: ${{ steps.hooks.outputs.render }}
       render_ai: ${{ steps.hooks.outputs.render_ai }}
-      backend_url: ${{ steps.hooks.outputs.backend_url }}
     steps:
       - name: Detect configured hooks
         id: hooks
@@ -290,7 +412,6 @@ jobs:
           VERCEL_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
           RENDER_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
           RENDER_AI_HOOK: ${{ secrets.RENDER_AI_DEPLOY_HOOK }}
-          BACKEND_URL: ${{ secrets.PROD_BACKEND_URL }}
         run: |
           if [ -n "$VERCEL_HOOK" ]; then echo "vercel=true" >> "$GITHUB_OUTPUT"; else
             echo "vercel=false" >> "$GITHUB_OUTPUT"
@@ -303,10 +424,6 @@ jobs:
           if [ -n "$RENDER_AI_HOOK" ]; then echo "render_ai=true" >> "$GITHUB_OUTPUT"; else
             echo "render_ai=false" >> "$GITHUB_OUTPUT"
             echo "::notice::RENDER_AI_DEPLOY_HOOK secret not set. AI triage deployment (drch-ai-triage) will be skipped."
-          fi
-          if [ -n "$BACKEND_URL" ]; then echo "backend_url=true" >> "$GITHUB_OUTPUT"; else
-            echo "backend_url=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::PROD_BACKEND_URL secret not set. Staging smoke will be skipped."
           fi
 
   deploy-vercel:
@@ -339,12 +456,15 @@ jobs:
     name: Deploy Backend / Render
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [detect-changes, check-hooks]
+    needs: [detect-changes, check-hooks, deploy-staging, smoke]
+    # Staging smoke must have passed. "Skipped" is accepted only when staging was
+    # skipped too (not configured); a failed staging deploy or smoke blocks production.
     if: |
       always() &&
       needs.check-hooks.result == 'success' &&
       needs.check-hooks.outputs.render == 'true' &&
-      (needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch')
+      (needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch') &&
+      (needs.smoke.result == 'success' || (needs.smoke.result == 'skipped' && needs.deploy-staging.result == 'skipped'))
     environment:
       name: production
     steps:
@@ -363,23 +483,6 @@ jobs:
           else
             echo "::error::Render hook responded with HTTP $response. Please check secret RENDER_DEPLOY_HOOK."
             exit 1
-          fi
-
-      - name: Trigger Render AI Triage Deployment (AI Workers Only)
-        if: ${{ needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch' }}
-        env:
-          RENDER_AI_HOOK: ${{ secrets.RENDER_AI_DEPLOY_HOOK }}
-        run: |
-          if [ -n "$RENDER_AI_HOOK" ]; then
-            echo "🚀 Triggering Render AI triage deployment..."
-            response=$(curl -s -L -o /dev/null -w "%{http_code}" -X POST "$RENDER_AI_HOOK")
-            if [ "$response" -ge 200 ] && [ "$response" -lt 300 ]; then
-              echo "✅ Successfully dispatched Render AI triage deployment (HTTP $response)."
-            else
-              echo "⚠️ Render AI hook responded with HTTP $response. Please check secret RENDER_AI_DEPLOY_HOOK."
-            fi
-          else
-            echo "ℹ️ RENDER_AI_DEPLOY_HOOK secret not set. Skipping AI triage deployment (drch-ai-triage in render.yaml)."
           fi
 
       - name: Verify Backend Health
@@ -405,7 +508,6 @@ jobs:
             done
             echo "::error::Health check timed out or failed on $BACKEND_URL"
             exit 1
-            echo "⚠️ Health check timed out or failed on $BACKEND_URL"
           else
             echo "ℹ️ PROD_BACKEND_URL secret not set. Skipping live health verification."
           fi
@@ -438,83 +540,3 @@ jobs:
             echo "::error::Render AI hook responded with HTTP $response. Please check secret RENDER_AI_DEPLOY_HOOK."
             exit 1
           fi
-
-  # ============================================================================
-  # 5. Live Staging Smoke Gate (Live-SHA Verified)
-  # ============================================================================
-  smoke:
-    name: Staging Smoke / Live SHA Verification
-    needs: [detect-changes, check-hooks, deploy-render]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    environment: staging
-    if: |
-      always() &&
-      needs.deploy-render.result == 'success' &&
-      needs.check-hooks.outputs.backend_url == 'true' &&
-      github.ref == 'refs/heads/main' &&
-      !contains(needs.*.result, 'failure') &&
-      !contains(needs.*.result, 'cancelled') &&
-      (needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch')
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.12
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install Smoke Test Dependencies
-        run: |
-          pip install httpx pyotp
-
-      - name: Wait until this commit is live
-        id: wait_live
-        env:
-          STAGING_URL: ${{ secrets.PROD_BACKEND_URL }}
-        run: |
-          if [ -z "$STAGING_URL" ]; then
-            echo "::notice::PROD_BACKEND_URL secret not set in GitHub Secrets. Skipping staging live version verification."
-            echo "is_live=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Normalize URL (strip trailing slashes and /api/v1 if included)
-          API_URL="${STAGING_URL%/}"
-          API_URL="${API_URL%/api/v1}"
-          echo "target_url=$API_URL" >> "$GITHUB_OUTPUT"
-
-          COMMIT_SHA="${{ github.sha }}"
-          SHORT_SHA="${COMMIT_SHA:0:7}"
-          echo "Waiting for live commit $COMMIT_SHA ($SHORT_SHA) on $API_URL..."
-
-          for i in $(seq 1 36); do
-            HTTP_CODE=$(curl -s -L -o out.json -w "%{http_code}" --max-time 15 "$API_URL/api/v1/health" || echo "000")
-            if [ "$HTTP_CODE" = "200" ]; then
-              v=$(jq -r .version out.json 2>/dev/null || echo "unknown")
-              echo "Polling attempt $i/36: HTTP 200, version '$v'"
-              if [ "$v" = "$COMMIT_SHA" ] || [ "$v" = "$SHORT_SHA" ]; then
-                echo "✅ Deployed build is live on staging!"
-                echo "is_live=true" >> "$GITHUB_OUTPUT"
-                exit 0
-              fi
-            else
-              echo "Polling attempt $i/36: got HTTP $HTTP_CODE"
-            fi
-            sleep 10
-          done
-
-          echo "::error::New build $COMMIT_SHA not live on $API_URL after 6 minutes (last reported version: '$v')."
-          echo "is_live=false" >> "$GITHUB_OUTPUT"
-          exit 1
-
-      - name: Run Staging Smoke Test
-        if: ${{ steps.wait_live.outputs.is_live == 'true' }}
-        env:
-          API_URL: ${{ steps.wait_live.outputs.target_url }}
-          SMOKE_STAFF_EMAIL: ${{ secrets.SMOKE_STAFF_EMAIL }}
-          SMOKE_STAFF_PASSWORD: ${{ secrets.SMOKE_STAFF_PASSWORD }}
-          SMOKE_STAFF_TOTP_SECRET: ${{ secrets.SMOKE_STAFF_TOTP_SECRET }}
-        run: |
-          python scripts/smoke.py --base-url "$API_URL"
