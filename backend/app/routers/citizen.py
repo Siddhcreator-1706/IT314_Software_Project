@@ -8,7 +8,6 @@ citizen's incident is reported as 404 so its existence is never revealed.
 import hashlib
 import json
 import uuid
-from datetime import UTC, datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, Request
@@ -21,7 +20,6 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 from app import audit, db, security
 from app.auth import Citizen
 from app.common import Page, Priority, Scenario, next_incident_ref, notify, page_body, scenario_db
-from app.config import get_settings
 from app.errors import ApiError, conflict, not_found
 from app.geo import district_for, is_in_gujarat
 from app.ratelimit import rate_limit
@@ -32,14 +30,6 @@ from app.routers.dm.ai import _read_capped_body, safe_filename, sniff_image_type
 router = APIRouter(prefix="/api/v1", tags=["citizen"])
 
 _MAX_DETAILS_BYTES = 4096
-_DEMO_CITIZEN_INCIDENTS: list[dict] = []
-_DEMO_INC_SEQ = 100
-
-
-def _is_demo_mode() -> bool:
-    import os
-    settings = get_settings()
-    return not settings.database_url or os.getenv("DEMO_MODE", "").lower() in ("true", "1")
 
 
 class IncidentCreate(BaseModel):
@@ -118,43 +108,9 @@ def create_incident(
     principal: Citizen,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", max_length=100)] = None,
 ):
-    global _DEMO_INC_SEQ
     if not is_in_gujarat(body.latitude, body.longitude):
         raise ApiError(422, "OUTSIDE_GUJARAT", "The reported location is outside Gujarat")
     district = district_for(body.latitude, body.longitude)
-    if _is_demo_mode():
-        if idempotency_key:
-            for inc in _DEMO_CITIZEN_INCIDENTS:
-                if inc["reporter_id"] == principal.user_id and inc.get("idempotency_key") == idempotency_key:
-                    return JSONResponse(status_code=200, content=jsonable_encoder(_created_body(inc)))
-        _DEMO_INC_SEQ += 1
-        now_iso = datetime.now(UTC).isoformat()
-        demo_id = uuid.uuid4()
-        ref = f"INC-{datetime.now(UTC).year}-{_DEMO_INC_SEQ:06d}"
-        demo_record = {
-            "incident_id": demo_id,
-            "incident_ref": ref,
-            "reporter_id": principal.user_id,
-            "scenario": body.scenario,
-            "description": body.description.strip(),
-            "reported_urgency": body.reported_urgency,
-            "people_affected": body.people_affected,
-            "location_source": body.location_source,
-            "latitude": body.latitude,
-            "longitude": body.longitude,
-            "address_text": body.address_text.strip() if body.address_text else None,
-            "landmark": body.landmark.strip() if body.landmark else None,
-            "details": body.details,
-            "idempotency_key": idempotency_key,
-            "status": "SUBMITTED",
-            "district": district or "Ahmedabad",
-            "submitted_at": now_iso,
-            "updated_at": now_iso,
-            "timeline": [{"status": "SUBMITTED", "timestamp": now_iso, "message": "Report submitted"}],
-        }
-        _DEMO_CITIZEN_INCIDENTS.append(demo_record)
-        return _created_body(demo_record)
-
     with db.transaction() as conn:
         if idempotency_key:
             existing = conn.execute(
@@ -253,29 +209,6 @@ _MY_COLUMNS = """
 
 @router.get("/me/incidents")
 def my_incidents(principal: Citizen, page: Page):
-    if _is_demo_mode():
-        mine = [
-            {
-                "incident_id": inc["incident_id"],
-                "incident_ref": inc["incident_ref"],
-                "scenario": inc["scenario"],
-                "status": inc["status"],
-                "district": inc["district"],
-                "description": inc["description"],
-                "address_text": inc["address_text"],
-                "landmark": inc["landmark"],
-                "people_affected": inc["people_affected"],
-                "submitted_at": inc["submitted_at"],
-                "updated_at": inc["updated_at"],
-                "latitude": inc["latitude"],
-                "longitude": inc["longitude"],
-                "timeline": inc["timeline"],
-            }
-            for inc in _DEMO_CITIZEN_INCIDENTS
-            if inc["reporter_id"] == principal.user_id
-        ]
-        return page_body([_readable(i) for i in mine[page.offset : page.offset + page.limit]], len(mine), page)
-
     with db.transaction() as conn:
         total = conn.execute(
             "SELECT COUNT(*) AS n FROM incidents WHERE reporter_id = %s", (principal.user_id,)
@@ -304,27 +237,6 @@ def _own_incident(conn, incident_id: uuid.UUID, user_id: uuid.UUID) -> dict:
 
 @router.get("/me/incidents/{incident_id}")
 def my_incident(incident_id: uuid.UUID, principal: Citizen):
-    if _is_demo_mode():
-        for inc in _DEMO_CITIZEN_INCIDENTS:
-            if inc["incident_id"] == incident_id and inc["reporter_id"] == principal.user_id:
-                return _readable({
-                    "incident_id": inc["incident_id"],
-                    "incident_ref": inc["incident_ref"],
-                    "scenario": inc["scenario"],
-                    "status": inc["status"],
-                    "district": inc["district"],
-                    "description": inc["description"],
-                    "address_text": inc["address_text"],
-                    "landmark": inc["landmark"],
-                    "people_affected": inc["people_affected"],
-                    "submitted_at": inc["submitted_at"],
-                    "updated_at": inc["updated_at"],
-                    "latitude": inc["latitude"],
-                    "longitude": inc["longitude"],
-                    "timeline": inc["timeline"],
-                })
-        raise not_found("Incident")
-
     with db.transaction() as conn:
         return _readable(_own_incident(conn, incident_id, principal.user_id))
 
@@ -426,11 +338,6 @@ def _attachment_body(row: dict) -> dict:
     }
 
 
-def _require_database(code: str = "ATTACHMENTS_UNAVAILABLE", what: str = "Photo attachments") -> None:
-    if _is_demo_mode():
-        raise ApiError(503, code, f"{what} need the database and are off in demo mode")
-
-
 def _own_incident_status(conn, incident_id: uuid.UUID, user_id: uuid.UUID) -> str:
     row = conn.execute(
         "SELECT status FROM incidents WHERE incident_id = %s AND reporter_id = %s", (incident_id, user_id)
@@ -504,7 +411,6 @@ async def upload_attachment(incident_id: uuid.UUID, request: Request, principal:
     X-Filename header. The type is checked from the file's bytes, not the declared header. The photo
     starts as Awaiting review for the moderation queue; the same photo sent twice returns the first.
     """
-    _require_database()
     declared = request.headers.get("content-type", "").split(";")[0].strip().lower()
     if declared not in _ATTACHMENT_TYPES:
         raise ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Send a JPEG, PNG or WebP photo as the request body.")
@@ -520,7 +426,6 @@ async def upload_attachment(incident_id: uuid.UUID, request: Request, principal:
 
 @router.get("/me/incidents/{incident_id}/attachments")
 def list_attachments(incident_id: uuid.UUID, principal: Citizen):
-    _require_database()
     with db.transaction() as conn:
         _own_incident_status(conn, incident_id, principal.user_id)
         rows = conn.execute(
@@ -534,7 +439,6 @@ def list_attachments(incident_id: uuid.UUID, principal: Citizen):
 @router.get("/me/incidents/{incident_id}/attachments/{evidence_id}")
 def download_attachment(incident_id: uuid.UUID, evidence_id: uuid.UUID, principal: Citizen):
     """Return your own photo. Another citizen's photo, or a removed one, is a 404."""
-    _require_database()
     with db.transaction() as conn:
         _own_incident_status(conn, incident_id, principal.user_id)
         row = conn.execute(
@@ -557,7 +461,6 @@ def download_attachment(incident_id: uuid.UUID, evidence_id: uuid.UUID, principa
 @router.delete("/me/incidents/{incident_id}/attachments/{evidence_id}")
 def remove_attachment(incident_id: uuid.UUID, evidence_id: uuid.UUID, principal: Citizen):
     """Remove your own photo: the file is deleted and the record is kept as removed for the audit trail."""
-    _require_database()
     with db.transaction() as conn:
         _own_incident_status(conn, incident_id, principal.user_id)
         row = conn.execute(
@@ -601,7 +504,6 @@ def request_withdrawal(incident_id: uuid.UUID, body: WithdrawalRequest, principa
     This only records the request. The status does not change: a dispatcher decides whether to
     reject or close the report, because closing is always a human decision. Allowed before dispatch.
     """
-    _require_database("WITHDRAWAL_UNAVAILABLE", "Withdrawal requests")
     reason = "Reporter asked to withdraw this report" + (f": {body.reason.strip()}" if body.reason and body.reason.strip() else "")
     with db.transaction() as conn:
         _own_incident_status(conn, incident_id, principal.user_id)
@@ -678,7 +580,6 @@ def _profile_body(row: dict) -> dict:
 
 @router.get("/me/profile")
 def my_profile(principal: Citizen):
-    _require_database("ACCOUNT_UNAVAILABLE", "Account settings")
     with db.transaction() as conn:
         row = conn.execute(
             "SELECT user_id, email, full_name, phone, preferred_language, alert_preferences, created_at "
@@ -693,7 +594,6 @@ def my_profile(principal: Citizen):
 @router.patch("/me/profile", dependencies=[rate_limit("profile", 30, 3600)])
 def update_my_profile(body: ProfileUpdate, principal: Citizen):
     """Change your own name, phone, language or alert preferences. The email address is your sign-in identity and is not editable here."""
-    _require_database("ACCOUNT_UNAVAILABLE", "Account settings")
     with db.transaction() as conn:
         before = conn.execute(
             "SELECT user_id, email, full_name, phone, preferred_language, alert_preferences, created_at "
@@ -740,7 +640,6 @@ def update_my_profile(body: ProfileUpdate, principal: Citizen):
 @router.post("/me/password", dependencies=[rate_limit("password-change", 10, 900)])
 def change_my_password(body: PasswordChange, principal: Citizen):
     """Change your password. Every signed-in session, including this one, is ended so you sign in again."""
-    _require_database("ACCOUNT_UNAVAILABLE", "Account settings")
     check_password_policy(body.new_password)
     with db.transaction() as conn:
         row = conn.execute(
@@ -788,7 +687,6 @@ def delete_my_account(body: AccountDeletion, principal: Citizen):
     email or phone number, and your photos are deleted. Refused while a report of yours is still open,
     so an emergency is never left without a contact.
     """
-    _require_database("ACCOUNT_UNAVAILABLE", "Account settings")
     with db.transaction() as conn:
         row = conn.execute(
             "SELECT password_hash FROM user_auth WHERE user_id = %s FOR UPDATE", (principal.user_id,)

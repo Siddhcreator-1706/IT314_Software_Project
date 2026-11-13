@@ -101,3 +101,19 @@ def test_verification_link_is_stubbed_to_the_outbox(client):
     assert _register(client, email=email).status_code == 201
     sent = [m for m in email_service.get_outbox() if m["to"] == email]
     assert sent and "verify-email" in sent[-1]["text"]
+
+
+def test_verification_stub_never_emails_when_smtp_is_configured(monkeypatch):
+    """There is no /verify-email page yet, so a real email would send new citizens to a dead link."""
+    from app.config import get_settings
+    from app.services import email as email_service
+
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.invalid")
+    get_settings.cache_clear()
+    try:
+        before = len(email_service.get_outbox())
+        assert email_service.send_verification_email("someone@example.in", "Someone") is False
+        assert len(email_service.get_outbox()) == before
+    finally:
+        monkeypatch.delenv("SMTP_HOST")
+        get_settings.cache_clear()

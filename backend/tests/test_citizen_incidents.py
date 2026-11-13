@@ -39,6 +39,18 @@ def test_submit_creates_submitted_incident_visible_to_dm(client, make):
     assert queue["total"] == 1
 
 
+def test_report_reaches_the_database_even_when_demo_mode_is_set(client, make, sql, monkeypatch):
+    """Regression: a stray DEMO_MODE=true once routed reports into process memory, out of the dispatch queue."""
+    monkeypatch.setenv("DEMO_MODE", "true")
+    citizen = make.citizen()
+    r = _post(client, citizen, key=str(uuid.uuid4()))
+    assert r.status_code == 201, r.text
+    stored = sql.execute(
+        "SELECT reporter_id FROM incidents WHERE incident_id = %s", (r.json()["incident_id"],)
+    ).fetchone()
+    assert stored is not None and stored["reporter_id"] == citizen["user_id"]
+
+
 def test_idempotency_key_returns_same_incident(client, make):
     citizen = make.citizen()
     key = str(uuid.uuid4())

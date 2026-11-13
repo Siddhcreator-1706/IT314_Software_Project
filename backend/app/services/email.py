@@ -125,13 +125,17 @@ def send_invitation_email(
 
 
 def send_verification_email(to_email: str, recipient_name: str) -> bool:
-    """Citizen email-verification STUB (S1-03): the link is logged and outboxed only.
+    """Citizen email-verification STUB (S1-03): the link only goes to the in-memory outbox and is never emailed.
 
     No token is stored and verification is not enforced; accounts are ACTIVE on registration.
+    With SMTP configured nothing is sent until a /verify-email page and token check exist.
     """
     settings = get_settings()
+    if settings.smtp_host:
+        # There is no /verify-email page yet, so a real email would send every new citizen to a dead link.
+        logger.info("Email verification is not implemented yet; no verification email sent")
+        return False
     link = f"{settings.frontend_url}/verify-email?email={quote(to_email)}"
-    logger.info("Email verification stub link for %s: %s", to_email, link)
     text = f"Hello {recipient_name},\n\nWelcome to ResQ. Confirm your email address: {link}\n"
     return _send_raw_email(to_email, "Confirm your ResQ account email", text)
 

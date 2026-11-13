@@ -233,7 +233,6 @@ Until an enterprise transactional email provider is connected, public password r
 * **Email copy:** a citizen with email alerts on is also emailed each in-app notification (sent in the background, never blocks the action; simulated and logged when no SMTP is configured). SMS is only a stored preference; there is no SMS provider.
 * **Withdraw request:** `POST /api/v1/me/incidents/{id}/withdrawal-request` with optional `{reason}`. Allowed for your own report while `SUBMITTED`, `NEEDS_INFORMATION` or `VERIFIED`; it only records the request (history row and audit entry, `withdrawal_requested: true` on the report) and never changes the status, because a dispatcher decides. `409 NOT_WITHDRAWABLE` after dispatch or closure, `409 ALREADY_REQUESTED`, `404` for another citizen's report. Rate limited.
 * **Delete account:** `POST /api/v1/me/account/deletion` with `{password}`. Refused with `409 OPEN_REPORTS` while any report is not `RESOLVED`, `CLOSED` or `REJECTED`; a wrong password is `400 INVALID_CURRENT_PASSWORD` and audited. On success the name, email, phone and address are erased, photos and notifications deleted, the account disabled and every session ended (`{"deleted": true, "sign_in_required": true}`). Reports stay on record for the audit trail without a link to an identity. Rate limited.
-* **Demo mode:** profile, password and account deletion return `503 ACCOUNT_UNAVAILABLE` because they need the database.
 
 ---
 
