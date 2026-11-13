@@ -10,7 +10,7 @@ Owner: Siddh. Secret values are entered by the owner in the hosting consoles onl
 | Backend | Render web service `drch-backend` (image from GHCR) | `render.yaml`; every `sync: false` key is entered in the Render console |
 | AI triage (advisory) | Render web service `drch-ai-triage` (`drch_ai_workers` image, port 8001) | `render.yaml`; set the same `AI_TRIAGE_TOKEN` on both services and `AI_TRIAGE_URL=https://<drch-ai-triage>.onrender.com/triage` on the backend. Optional: the backend answers `UNAVAILABLE` without it |
 | Frontend | Vercel | `NEXT_PUBLIC_API_URL` pointing at the Render backend |
-| Fallback | `docker-compose.prod.yml` on any Docker host | `.env` file with the required keys (compose refuses to start when one is missing) |
+| Fallback | `docker-compose.prod.yml` on any Docker host | `.env` file with the required keys and `IMAGE_TAG` set to a release (`vX.Y.Z`) or commit (`sha-<short>`) tag; compose refuses to start when one is missing. App ports bind to localhost, so run a TLS reverse proxy in front |
 
 GitHub Actions secrets used by the workflows are listed in [env-variables.md](env-variables.md#github-actions-secrets-cicd).
 

@@ -84,19 +84,15 @@ When `APP_ENV` is `staging` or `production` the backend refuses to start unless 
 
 `POSTGRES_USER`, `POSTGRES_PASSWORD` (S), `POSTGRES_DB` - used by Docker Compose to create the local database.
 
+`IMAGE_TAG` - required by `docker-compose.prod.yml`: the image tag to run (a release such as `v1.2.3` or a commit tag such as `sha-abc1234`).
+
 ## Tests and scripts
 
 | Variable | Purpose |
 |---|---|
 | `TEST_DATABASE_URL` (S) | Test database; the name must end in `_test`. |
 | `REQUIRE_DB_TESTS` | `1` = fail the run if no DB-backed test executed (CI guard). |
-| `SMOKE_BASE_URL`, `STAGING_URL`, `SMOKE_STAFF_EMAIL`, `SMOKE_STAFF_PASSWORD` (S), `SMOKE_STAFF_TOTP_SECRET` (S), `SMOKE_COLD_START_TIMEOUT` | Smoke-test runner configuration. |
-| `SMOKE_FIELD_EMAIL`, `SMOKE_FIELD_PASSWORD` (S), `SMOKE_FIELD_TOTP_SECRET` (S) | Seeded field responder (team 1) for the field-operations steps F1-F3. |
-| `SMOKE_FIELD2_EMAIL`, `SMOKE_FIELD2_PASSWORD` (S), `SMOKE_FIELD2_TOTP_SECRET` (S) | Responder from a second team for the cross-team isolation step F4. |
-| `SMOKE_TEAM_RESOURCE_ID`, `SMOKE_TEAM_AGENCY_ID` | Optional overrides; resolved automatically when unset. |
-| `SMOKE_MOCK_GATEWAY_SECRET` (S) | Mock-gateway signing secret used to sign sandbox donations; falls back to `MOCK_GATEWAY_SECRET`, then to a dummy dev value. Must match the backend under test. |
-| `SMOKE_DONATION_WEBHOOK_SECRET` (S), `SMOKE_STAGING_WEBHOOK_URL` | Webhook probe (W1) against staging. |
-| `SMOKE_SKIP_<STEP>` | `1` skips one smoke step (see `scripts/README.md` section 3). |
+| `SMOKE_BASE_URL` (or `API_URL`), `SMOKE_STAFF_EMAIL`, `SMOKE_STAFF_PASSWORD` (S), `SMOKE_STAFF_TOTP_SECRET` (S) | `scripts/smoke.py` configuration. |
 
 ## GitHub Actions secrets (CI/CD)
 
