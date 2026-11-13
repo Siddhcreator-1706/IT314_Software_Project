@@ -569,16 +569,16 @@ jobs:
   vercel-preview:
     name: Preview / Vercel
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [detect-changes, container-validation, ci-gatekeeper]
-    # Only when the pull request changes the frontend, every container image built and passed its scan,
-    # and the whole quality gate is green.
+    timeout-minutes: 10
+    needs: [detect-changes, container-validation]
+    # Only when the pull request changes the frontend and every container image built and passed its
+    # scan (container-validation itself runs only after all other checks passed). The quality gate runs
+    # after this job so its status is the last word, but it never depends on the preview's outcome.
     if: |
       always() &&
       github.event_name == 'pull_request' &&
       needs.detect-changes.outputs.frontend == 'true' &&
-      needs.container-validation.result == 'success' &&
-      needs.ci-gatekeeper.result == 'success'
+      needs.container-validation.result == 'success'
     # Reaching Vercel is best effort: a failure here is reported but does not block merging.
     continue-on-error: true
     permissions:
@@ -681,9 +681,12 @@ jobs:
       - backend-and-db-tests
       - e2e
       - container-validation
+      - vercel-preview
     if: always()
     steps:
       # ── Quality Gate (runs LAST with if: always()) ──
+      # vercel-preview is listed only so the gate reports after it; its result is informational and is
+      # deliberately not evaluated below, so a Vercel problem can never fail or block the required check.
       - name: Evaluate pipeline execution status
         if: always()
         env:
@@ -695,6 +698,7 @@ jobs:
           BACKEND: ${{ needs.backend-and-db-tests.result }}
           E2E: ${{ needs.e2e.result }}
           CONTAINER: ${{ needs.container-validation.result }}
+          PREVIEW: ${{ needs.vercel-preview.result }}
           CHANGED_FRONTEND: ${{ needs.detect-changes.outputs.frontend }}
           CHANGED_BACKEND: ${{ needs.detect-changes.outputs.backend }}
           CHANGED_AI: ${{ needs.detect-changes.outputs.ai-workers }}
@@ -709,6 +713,7 @@ jobs:
           echo "backend-and-db-tests:  $BACKEND"
           echo "e2e:                   $E2E"
           echo "container-validation:  $CONTAINER"
+          echo "vercel-preview (info): $PREVIEW"
           echo "======================"
 
           FAILED=""
