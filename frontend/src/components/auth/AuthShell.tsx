@@ -4,7 +4,7 @@ import Link from "next/link";
 import { SiteHeader, NavLink } from "@/components/Brand";
 import { useSyncExternalStore, type ReactNode } from "react";
 
-import { useAuthLanguage } from "./AuthLanguage";
+import { AuthLanguageProvider, useAuthLanguage } from "./AuthLanguage";
 
 /** Shared styles so every sign-in / sign-up control is large, high-contrast and thumb-friendly. */
 export const authInput =
@@ -55,8 +55,18 @@ export function ErrorBox({ message, hint }: { message: string; hint?: string }) 
 /**
  * Page frame for sign-in and sign-up. The page scrolls with the document, so the form stays
  * reachable on small phones and when the keyboard is open.
+ * It also provides the selected language, so every auth page shows one language at a time and
+ * the choice carries over between pages (issue #95).
  */
 export function AuthShell({ children }: { children: ReactNode }) {
+  return (
+    <AuthLanguageProvider>
+      <AuthFrame>{children}</AuthFrame>
+    </AuthLanguageProvider>
+  );
+}
+
+function AuthFrame({ children }: { children: ReactNode }) {
   const online = useOnline();
   const { copy } = useAuthLanguage();
   return (
