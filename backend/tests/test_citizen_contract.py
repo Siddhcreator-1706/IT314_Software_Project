@@ -17,6 +17,10 @@ PATHS = SPEC["paths"]
         ("/api/v1/me/incidents", "get"),
         ("/api/v1/me/incidents/{incident_id}", "get"),
         ("/api/v1/me/incidents/{incident_id}/information-response", "post"),
+        ("/api/v1/me/incidents/{incident_id}/attachments", "post"),
+        ("/api/v1/me/incidents/{incident_id}/attachments", "get"),
+        ("/api/v1/me/incidents/{incident_id}/attachments/{evidence_id}", "get"),
+        ("/api/v1/me/incidents/{incident_id}/attachments/{evidence_id}", "delete"),
         ("/api/v1/me/notifications", "get"),
     ],
 )
