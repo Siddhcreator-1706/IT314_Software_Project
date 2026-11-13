@@ -144,6 +144,45 @@ export async function createReport(payload: IncidentReportPayload, options: ApiO
   return apiFetch<CreatedIncident>("/api/citizen/incidents", options, { method: "POST", body: JSON.stringify(payload) });
 }
 
+// ── Evidence photos (issue #68) ────────────────────────────────
+
+export interface EvidencePolicy {
+  enabled: boolean;
+  max_bytes: number;
+  allowed_types: string[];
+}
+
+export interface UploadedEvidence {
+  evidence_id: string;
+  file_name: string;
+  sha256: string;
+  moderation_state: "PENDING";
+}
+
+export async function fetchEvidencePolicy(): Promise<ApiResult<EvidencePolicy>> {
+  return apiFetch<EvidencePolicy>("/api/citizen/incidents/evidence-policy");
+}
+
+/** Attach a photo to the caller's own report. The file is sent as the raw body, not JSON. */
+export async function uploadEvidence(incidentId: string, file: File): Promise<ApiResult<UploadedEvidence>> {
+  try {
+    const res = await fetch(`/api/citizen/incidents/${encodeURIComponent(incidentId)}/evidence`, {
+      method: "POST",
+      headers: { "Content-Type": file.type, "X-Filename": encodeURIComponent(file.name) },
+      body: file,
+      credentials: "same-origin",
+      cache: "no-store",
+    });
+    const body = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return { data: null, error: body?.error?.message || `Upload failed (${res.status})`, isBackend: true };
+    }
+    return { data: body as UploadedEvidence, error: null, isBackend: true };
+  } catch (err) {
+    return { data: null, error: err instanceof Error ? err.message : "Service unreachable", isBackend: false };
+  }
+}
+
 export async function fetchMyReports(): Promise<ApiResult<ReportData[]>> {
   const res = await apiFetch<{ items: MyIncident[] }>("/api/citizen/me/incidents");
   return { ...res, data: res.data ? res.data.items.map(toReport) : null };

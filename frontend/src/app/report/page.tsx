@@ -4,7 +4,16 @@ import React, { useState, useEffect, useRef } from "react";
 import { SiteHeader, NavLink } from "@/components/Brand";
 import Link from "next/link";
 import { isInGujarat, GUJARAT_CENTER } from "@/lib/geo";
-import { createReport, fetchPublicIncidents, type PublicIncident, type Scenario } from "@/services/citizenApi";
+import { EvidencePhotoField } from "@/components/citizen/EvidencePhotoField";
+import {
+  createReport,
+  fetchEvidencePolicy,
+  fetchPublicIncidents,
+  uploadEvidence,
+  type EvidencePolicy,
+  type PublicIncident,
+  type Scenario,
+} from "@/services/citizenApi";
 import { findNearbyIncidents } from "@/services/duplicateDetection";
 import { URGENT_NEEDS, preTriage } from "@/services/preTriage";
 
@@ -71,6 +80,14 @@ export default function ReportIncidentPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successResult, setSuccessResult] = useState<{ reference: string; status: string } | null>(null);
+
+  // Optional evidence photo (issue #68): offered only when the backend has storage configured.
+  const [evidencePolicy, setEvidencePolicy] = useState<EvidencePolicy | null>(null);
+  const [photo, setPhoto] = useState<File | null>(null);
+  const [photoOutcome, setPhotoOutcome] = useState<{ ok: boolean; message: string } | null>(null);
+  useEffect(() => {
+    fetchEvidencePolicy().then((res) => setEvidencePolicy(res.data?.enabled ? res.data : null));
+  }, []);
 
   // Validation
   const validLocation = isInGujarat(latitude, longitude);
@@ -213,6 +230,15 @@ Urgent needs: ${needs.join(", ")}` : description.trim(),
         setErrorMessage("The server did not confirm your report. Please try again.");
         return;
       }
+      // The report is already saved; a failed photo upload is reported but never undoes it.
+      if (photo && res.data) {
+        const upload = await uploadEvidence(res.data.incident_id, photo);
+        setPhotoOutcome(
+          upload.data
+            ? { ok: true, message: "Photo attached. A moderator checks it before responders see it." }
+            : { ok: false, message: `Your report was submitted, but the photo could not be attached: ${upload.error}` },
+        );
+      }
       setSuccessResult({ reference: refNumber, status: res.data?.status || "SUBMITTED" });
     } catch (err) {
       setErrorMessage(err instanceof Error ? err.message : "Failed to submit report. Please try again.");
@@ -255,6 +281,10 @@ Urgent needs: ${needs.join(", ")}` : description.trim(),
               </div>
             </div>
 
+            {photoOutcome && (
+              <p className={`text-sm ${photoOutcome.ok ? "text-emerald-300" : "text-amber-300"}`}>{photoOutcome.message}</p>
+            )}
+
             <div className="flex flex-wrap items-center justify-center gap-4 pt-4">
               <Link
                 href="/my-reports"
@@ -267,6 +297,8 @@ Urgent needs: ${needs.join(", ")}` : description.trim(),
                 onClick={() => {
                   setSuccessResult(null);
                   setDescription("");
+                  setPhoto(null);
+                  setPhotoOutcome(null);
                   if (typeof crypto !== "undefined" && crypto.randomUUID) {
                     setIdempotencyKey(crypto.randomUUID());
                   }
@@ -452,6 +484,8 @@ Urgent needs: ${needs.join(", ")}` : description.trim(),
                   ))}
                 </div>
               </div>
+
+              {evidencePolicy && <EvidencePhotoField policy={evidencePolicy} value={photo} onChange={setPhoto} />}
 
               {hint.level && (
                 <div className="p-4 bg-amber-950/40 border border-amber-700/50 rounded-xl text-xs text-amber-100" role="status" aria-live="polite">
