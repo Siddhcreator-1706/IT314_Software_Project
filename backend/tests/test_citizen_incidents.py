@@ -19,9 +19,8 @@ PAYLOAD = {
 
 
 def _post(client, citizen, payload=None, key=None):
-    headers = dict(citizen["headers"])
-    if key:
-        headers["Idempotency-Key"] = key
+    """Submit a report; every call carries an Idempotency-Key (fresh unless one is given)."""
+    headers = {**citizen["headers"], "Idempotency-Key": key or str(uuid.uuid4())}
     return client.post("/api/v1/incidents", json=payload or PAYLOAD, headers=headers)
 
 
@@ -46,6 +45,30 @@ def test_idempotency_key_returns_same_incident(client, make):
     second = _post(client, citizen, key=key)
     assert first.status_code == 201 and second.status_code == 200
     assert first.json()["incident_id"] == second.json()["incident_id"]
+
+
+def test_missing_idempotency_key_is_rejected_and_creates_nothing(client, make, sql):
+    """Issue #103: a retry without a key must not be able to create a duplicate report."""
+    citizen = make.citizen()
+    for headers in (dict(citizen["headers"]), {**citizen["headers"], "Idempotency-Key": ""}):
+        r = client.post("/api/v1/incidents", json=PAYLOAD, headers=headers)
+        assert r.status_code == 422, r.text
+        assert r.json()["error"]["code"] == "IDEMPOTENCY_KEY_REQUIRED"
+    count = sql.execute(
+        "SELECT COUNT(*) AS n FROM incidents WHERE reporter_id = %s", (citizen["user_id"],)
+    ).fetchone()["n"]
+    assert count == 0
+
+
+def test_same_key_twice_creates_only_one_incident(client, make, sql):
+    citizen = make.citizen()
+    key = str(uuid.uuid4())
+    ids = {_post(client, citizen, key=key).json()["incident_id"] for _ in range(3)}
+    assert len(ids) == 1
+    count = sql.execute(
+        "SELECT COUNT(*) AS n FROM incidents WHERE reporter_id = %s", (citizen["user_id"],)
+    ).fetchone()["n"]
+    assert count == 1
 
 
 def test_outside_gujarat_is_rejected(client, make):
