@@ -158,6 +158,9 @@ jobs:
           context: ./frontend
           file: ./frontend/Dockerfile
           push: true
+          build-args: |
+            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
+            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=frontend
@@ -405,6 +408,7 @@ jobs:
       vercel: ${{ steps.hooks.outputs.vercel }}
       render: ${{ steps.hooks.outputs.render }}
       render_ai: ${{ steps.hooks.outputs.render_ai }}
+      prod_url: ${{ steps.hooks.outputs.prod_url }}
     steps:
       - name: Detect configured hooks
         id: hooks
@@ -412,6 +416,7 @@ jobs:
           VERCEL_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
           RENDER_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
           RENDER_AI_HOOK: ${{ secrets.RENDER_AI_DEPLOY_HOOK }}
+          PROD_URL: ${{ secrets.PROD_BACKEND_URL }}
         run: |
           if [ -n "$VERCEL_HOOK" ]; then echo "vercel=true" >> "$GITHUB_OUTPUT"; else
             echo "vercel=false" >> "$GITHUB_OUTPUT"
@@ -424,6 +429,10 @@ jobs:
           if [ -n "$RENDER_AI_HOOK" ]; then echo "render_ai=true" >> "$GITHUB_OUTPUT"; else
             echo "render_ai=false" >> "$GITHUB_OUTPUT"
             echo "::notice::RENDER_AI_DEPLOY_HOOK secret not set. AI triage deployment (drch-ai-triage) will be skipped."
+          fi
+          if [ -n "$PROD_URL" ]; then echo "prod_url=true" >> "$GITHUB_OUTPUT"; else
+            echo "prod_url=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::PROD_BACKEND_URL secret not set. Production live-commit verification will be skipped."
           fi
 
   deploy-vercel:
@@ -485,32 +494,33 @@ jobs:
             exit 1
           fi
 
-      - name: Verify Backend Health
+      - name: Verify production is running this commit
+        if: ${{ needs.check-hooks.outputs.prod_url == 'true' }}
         env:
           BACKEND_URL: ${{ secrets.PROD_BACKEND_URL }}
         run: |
-          if [ -n "$BACKEND_URL" ]; then
-            BACKEND_URL="${BACKEND_URL%/}"
-            BACKEND_URL="${BACKEND_URL%/api/v1}"
-            echo "Waiting for backend to complete deployment rollout at $BACKEND_URL..."
-            sleep 10
-            for i in $(seq 1 30); do
-              HTTP_STATUS=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 15 "$BACKEND_URL/health" || echo "000")
-              if [ "$HTTP_STATUS" != "200" ]; then
-                HTTP_STATUS=$(curl -s -L -o /dev/null -w "%{http_code}" --max-time 15 "$BACKEND_URL/api/v1/health" || echo "000")
-              fi
-              if [ "$HTTP_STATUS" = "200" ]; then
-                echo "✅ Backend healthcheck passed (HTTP 200)."
+          API_URL="${BACKEND_URL%/}"
+          API_URL="${API_URL%/api/v1}"
+          COMMIT_SHA="${{ github.sha }}"
+          SHORT_SHA="${COMMIT_SHA:0:7}"
+          echo "Waiting for commit $SHORT_SHA to be live on production..."
+          v="none"
+          for i in $(seq 1 60); do
+            HTTP_CODE=$(curl -s -L -o out.json -w "%{http_code}" --max-time 15 "$API_URL/api/v1/health" || echo "000")
+            if [ "$HTTP_CODE" = "200" ]; then
+              v=$(jq -r .version out.json 2>/dev/null || echo "unknown")
+              echo "Attempt $i/60: HTTP 200, version '$v'"
+              if [ "$v" = "$COMMIT_SHA" ] || [ "$v" = "$SHORT_SHA" ]; then
+                echo "Production is running this commit."
                 exit 0
               fi
-              echo "Polling $BACKEND_URL/health - attempt $i/30 (got HTTP $HTTP_STATUS), retrying in 5s..."
-              sleep 5
-            done
-            echo "::error::Health check timed out or failed on $BACKEND_URL"
-            exit 1
-          else
-            echo "ℹ️ PROD_BACKEND_URL secret not set. Skipping live health verification."
-          fi
+            else
+              echo "Attempt $i/60: got HTTP $HTTP_CODE"
+            fi
+            sleep 10
+          done
+          echo "::error::Commit $COMMIT_SHA not live on production after 10 minutes (last reported version: '$v')."
+          exit 1
 
   deploy-render-ai:
     name: Deploy AI Triage / Render
