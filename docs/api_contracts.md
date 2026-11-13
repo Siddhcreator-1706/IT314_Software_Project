@@ -712,8 +712,12 @@ The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm
 }
 ```
 
+* **Gateway:** selected with `PAYMENT_GATEWAY` (`mock` or `razorpay`); `gateway_name` is `MOCK_GATEWAY` or `RAZORPAY`. `is_sandbox` comes from the gateway: always `true` for the mock gateway, `true` for Razorpay test keys, `false` only for `rzp_live` keys.
+* **Errors:** `422 IDEMPOTENCY_KEY_REQUIRED`, `409 IDEMPOTENCY_CONFLICT`, `409 CAMPAIGN_NOT_ACTIVE`, `502 GATEWAY_UNAVAILABLE` (the gateway refused or could not be reached; nothing is stored).
+
 ### 7.2 Verify Payment & Issue Receipt
 * **Path:** `POST /api/v1/donations/{id}/verify`
+* **Signature:** mock gateway: HMAC-SHA256 (`MOCK_GATEWAY_SECRET`) over `<order_id>|<payment_id>|<amount with 2 decimals>|<currency>`, so a signature for another amount or currency is rejected. Razorpay: Razorpay's checkout signature over `<order_id>|<payment_id>`; the amount is fixed by the server-created order.
 * **Request Body:**
 ```json
 {
@@ -728,6 +732,48 @@ The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm
   "status": "CONFIRMED",
   "receipt_no": "REC-2026-000412",
   "receipt_issued_at": "2026-10-24T15:30:00Z"
+}
+```
+* **Errors:** `400 INVALID_SIGNATURE` (audited; donation stays `PENDING`), `409 ALREADY_CONFIRMED` (confirmed with a different payment), `409 DONATION_NOT_PENDING`, `409 GATEWAY_MISMATCH` (created under another gateway).
+* **Idempotent:** if the webhook (7.3) confirmed the donation first, the same payment returns `200` with the same receipt.
+
+### 7.3 Payment Webhook (server-to-server)
+* **Path:** `POST /api/v1/payments/webhook/{gateway}` — `{gateway}` is `mock` or `razorpay` and must match `PAYMENT_GATEWAY` (otherwise `404`).
+* **Auth:** none; authenticated by an HMAC-SHA256 signature over the raw body: `X-Mock-Signature` (`MOCK_GATEWAY_SECRET`) or `X-Razorpay-Signature` (`RAZORPAY_WEBHOOK_SECRET`).
+* **Event id:** `X-Razorpay-Event-Id` / `X-Mock-Event-Id` header (mock also accepts a top-level `id`); without one, a SHA-256 of the body is used. Each event id is processed once (`payment_webhook_events`, migration 11).
+* **Body:** Razorpay payment event shape for both gateways:
+```json
+{
+  "event": "payment.captured",
+  "payload": {"payment": {"entity": {"id": "pay_123", "order_id": "order_123", "amount": 250000, "currency": "INR"}}}
+}
+```
+* **Response (200 OK):** `{"received": true, "event_id": "evt_1", "outcome": "CONFIRMED", "donation_id": "…"}`. Every verified event answers 200 so the gateway stops retrying; `outcome` is one of `CONFIRMED`, `ALREADY_CONFIRMED`, `DUPLICATE_EVENT`, `AMOUNT_MISMATCH` (amount in paise or currency differs from the donation; nothing changes, audited), `PAYMENT_CONFLICT`, `FAILED` (`payment.failed` on a `PENDING` donation), `UNKNOWN_ORDER`, `IGNORED_EVENT_TYPE`, `IGNORED_NOT_PENDING`.
+* **Errors:** `400 INVALID_SIGNATURE` (audited, nothing changes).
+
+### 7.4 My Donations & Receipts
+* **Path:** `GET /api/v1/me/donations?page=1&limit=25`
+* **Auth:** Bearer Token (`require_citizen`). Guest donations have no account and are not listed.
+* **Response (200 OK):**
+```json
+{
+  "items": [
+    {
+      "donation_id": "a189f782-b7e1-45df-911b-3ca976ebff12",
+      "campaign_id": "c0000000-0000-0000-0000-000000000001",
+      "campaign_title": "Cyclone relief - Porbandar",
+      "amount": 2500.00,
+      "currency": "INR",
+      "status": "CONFIRMED",
+      "is_anonymous": false,
+      "is_sandbox": true,
+      "receipt_no": "REC-2026-000412",
+      "receipt_issued_at": "2026-10-24T15:30:00Z",
+      "created_at": "2026-10-24T15:28:00Z",
+      "confirmed_at": "2026-10-24T15:30:00Z"
+    }
+  ],
+  "page": 1, "limit": 25, "total": 1, "pages": 1
 }
 ```
 
