@@ -37,10 +37,29 @@ jobs:
       backend: ${{ steps.detect.outputs.backend }}
       ai-workers: ${{ steps.detect.outputs.ai-workers }}
     steps:
+      # Ref guard: only main and release tags may build or deploy. The "main" ruleset (PR + strict
+      # Quality Gate check) already ensures code reaching main passed CI; it does not cover manual
+      # runs from other branches or release tags, so check here. Every later job needs this job.
+      - name: Only main and release tags may run CD
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ] && [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "::error::CD runs only from main or a release tag (got $GITHUB_REF)."
+            exit 1
+          fi
+
       - name: Checkout repository (full history)
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+
+      - name: Release tag must be on main
+        if: ${{ github.ref_type == 'tag' }}
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME ($GITHUB_SHA) is not on main."
+            exit 1
+          fi
 
       # A newer push cancels an older CD run, and a run can also fail. Comparing each commit
       # only with its parent would then lose the older run's changes, so compare with the
@@ -84,49 +103,18 @@ jobs:
           check ai-workers "^(ai-workers/|$COMMON)"
 
   # ============================================================================
-  # 0b. Ref guard: only main and release tags may build or deploy. The "main" ruleset
-  #     (PR + strict Quality Gate check) already ensures code reaching main passed CI;
-  #     it does not cover manual runs from other branches or release tags, so check here.
-  # ============================================================================
-  verify-ref:
-    name: Verify Release Ref
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Only main and release tags may run CD
-        run: |
-          if [ "$GITHUB_REF" != "refs/heads/main" ] && [ "$GITHUB_REF_TYPE" != "tag" ]; then
-            echo "::error::CD runs only from main or a release tag (got $GITHUB_REF)."
-            exit 1
-          fi
-
-      - name: Checkout repository
-        if: ${{ github.ref_type == 'tag' }}
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          fetch-depth: 0
-
-      - name: Release tag must be on main
-        if: ${{ github.ref_type == 'tag' }}
-        run: |
-          git fetch origin main
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::Tag $GITHUB_REF_NAME ($GITHUB_SHA) is not on main."
-            exit 1
-          fi
-
-  # ============================================================================
   # 1. Build and Publish Frontend Container to GHCR (Only if frontend changed)
   # ============================================================================
   publish-frontend:
     name: Publish Container / Frontend
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [detect-changes, verify-ref]
+    needs: [detect-changes]
     if: ${{ needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
     permissions:
       contents: read
       packages: write
+      pull-requests: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -141,6 +129,35 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # CI already built, tested and scanned this code in the pull request. When the merged tree is
+      # identical to the PR head, retag that exact image instead of rebuilding it; otherwise (direct
+      # push, differing tree, no CI image) fall back to building from source below.
+      - name: Promote the CI-built image when it matches this commit
+        id: promote
+        if: ${{ github.ref == 'refs/heads/main' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "done=false" >> "$GITHUB_OUTPUT"
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/drch_frontend"
+          PR_HEAD=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            --jq '[.[] | select(.base.ref == "main" and .merged_at != null)][0].head.sha // empty' 2>/dev/null || true)
+          if [ -z "$PR_HEAD" ]; then
+            echo "No merged pull request found for this commit; building from source."; exit 0
+          fi
+          TREE_NOW=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA" --jq .commit.tree.sha)
+          TREE_PR=$(gh api "repos/$GITHUB_REPOSITORY/commits/$PR_HEAD" --jq .commit.tree.sha)
+          if [ "$TREE_NOW" != "$TREE_PR" ]; then
+            echo "Merged tree differs from the pull request head; building from source."; exit 0
+          fi
+          if docker buildx imagetools create -t "$IMAGE:latest" -t "$IMAGE:sha-${GITHUB_SHA:0:7}" "$IMAGE:ci-$PR_HEAD"; then
+            echo "done=true" >> "$GITHUB_OUTPUT"
+            echo "version=$PR_HEAD" >> "$GITHUB_OUTPUT"
+            echo "Promoted $IMAGE:ci-$PR_HEAD to latest and sha-${GITHUB_SHA:0:7}."
+          else
+            echo "No CI image $IMAGE:ci-$PR_HEAD found; building from source."
+          fi
+
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
@@ -152,6 +169,7 @@ jobs:
             type=ref,event=tag
 
       - name: Build and push verified container to GHCR
+        if: ${{ steps.promote.outputs.done != 'true' }}
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: ./frontend
@@ -172,11 +190,14 @@ jobs:
     name: Publish Container / Backend
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [detect-changes, verify-ref]
+    needs: [detect-changes]
     if: ${{ needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
     permissions:
       contents: read
       packages: write
+      pull-requests: read
+    outputs:
+      version: ${{ steps.promote.outputs.version || github.sha }}
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -191,6 +212,35 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # CI already built, tested and scanned this code in the pull request. When the merged tree is
+      # identical to the PR head, retag that exact image instead of rebuilding it; otherwise (direct
+      # push, differing tree, no CI image) fall back to building from source below.
+      - name: Promote the CI-built image when it matches this commit
+        id: promote
+        if: ${{ github.ref == 'refs/heads/main' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "done=false" >> "$GITHUB_OUTPUT"
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/drch_backend"
+          PR_HEAD=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            --jq '[.[] | select(.base.ref == "main" and .merged_at != null)][0].head.sha // empty' 2>/dev/null || true)
+          if [ -z "$PR_HEAD" ]; then
+            echo "No merged pull request found for this commit; building from source."; exit 0
+          fi
+          TREE_NOW=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA" --jq .commit.tree.sha)
+          TREE_PR=$(gh api "repos/$GITHUB_REPOSITORY/commits/$PR_HEAD" --jq .commit.tree.sha)
+          if [ "$TREE_NOW" != "$TREE_PR" ]; then
+            echo "Merged tree differs from the pull request head; building from source."; exit 0
+          fi
+          if docker buildx imagetools create -t "$IMAGE:latest" -t "$IMAGE:sha-${GITHUB_SHA:0:7}" "$IMAGE:ci-$PR_HEAD"; then
+            echo "done=true" >> "$GITHUB_OUTPUT"
+            echo "version=$PR_HEAD" >> "$GITHUB_OUTPUT"
+            echo "Promoted $IMAGE:ci-$PR_HEAD to latest and sha-${GITHUB_SHA:0:7}."
+          else
+            echo "No CI image $IMAGE:ci-$PR_HEAD found; building from source."
+          fi
+
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
@@ -202,6 +252,7 @@ jobs:
             type=ref,event=tag
 
       - name: Build and push verified container to GHCR
+        if: ${{ steps.promote.outputs.done != 'true' }}
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: ./backend
@@ -221,11 +272,12 @@ jobs:
     name: Publish Container / AI Workers
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [detect-changes, verify-ref]
+    needs: [detect-changes]
     if: ${{ needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
     permissions:
       contents: read
       packages: write
+      pull-requests: read
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -240,6 +292,35 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # CI already built, tested and scanned this code in the pull request. When the merged tree is
+      # identical to the PR head, retag that exact image instead of rebuilding it; otherwise (direct
+      # push, differing tree, no CI image) fall back to building from source below.
+      - name: Promote the CI-built image when it matches this commit
+        id: promote
+        if: ${{ github.ref == 'refs/heads/main' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "done=false" >> "$GITHUB_OUTPUT"
+          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/drch_ai_workers"
+          PR_HEAD=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
+            --jq '[.[] | select(.base.ref == "main" and .merged_at != null)][0].head.sha // empty' 2>/dev/null || true)
+          if [ -z "$PR_HEAD" ]; then
+            echo "No merged pull request found for this commit; building from source."; exit 0
+          fi
+          TREE_NOW=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA" --jq .commit.tree.sha)
+          TREE_PR=$(gh api "repos/$GITHUB_REPOSITORY/commits/$PR_HEAD" --jq .commit.tree.sha)
+          if [ "$TREE_NOW" != "$TREE_PR" ]; then
+            echo "Merged tree differs from the pull request head; building from source."; exit 0
+          fi
+          if docker buildx imagetools create -t "$IMAGE:latest" -t "$IMAGE:sha-${GITHUB_SHA:0:7}" "$IMAGE:ci-$PR_HEAD"; then
+            echo "done=true" >> "$GITHUB_OUTPUT"
+            echo "version=$PR_HEAD" >> "$GITHUB_OUTPUT"
+            echo "Promoted $IMAGE:ci-$PR_HEAD to latest and sha-${GITHUB_SHA:0:7}."
+          else
+            echo "No CI image $IMAGE:ci-$PR_HEAD found; building from source."
+          fi
+
       - name: Extract metadata (tags, labels) for Docker
         id: meta
         uses: docker/metadata-action@c299e40c65443455700f0fdfc63efafe5b349051 # v5.10.0
@@ -251,6 +332,7 @@ jobs:
             type=ref,event=tag
 
       - name: Build and push verified container to GHCR
+        if: ${{ steps.promote.outputs.done != 'true' }}
         uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
         with:
           context: ./ai-workers
@@ -269,7 +351,7 @@ jobs:
     name: Check Staging Config
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [verify-ref, publish-backend]
+    needs: [publish-backend]
     if: |
       always() &&
       github.ref == 'refs/heads/main' &&
@@ -322,7 +404,7 @@ jobs:
 
   smoke:
     name: Staging Smoke / Live SHA Verification
-    needs: [check-staging, deploy-staging]
+    needs: [publish-backend, check-staging, deploy-staging]
     runs-on: ubuntu-latest
     timeout-minutes: 25
     environment: staging
@@ -352,7 +434,7 @@ jobs:
           API_URL="${API_URL%/api/v1}"
           echo "target_url=$API_URL" >> "$GITHUB_OUTPUT"
 
-          COMMIT_SHA="${{ github.sha }}"
+          COMMIT_SHA="${{ needs.publish-backend.outputs.version }}"
           SHORT_SHA="${COMMIT_SHA:0:7}"
           echo "Waiting for live commit $COMMIT_SHA ($SHORT_SHA) on staging..."
 
@@ -396,11 +478,10 @@ jobs:
     name: Check Deploy Hooks
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [detect-changes, verify-ref]
+    needs: [detect-changes]
     if: |
       always() &&
       github.ref == 'refs/heads/main' &&
-      needs.verify-ref.result == 'success' &&
       needs.detect-changes.result == 'success' &&
       (needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch')
     environment:
@@ -503,7 +584,7 @@ jobs:
         run: |
           API_URL="${BACKEND_URL%/}"
           API_URL="${API_URL%/api/v1}"
-          COMMIT_SHA="${{ github.sha }}"
+          COMMIT_SHA="${{ needs.publish-backend.outputs.version }}"
           SHORT_SHA="${COMMIT_SHA:0:7}"
           echo "Waiting for commit $SHORT_SHA to be live on production..."
           v="none"
