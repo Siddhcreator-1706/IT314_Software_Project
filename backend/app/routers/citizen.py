@@ -161,7 +161,9 @@ _MY_COLUMNS = """
                    jsonb_build_object(
                        'status', h.to_status,
                        'timestamp', h.changed_at,
-                       'message', CASE WHEN h.to_status IN ('NEEDS_INFORMATION', 'REJECTED') THEN h.reason END
+                       -- Staff questions/rejections, and the reporter's own replies; never internal notes.
+                       'message', CASE WHEN h.to_status IN ('NEEDS_INFORMATION', 'REJECTED')
+                                         OR h.changed_by = i.reporter_id THEN h.reason END
                    ) ORDER BY h.changed_at, h.history_id)
         FROM incident_status_history h WHERE h.incident_id = i.incident_id
     ), '[]'::jsonb) AS timeline
@@ -204,7 +206,14 @@ def my_incident(incident_id: uuid.UUID, principal: Citizen):
 
 @router.post("/me/incidents/{incident_id}/information", status_code=201)
 def reply_to_information_request(incident_id: uuid.UUID, body: InformationReply, principal: Citizen):
-    """The reporter answers a DM information request; the reply is stored on the incident timeline."""
+    """The reporter answers a DM information request.
+
+    The reply is stored on the incident timeline and the report returns to SUBMITTED, so it is
+    back in the dispatcher's verification queue instead of waiting on the citizen forever.
+    """
+    message = body.message.strip()
+    if len(message) < 3:
+        raise ApiError(422, "VALIDATION_FAILED", "The reply must be at least 3 characters")
     with db.transaction() as conn:
         _own_incident(conn, incident_id, principal.user_id)
         row = conn.execute(
@@ -215,11 +224,14 @@ def reply_to_information_request(incident_id: uuid.UUID, body: InformationReply,
         conn.execute(
             """
             INSERT INTO incident_status_history (incident_id, from_status, to_status, changed_by, reason)
-            VALUES (%s, 'NEEDS_INFORMATION', 'NEEDS_INFORMATION', %s, %s)
+            VALUES (%s, 'NEEDS_INFORMATION', 'SUBMITTED', %s, %s)
             """,
-            (incident_id, principal.user_id, "Reporter reply: " + body.message.strip()),
+            (incident_id, principal.user_id, "Reporter reply: " + message),
         )
-        conn.execute("UPDATE incidents SET version = version + 1 WHERE incident_id = %s", (incident_id,))
+        conn.execute(
+            "UPDATE incidents SET status = 'SUBMITTED', version = version + 1 WHERE incident_id = %s",
+            (incident_id,),
+        )
         audit.record(
             conn,
             actor=principal,
@@ -227,9 +239,11 @@ def reply_to_information_request(incident_id: uuid.UUID, body: InformationReply,
             entity_type="incident",
             entity_id=incident_id,
             rationale="Reporter replied to an information request",
+            before={"status": "NEEDS_INFORMATION"},
+            after={"status": "SUBMITTED"},
             ip=principal.ip,
         )
-    return {"incident_id": incident_id, "status": "NEEDS_INFORMATION"}
+    return {"incident_id": incident_id, "status": "SUBMITTED"}
 
 
 @router.get("/me/notifications")

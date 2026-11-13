@@ -128,8 +128,32 @@ def test_reply_to_information_request(client, make):
     r = client.post(f"/api/v1/me/incidents/{iid}/information", headers=citizen["headers"],
                     json={"message": "It is near the temple"})
     assert r.status_code == 201, r.text
+    assert r.json()["status"] == "SUBMITTED"
+
+    # Issue #99: the report returns to the verification queue with the reply on its timeline.
     mine = client.get(f"/api/v1/me/incidents/{iid}", headers=citizen["headers"]).json()
+    assert mine["status"] == "SUBMITTED"
     assert any(t["message"] == "Which landmark is nearest?" for t in mine["timeline"])
+    assert mine["timeline"][-1] == {**mine["timeline"][-1], "status": "SUBMITTED",
+                                    "message": "Reporter reply: It is near the temple"}
+
+    detail = client.get(f"/api/v1/dm/incidents/{iid}", headers=staff["headers"]).json()
+    assert detail["status"] == "SUBMITTED"
+    assert any(h["reason"] == "Reporter reply: It is near the temple" for h in detail["history"])
+
+    # A second reply is refused cleanly: nothing is being asked any more.
+    again = client.post(f"/api/v1/me/incidents/{iid}/information", headers=citizen["headers"],
+                        json={"message": "Also near the bus stop"})
+    assert again.status_code == 409 and again.json()["error"]["code"] == "NOT_AWAITING_INFORMATION"
+
+
+def test_reply_must_be_3_to_2000_characters(client, make):
+    citizen = make.citizen()
+    iid = _post(client, citizen).json()["incident_id"]
+    for message in ("  a ", "x" * 2001):
+        r = client.post(f"/api/v1/me/incidents/{iid}/information", headers=citizen["headers"],
+                        json={"message": message})
+        assert r.status_code == 422, r.text
 
 
 def test_mark_notification_read_is_owner_scoped(client, make):
