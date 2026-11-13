@@ -5,14 +5,16 @@ Every query is scoped to the authenticated citizen (reporter_id); another
 citizen's incident is reported as 404 so its existence is never revealed.
 """
 
+import hashlib
 import json
 import uuid
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Request
+from fastapi.concurrency import run_in_threadpool
 from fastapi.encoders import jsonable_encoder
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from psycopg import sql
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -20,9 +22,10 @@ from app import audit, db
 from app.auth import Citizen
 from app.common import Page, Priority, Scenario, next_incident_ref, notify, page_body, scenario_db
 from app.config import get_settings
-from app.errors import ApiError, not_found
+from app.errors import ApiError, conflict, not_found
 from app.geo import district_for, is_in_gujarat
 from app.ratelimit import rate_limit
+from app.routers.dm.ai import _read_capped_body, safe_filename, sniff_image_type
 
 router = APIRouter(prefix="/api/v1", tags=["citizen"])
 
@@ -391,6 +394,187 @@ def reply_to_information_request(incident_id: uuid.UUID, body: InformationReply,
             ip=principal.ip,
         )
     return {"incident_id": incident_id, "status": "SUBMITTED", "status_label": STATUS_LABELS["SUBMITTED"]}
+
+
+# --------------------------------------------------------------------------- photo attachments (NU-FR-05)
+
+_MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024
+_MAX_ATTACHMENTS = 5
+_ATTACHMENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+# Moderation state shown to the reporter; REJECTED files are treated as removed and never listed.
+_ATTACHMENT_STATUS = {
+    "PENDING": "Awaiting review",
+    "CLEAN": "Approved",
+    "QUARANTINED": "Held for review",
+    "FAILED": "Held for review",
+}
+_ATTACHMENT_COLUMNS = "evidence_id, file_name, mime_type, size_bytes, scan_state, uploaded_at"
+
+
+def _attachment_body(row: dict) -> dict:
+    return {
+        "evidence_id": row["evidence_id"],
+        "file_name": row["file_name"],
+        "mime_type": row["mime_type"],
+        "size_bytes": row["size_bytes"],
+        "status": _ATTACHMENT_STATUS.get(row["scan_state"], "Removed"),
+        "uploaded_at": row["uploaded_at"],
+    }
+
+
+def _require_database() -> None:
+    if _is_demo_mode():
+        raise ApiError(503, "ATTACHMENTS_UNAVAILABLE", "Photo attachments need the database and are off in demo mode")
+
+
+def _own_incident_status(conn, incident_id: uuid.UUID, user_id: uuid.UUID) -> str:
+    row = conn.execute(
+        "SELECT status FROM incidents WHERE incident_id = %s AND reporter_id = %s", (incident_id, user_id)
+    ).fetchone()
+    if row is None:
+        raise not_found("Incident")
+    return row["status"]
+
+
+def _ensure_own_open_incident(incident_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    with db.transaction() as conn:
+        if _own_incident_status(conn, incident_id, user_id) in ("CLOSED", "REJECTED"):
+            raise conflict("INCIDENT_CLOSED", "Photos can no longer be added to this report")
+
+
+def _store_attachment(principal, incident_id: uuid.UUID, filename: str, mime: str, content: bytes):
+    digest = hashlib.sha256(content).hexdigest()
+    with db.transaction() as conn:
+        _own_incident_status(conn, incident_id, principal.user_id)
+        status = conn.execute(
+            "SELECT status FROM incidents WHERE incident_id = %s FOR UPDATE", (incident_id,)
+        ).fetchone()["status"]
+        if status in ("CLOSED", "REJECTED"):
+            raise conflict("INCIDENT_CLOSED", "Photos can no longer be added to this report")
+        same = conn.execute(
+            f"SELECT {_ATTACHMENT_COLUMNS} FROM evidence_files "
+            "WHERE incident_id = %s AND sha256 = %s AND scan_state <> 'REJECTED'",
+            (incident_id, digest),
+        ).fetchone()
+        if same:
+            return _attachment_body(same), False
+        count = conn.execute(
+            "SELECT COUNT(*) AS n FROM evidence_files WHERE incident_id = %s AND scan_state <> 'REJECTED'",
+            (incident_id,),
+        ).fetchone()["n"]
+        if count >= _MAX_ATTACHMENTS:
+            raise conflict("TOO_MANY_ATTACHMENTS", f"A report can have at most {_MAX_ATTACHMENTS} photos")
+        evidence_id = uuid.uuid4()
+        row = conn.execute(
+            f"""
+            INSERT INTO evidence_files
+                (evidence_id, incident_id, uploaded_by, file_name, mime_type, size_bytes, storage_key, sha256)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING {_ATTACHMENT_COLUMNS}
+            """,
+            (evidence_id, incident_id, principal.user_id, filename, mime, len(content), f"db:{evidence_id}", digest),
+        ).fetchone()
+        conn.execute("INSERT INTO evidence_blobs (evidence_id, content) VALUES (%s, %s)", (evidence_id, content))
+        audit.record(
+            conn,
+            actor=principal,
+            action="EVIDENCE_UPLOADED",
+            entity_type="evidence",
+            entity_id=evidence_id,
+            rationale="Reporter attached a photo",
+            after={"incident_id": str(incident_id), "mime_type": mime, "size_bytes": len(content)},
+            ip=principal.ip,
+        )
+        return _attachment_body(row), True
+
+
+@router.post(
+    "/me/incidents/{incident_id}/attachments",
+    status_code=201,
+    dependencies=[rate_limit("attachment", 30, 3600)],
+)
+async def upload_attachment(incident_id: uuid.UUID, request: Request, principal: Citizen):
+    """Attach a JPEG, PNG or WebP photo (up to 5 MB, 5 per report) to your own open report.
+
+    The photo is sent as the raw request body with its image content type and an optional
+    X-Filename header. The type is checked from the file's bytes, not the declared header. The photo
+    starts as Awaiting review for the moderation queue; the same photo sent twice returns the first.
+    """
+    _require_database()
+    declared = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if declared not in _ATTACHMENT_TYPES:
+        raise ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Send a JPEG, PNG or WebP photo as the request body.")
+    await run_in_threadpool(_ensure_own_open_incident, incident_id, principal.user_id)
+    content = await _read_capped_body(request, _MAX_ATTACHMENT_BYTES)
+    mime = sniff_image_type(content)
+    if mime is None:
+        raise ApiError(415, "INVALID_IMAGE", "The file is not a JPEG, PNG or WebP image.")
+    filename = safe_filename(request.headers.get("x-filename"))
+    body, created = await run_in_threadpool(_store_attachment, principal, incident_id, filename, mime, content)
+    return JSONResponse(status_code=201 if created else 200, content=jsonable_encoder(body))
+
+
+@router.get("/me/incidents/{incident_id}/attachments")
+def list_attachments(incident_id: uuid.UUID, principal: Citizen):
+    _require_database()
+    with db.transaction() as conn:
+        _own_incident_status(conn, incident_id, principal.user_id)
+        rows = conn.execute(
+            f"SELECT {_ATTACHMENT_COLUMNS} FROM evidence_files "
+            "WHERE incident_id = %s AND scan_state <> 'REJECTED' ORDER BY uploaded_at",
+            (incident_id,),
+        ).fetchall()
+    return {"items": [_attachment_body(r) for r in rows], "max_attachments": _MAX_ATTACHMENTS}
+
+
+@router.get("/me/incidents/{incident_id}/attachments/{evidence_id}")
+def download_attachment(incident_id: uuid.UUID, evidence_id: uuid.UUID, principal: Citizen):
+    """Return your own photo. Another citizen's photo, or a removed one, is a 404."""
+    _require_database()
+    with db.transaction() as conn:
+        _own_incident_status(conn, incident_id, principal.user_id)
+        row = conn.execute(
+            """
+            SELECT e.mime_type, b.content
+            FROM evidence_files e JOIN evidence_blobs b ON b.evidence_id = e.evidence_id
+            WHERE e.evidence_id = %s AND e.incident_id = %s AND e.scan_state <> 'REJECTED'
+            """,
+            (evidence_id, incident_id),
+        ).fetchone()
+    if row is None:
+        raise not_found("Attachment")
+    return Response(
+        content=bytes(row["content"]),
+        media_type=row["mime_type"],
+        headers={"X-Content-Type-Options": "nosniff", "Cache-Control": "private, no-store"},
+    )
+
+
+@router.delete("/me/incidents/{incident_id}/attachments/{evidence_id}")
+def remove_attachment(incident_id: uuid.UUID, evidence_id: uuid.UUID, principal: Citizen):
+    """Remove your own photo: the file is deleted and the record is kept as removed for the audit trail."""
+    _require_database()
+    with db.transaction() as conn:
+        _own_incident_status(conn, incident_id, principal.user_id)
+        row = conn.execute(
+            "SELECT scan_state FROM evidence_files WHERE evidence_id = %s AND incident_id = %s FOR UPDATE",
+            (evidence_id, incident_id),
+        ).fetchone()
+        if row is None or row["scan_state"] == "REJECTED":
+            raise not_found("Attachment")
+        conn.execute("DELETE FROM evidence_blobs WHERE evidence_id = %s", (evidence_id,))
+        conn.execute("UPDATE evidence_files SET scan_state = 'REJECTED' WHERE evidence_id = %s", (evidence_id,))
+        audit.record(
+            conn,
+            actor=principal,
+            action="EVIDENCE_REMOVED",
+            entity_type="evidence",
+            entity_id=evidence_id,
+            rationale="Removed by the reporter",
+            before={"moderation_state": row["scan_state"]},
+            ip=principal.ip,
+        )
+    return {"evidence_id": evidence_id, "status": "Removed"}
 
 
 @router.get("/me/notifications")
