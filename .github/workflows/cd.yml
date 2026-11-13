@@ -60,15 +60,14 @@ jobs:
               - '.github/workflows/cd.yml'
 
   # ============================================================================
-  # 0b. CI Gate: nothing is built or deployed unless CI passed on this exact commit
+  # 0b. Ref guard: only main and release tags may build or deploy. The "main" ruleset
+  #     (PR + strict Quality Gate check) already ensures code reaching main passed CI;
+  #     it does not cover manual runs from other branches or release tags, so check here.
   # ============================================================================
-  verify-ci:
-    name: Verify CI Passed
+  verify-ref:
+    name: Verify Release Ref
     runs-on: ubuntu-latest
-    timeout-minutes: 45
-    permissions:
-      contents: read
-      checks: read
+    timeout-minutes: 5
     steps:
       - name: Only main and release tags may run CD
         run: |
@@ -92,30 +91,6 @@ jobs:
             exit 1
           fi
 
-      - name: Wait for the CI quality gate on this commit
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          GATE="Pipeline Status / Quality Gate"
-          echo "Waiting for '$GATE' on $GITHUB_SHA..."
-          for i in $(seq 1 80); do
-            STATE=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
-              --jq "[.check_runs[] | select(.name == \"$GATE\")] | sort_by(.started_at) | last | (.status + \":\" + (.conclusion // \"none\"))" 2>/dev/null || echo "")
-            case "$STATE" in
-              completed:success)
-                echo "CI passed on this commit."
-                exit 0 ;;
-              completed:*)
-                echo "::error::CI quality gate finished with '${STATE#completed:}' on $GITHUB_SHA. Not deploying."
-                exit 1 ;;
-              *)
-                echo "Attempt $i/80: CI gate not finished yet (${STATE:-not found}), retrying in 30s..." ;;
-            esac
-            sleep 30
-          done
-          echo "::error::Timed out waiting for the CI quality gate on $GITHUB_SHA."
-          exit 1
-
   # ============================================================================
   # 1. Build and Publish Frontend Container to GHCR (Only if frontend changed)
   # ============================================================================
@@ -123,7 +98,7 @@ jobs:
     name: Publish Container / Frontend
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [detect-changes, verify-ci]
+    needs: [detect-changes, verify-ref]
     if: ${{ needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
     permissions:
       contents: read
@@ -173,7 +148,7 @@ jobs:
     name: Publish Container / Backend
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [detect-changes, verify-ci]
+    needs: [detect-changes, verify-ref]
     if: ${{ needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
     permissions:
       contents: read
@@ -222,7 +197,7 @@ jobs:
     name: Publish Container / AI Workers
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: [detect-changes, verify-ci]
+    needs: [detect-changes, verify-ref]
     if: ${{ needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
     permissions:
       contents: read
@@ -270,7 +245,7 @@ jobs:
     name: Check Staging Config
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [verify-ci, publish-backend]
+    needs: [verify-ref, publish-backend]
     if: |
       always() &&
       github.ref == 'refs/heads/main' &&
@@ -395,7 +370,7 @@ jobs:
     name: Check Deploy Hooks
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [detect-changes, verify-ci, publish-frontend, publish-backend, publish-ai-workers]
+    needs: [detect-changes, verify-ref, publish-frontend, publish-backend, publish-ai-workers]
     if: |
       always() &&
       github.ref == 'refs/heads/main' &&

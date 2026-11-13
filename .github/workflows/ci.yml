@@ -3,9 +3,6 @@ name: Continuous Integration (CI)
 on:
   pull_request:
     branches: [ "main" ]
-  # Also validate the exact commit that lands on main; CD waits for this run's quality gate.
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
     
 concurrency:
