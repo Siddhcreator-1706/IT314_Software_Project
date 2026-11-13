@@ -413,7 +413,6 @@ _ATTACHMENT_STATUS = {
     "QUARANTINED": "Held for review",
     "FAILED": "Held for review",
 }
-_ATTACHMENT_COLUMNS = "evidence_id, file_name, mime_type, size_bytes, scan_state, uploaded_at"
 
 
 def _attachment_body(row: dict) -> dict:
@@ -457,7 +456,7 @@ def _store_attachment(principal, incident_id: uuid.UUID, filename: str, mime: st
         if status in ("CLOSED", "REJECTED"):
             raise conflict("INCIDENT_CLOSED", "Photos can no longer be added to this report")
         same = conn.execute(
-            f"SELECT {_ATTACHMENT_COLUMNS} FROM evidence_files "
+            "SELECT evidence_id, file_name, mime_type, size_bytes, scan_state, uploaded_at FROM evidence_files "
             "WHERE incident_id = %s AND sha256 = %s AND scan_state <> 'REJECTED'",
             (incident_id, digest),
         ).fetchone()
@@ -471,11 +470,11 @@ def _store_attachment(principal, incident_id: uuid.UUID, filename: str, mime: st
             raise conflict("TOO_MANY_ATTACHMENTS", f"A report can have at most {_MAX_ATTACHMENTS} photos")
         evidence_id = uuid.uuid4()
         row = conn.execute(
-            f"""
+            """
             INSERT INTO evidence_files
                 (evidence_id, incident_id, uploaded_by, file_name, mime_type, size_bytes, storage_key, sha256)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-            RETURNING {_ATTACHMENT_COLUMNS}
+            RETURNING evidence_id, file_name, mime_type, size_bytes, scan_state, uploaded_at
             """,
             (evidence_id, incident_id, principal.user_id, filename, mime, len(content), f"db:{evidence_id}", digest),
         ).fetchone()
@@ -525,7 +524,7 @@ def list_attachments(incident_id: uuid.UUID, principal: Citizen):
     with db.transaction() as conn:
         _own_incident_status(conn, incident_id, principal.user_id)
         rows = conn.execute(
-            f"SELECT {_ATTACHMENT_COLUMNS} FROM evidence_files "
+            "SELECT evidence_id, file_name, mime_type, size_bytes, scan_state, uploaded_at FROM evidence_files "
             "WHERE incident_id = %s AND scan_state <> 'REJECTED' ORDER BY uploaded_at",
             (incident_id,),
         ).fetchall()
@@ -634,7 +633,6 @@ def request_withdrawal(incident_id: uuid.UUID, body: WithdrawalRequest, principa
 # --------------------------------------------------------------------------- account (profile, password)
 
 _LANGUAGES = ("en", "hi", "gu")
-_PROFILE_COLUMNS = "user_id, email, full_name, phone, preferred_language, alert_preferences, created_at"
 
 
 class ProfileUpdate(BaseModel):
@@ -682,7 +680,11 @@ def _profile_body(row: dict) -> dict:
 def my_profile(principal: Citizen):
     _require_database("ACCOUNT_UNAVAILABLE", "Account settings")
     with db.transaction() as conn:
-        row = conn.execute(f"SELECT {_PROFILE_COLUMNS} FROM users WHERE user_id = %s", (principal.user_id,)).fetchone()
+        row = conn.execute(
+            "SELECT user_id, email, full_name, phone, preferred_language, alert_preferences, created_at "
+            "FROM users WHERE user_id = %s",
+            (principal.user_id,),
+        ).fetchone()
     if row is None:
         raise not_found("Account")
     return _profile_body(row)
@@ -694,7 +696,9 @@ def update_my_profile(body: ProfileUpdate, principal: Citizen):
     _require_database("ACCOUNT_UNAVAILABLE", "Account settings")
     with db.transaction() as conn:
         before = conn.execute(
-            f"SELECT {_PROFILE_COLUMNS} FROM users WHERE user_id = %s FOR UPDATE", (principal.user_id,)
+            "SELECT user_id, email, full_name, phone, preferred_language, alert_preferences, created_at "
+            "FROM users WHERE user_id = %s FOR UPDATE",
+            (principal.user_id,),
         ).fetchone()
         if before is None:
             raise not_found("Account")
@@ -706,9 +710,10 @@ def update_my_profile(body: ProfileUpdate, principal: Citizen):
         prefs["in_app"] = True
         phone = before["phone"] if body.phone is None else (body.phone.strip() or None)
         after = conn.execute(
-            f"""
+            """
             UPDATE users SET full_name = %s, phone = %s, preferred_language = %s, alert_preferences = %s::jsonb
-            WHERE user_id = %s RETURNING {_PROFILE_COLUMNS}
+            WHERE user_id = %s
+            RETURNING user_id, email, full_name, phone, preferred_language, alert_preferences, created_at
             """,
             (
                 body.full_name.strip() if body.full_name else before["full_name"],

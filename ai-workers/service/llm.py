@@ -66,10 +66,13 @@ def redact(text: str) -> str:
 
 
 def _post_json(url: str, payload: dict, headers: dict[str, str]) -> dict:
+    # Only web URLs: the provider URLs are fixed https and OLLAMA_URL comes from the environment, so refuse file: and other schemes.
+    if not url.lower().startswith(("https://", "http://")):
+        raise ValueError("LLM provider URL must be http or https")
     request = urllib.request.Request(
         url, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json", **headers}
     )
-    with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:  # noqa: S310 (fixed provider URLs)
+    with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:  # nosec B310 - scheme checked above
         return json.loads(response.read())
 
 
