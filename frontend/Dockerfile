@@ -38,8 +38,11 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-# Install wget for healthcheck
-RUN apk add --no-cache wget
+# Upgrade Alpine packages to their fixed versions, install wget for the healthcheck, and drop npm and
+# yarn: the runtime image only runs "node server.js", and their bundled dependencies are scanner findings.
+RUN apk upgrade --no-cache && apk add --no-cache wget && \
+    rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+           /usr/local/bin/yarn /usr/local/bin/yarnpkg /opt/yarn-*
 
 # Create a non-root user for security
 RUN addgroup --system --gid 1001 nodejs && \

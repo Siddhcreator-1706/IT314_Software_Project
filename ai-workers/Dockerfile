@@ -34,8 +34,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH"
 
 # Install curl for container healthchecking if needed
+# "apt-get upgrade" pulls the fixed Debian security versions of the base image's packages.
 RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
+    && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy virtual environment from builder

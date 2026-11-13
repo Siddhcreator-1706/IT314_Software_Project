@@ -427,13 +427,22 @@ jobs:
     permissions:
       contents: read
       packages: write
+    # Images are built, scanned and published only after every other check passed: the secrets scan,
+    # lint/SAST, the test suites and e2e. "Skipped" is fine for components whose paths did not change.
     needs:
       - detect-changes
+      - security-secrets-scan
       - frontend-check
       - python-check
       - ai-workers-tests
       - backend-and-db-tests
-    if: always() && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled')
+      - e2e
+    if: |
+      always() &&
+      needs.detect-changes.result == 'success' &&
+      needs.security-secrets-scan.result == 'success' &&
+      !contains(needs.*.result, 'failure') &&
+      !contains(needs.*.result, 'cancelled')
     strategy:
       fail-fast: false
       matrix:
@@ -532,6 +541,7 @@ jobs:
           severity: 'CRITICAL,HIGH'
           exit-code: '1'
           ignore-unfixed: true
+          trivyignores: .trivyignore
           cache: true
 
       # CD promotes this exact image to main instead of rebuilding it (see publish-* in cd.yml).
@@ -560,11 +570,14 @@ jobs:
     name: Preview / Vercel
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: [detect-changes, ci-gatekeeper]
+    needs: [detect-changes, container-validation, ci-gatekeeper]
+    # Only when the pull request changes the frontend, every container image built and passed its scan,
+    # and the whole quality gate is green.
     if: |
       always() &&
       github.event_name == 'pull_request' &&
       needs.detect-changes.outputs.frontend == 'true' &&
+      needs.container-validation.result == 'success' &&
       needs.ci-gatekeeper.result == 'success'
     # Reaching Vercel is best effort: a failure here is reported but does not block merging.
     continue-on-error: true
