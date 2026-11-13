@@ -140,8 +140,10 @@ IT314_Software_Project/
 │   │   │   ├── 03_core_extensions.sql    # Ingest runs, alerts, fallback flags, campaigns
 │   │   │   ├── 04_spatial_boundaries.sql # PostGIS administrative boundary tables
 │   │   │   └── 10_signal_matching.sql    # Signal geom sync trigger + pending-signal indexes
-│   │   └── seeds/              # Seed data for demo and integration testing
-│   │       └── seed_data.sql   # Demo staff, Gujarat districts, resources, simulated incidents
+│   │   └── seeds/              # Seed data (applied by app.migrate and scripts/seed_reset.py)
+│   │       ├── reference/      # 10_reference_data.sql: reference data, always applied
+│   │       ├── demo/           # Demo incidents and signal clusters (development only)
+│   │       └── optional/       # Extra demo data, loaded by hand
 │   ├── tests/                  # Pytest automated test suite
 │   │   ├── conftest.py         # Database fixtures, app client setup, CI test guards
 │   │   ├── test_auth.py        # Staff 2FA authentication, lockouts & token revocation
@@ -180,7 +182,7 @@ IT314_Software_Project/
 ├── scripts/                    # Automation and operational maintenance scripts
 │   ├── seed_reset.py           # Automated DB reset & seed application
 │   ├── smoke.py                # End-to-end smoke test runner (core loop: report, verify, public map)
-│   ├── smoke.sh                # Staging deployment prober
+│   ├── smoke.sh                # Bash black-box prober for manual runs (CI and CD use smoke.py)
 │   └── sync_boundaries.py      # Standalone PostGIS boundary loader
 ├── docker-compose.yml          # Local multi-container development environment
 ├── docker-compose.prod.yml     # Production container stack
@@ -331,22 +333,25 @@ To maintain factual engineering clarity, capabilities in the repository are cata
 ```mermaid
 flowchart LR
     Dev["Pull request"] --> CI["ci.yml<br/>lint, tests on postgis/postgis:16-3.4,<br/>gitleaks, bandit, audits, image scan"]
-    CI -->|merge to main| CD["cd.yml"]
+    CI -->|merge to main| CIMain["ci.yml on main<br/>quality gate"]
+    CIMain -->|gate green on the same commit| CD["cd.yml"]
     CD --> GHCR[("GHCR images<br/>drch_backend, drch_frontend, drch_ai_workers<br/>tags: latest, sha-&lt;short&gt;")]
-    CD -->|deploy hooks| Render["Render<br/>drch-backend (FastAPI)<br/>drch-ai-triage (advisory)"]
+    CD -->|1. hook, sha image| Staging["Render staging<br/>drch-backend-staging"]
+    Staging --> Smoke["scripts/smoke.py on staging<br/>(waits until the new GIT_SHA is live)"]
+    Smoke -->|2. passes| Render["Render production<br/>drch-backend (FastAPI)"]
+    CD -->|hook, sha image| AI["Render<br/>drch-ai-triage (advisory)"]
     CD -->|deploy hook| Vercel["Vercel<br/>Next.js frontend + BFF"]
     Render --> Neon[("Neon PostgreSQL 16 + PostGIS")]
-    CD -->|after deploy| Smoke["scripts/smoke.py on staging<br/>(waits until the new GIT_SHA is live)"]
     Cron["ingest-cron.yml<br/>every 10 min: wake + ingest"] --> Render
     Tag["git tag vX.Y.Z[-rcN]"] --> CDTag["cd.yml (tag build)"] --> GHCRv[("GHCR images tagged vX.Y.Z")]
 ```
 
 | Concern | How it is handled | Reference |
 |---|---|---|
-| Hosting | Neon (database), Render free web services for the backend and the AI triage service (`render.yaml`), Vercel (frontend and the BFF proxies) | `render.yaml`, [release-runbook.md](release-runbook.md) §1 |
+| Hosting | Neon (database), Render free web services for the backend and the AI triage service (`render.yaml`), a separate Render staging backend with its own Neon branch (created in the Render console, not in `render.yaml`), Vercel (frontend and the BFF proxies) | `render.yaml`, [release-runbook.md](release-runbook.md) §1 |
 | Configuration and secrets | Every secret is entered by Siddh in the Render, Vercel and GitHub consoles; the repository lists names only | [env-variables.md](env-variables.md) |
 | Migrations | Forward-only SQL files applied by `python -m app.migrate` (also at backend start-up) under an advisory lock; a Neon branch is taken before each release | [runbook-migration.md](runbook-migration.md) |
-| Continuous deployment | Each merge to `main` publishes changed images, triggers the deploy hooks, waits for the new `GIT_SHA` on `/api/v1/health`, then runs the smoke test | `.github/workflows/cd.yml` |
+| Continuous deployment | `cd.yml` runs only on `main` or a release tag and first waits for the CI quality gate on the same commit. A merge to `main` publishes the changed images, deploys the backend image for that commit to staging, waits for its `GIT_SHA` on `/api/v1/health` and runs the smoke test there. Production (Render) deploys only if that passes, then waits for the same `GIT_SHA`. Vercel and the AI triage service deploy by their own hooks. A deploy whose hook secret is missing is shown as skipped, not successful. A newer push cancels an older CD run | `.github/workflows/cd.yml` |
 | Releases and rollback | A `vX.Y.Z` / `vX.Y.Z-rcN` tag builds all images from that commit with the version as the image tag; releases are deployed and rolled back by pointing Render at a version (or `sha-`) tag | [release-runbook.md](release-runbook.md) §2, §4 |
 | Cold start | Render free instances sleep; `ingest-cron.yml` wakes the backend every 10 minutes; open `/api/v1/health` before a demo | [release-runbook.md](release-runbook.md) §1 |
 | Fallback hosting | `docker-compose.prod.yml` runs the same images (PostGIS, backend, frontend, AI workers) on any Docker host; it refuses to start when a required secret is missing | `docker-compose.prod.yml` |

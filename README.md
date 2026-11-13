@@ -251,7 +251,7 @@ Once the services are running, access:
 The platform supports both multi-cloud serverless deployment and fully containerized production orchestration:
 
 ### Option A: Cloud / Managed Services (Recommended)
-- **Frontend:** Hosted on **Vercel** (`frontend/`) with change-detection filtering via `vercel.json` and `vercel-ignored-build.sh`.
+- **Frontend:** Hosted on **Vercel** (`frontend/`). Vercel's own Git deployments are disabled in `frontend/vercel.json`; production deploys come from the `cd.yml` deploy hook, and pull requests get a preview from `ci.yml`.
 - **Backend API:** Hosted on **Render** using `render.yaml` with auto-deployments, containerized runtime, and health check probes at `/health`.
 - **Database:** Hosted on **Neon Serverless PostgreSQL** with PostGIS enabled.
 

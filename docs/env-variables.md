@@ -104,13 +104,21 @@ Entered by Siddh under the repository's Settings > Secrets and variables > Actio
 
 | Secret | Used by | Purpose |
 |---|---|---|
-| `PROD_BACKEND_URL` | `cd.yml` (health check, smoke), `ingest-cron.yml` | Base URL of the deployed backend (`https://<backend>.onrender.com`). |
+| `PROD_BACKEND_URL` | `cd.yml` (production live-commit check), `ingest-cron.yml` | Base URL of the production backend (`https://<backend>.onrender.com`). Unset = the production check is skipped. |
+| `STAGING_BACKEND_URL` | `cd.yml` (staging smoke) | Base URL of the staging backend. Unset = staging deploy and smoke are skipped. |
+| `RENDER_STAGING_DEPLOY_HOOK` | `cd.yml` | Render deploy hook of the staging backend service; unset = staging is skipped. |
 | `RENDER_DEPLOY_HOOK` | `cd.yml` | Render deploy hook of `drch-backend`; unset = no backend redeploy. |
 | `RENDER_AI_DEPLOY_HOOK` | `cd.yml` | Render deploy hook of `drch-ai-triage`; unset = the AI service is redeployed by hand. |
 | `VERCEL_DEPLOY_HOOK` | `cd.yml` | Vercel deploy hook for the frontend. |
 | `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` | `ci.yml` | Vercel preview build. |
 | `INGEST_TOKEN` | `ingest-cron.yml` | Same value as the backend's `INGEST_TOKEN`. |
-| `SMOKE_STAFF_EMAIL`, `SMOKE_STAFF_PASSWORD`, `SMOKE_STAFF_TOTP_SECRET` | `cd.yml` | Staging smoke account (a `DISASTER_MGMT` user created with `app.cli create-staff`). |
+| `SMOKE_STAFF_EMAIL`, `SMOKE_STAFF_PASSWORD`, `SMOKE_STAFF_TOTP_SECRET` | `cd.yml` | Smoke account on the **staging** backend (a `DISASTER_MGMT` user created with `app.cli create-staff` against the staging database). |
+
+`STAGING_BACKEND_URL`, `RENDER_STAGING_DEPLOY_HOOK` and the `SMOKE_*` secrets belong to the GitHub environment `staging`; the production hooks and `PROD_BACKEND_URL` to the environment `production`.
+
+| Variable (not secret) | Used by | Purpose |
+|---|---|---|
+| `NEXT_PUBLIC_API_URL`, `NEXT_PUBLIC_GOOGLE_CLIENT_ID` | `cd.yml` | Build arguments for the frontend container image (public values embedded in the browser bundle). Set them under Settings > Secrets and variables > Actions > Variables; leave unset if Vercel builds the frontend. |
 
 `GITHUB_TOKEN` is provided by GitHub and publishes the images to GHCR.
 

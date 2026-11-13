@@ -101,7 +101,7 @@ docker stop drch_test_db && docker rm drch_test_db
 
 ## 5. Database Seed Reset (`make seed-reset`)
 
-The seed reset utility safely cleans dynamic operational data and reapplies baseline seed files (`backend/db/seeds/seed_data.sql`). It is completely idempotent.
+The seed reset utility safely cleans dynamic operational data and reapplies the baseline seed files (`backend/db/seeds/reference/` and `backend/db/seeds/demo/`). It is completely idempotent.
 
 ### Running Seed Reset
 
@@ -116,9 +116,9 @@ python scripts/seed_reset.py
 ```
 
 **Custom Seed Files:**
-The seed file list is defined at the top of the root `Makefile` via `SEED_FILES`. In PowerShell:
+By default the reference and demo seeds are used. To override, set `SEED_FILES` (the root `Makefile` passes it through when set) or use `--seed-files`. In PowerShell:
 ```powershell
-$env:SEED_FILES="backend/db/seeds/seed_data.sql"; python scripts/seed_reset.py
+$env:SEED_FILES="backend/db/seeds/reference/10_reference_data.sql"; python scripts/seed_reset.py
 ```
 
 ### Safety Guard
