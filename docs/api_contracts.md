@@ -213,6 +213,15 @@ Until an enterprise transactional email provider is connected, public password r
 
 ---
 
+### 2.6 Photo Attachments (NU-FR-05)
+* **Upload:** `POST /api/v1/me/incidents/{id}/attachments`, citizen only, own open incident. The photo is the raw request body with `Content-Type: image/jpeg|image/png|image/webp` and an optional percent-encoded `X-Filename`. Returns `201` with `{evidence_id, file_name, mime_type, size_bytes, status, uploaded_at}`; the same photo again returns `200` with the first.
+* **List / download / remove:** `GET .../attachments` (`{items, max_attachments}`), `GET .../attachments/{evidence_id}` (the image, `nosniff`, not cached), `DELETE .../attachments/{evidence_id}` (deletes the file and keeps an audit record).
+* **Limits:** 5 MB per photo, 5 photos per report. The type is checked from the file's bytes, not the header. `status` is `Awaiting review` until a moderator decides (`Approved`, `Held for review`); removed photos are not listed.
+* **Errors:** `413 FILE_TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE` / `INVALID_IMAGE`, `409 TOO_MANY_ATTACHMENTS` / `INCIDENT_CLOSED`, `404` for anyone else's report or photo, `429 RATE_LIMITED`, `503 ATTACHMENTS_UNAVAILABLE` in demo mode.
+* **Storage:** bytes live in `evidence_blobs` (migration 11); metadata and moderation state stay in `evidence_files`, so photos appear in the dispatcher incident detail and the moderation queue.
+
+---
+
 ## 3. Field Team Responder API (Owner: Nisarg)
 
 > [!NOTE]
