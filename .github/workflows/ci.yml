@@ -3,6 +3,9 @@ name: Continuous Integration (CI)
 on:
   pull_request:
     branches: [ "main" ]
+  # Also validate the exact commit that lands on main; CD waits for this run's quality gate.
+  push:
+    branches: [ "main" ]
   workflow_dispatch:
     
 concurrency:
@@ -286,7 +289,12 @@ jobs:
           export SMOKE_STAFF_TOTP_SECRET="$(echo "$OUT" | awk '/Secret key/ {print $NF}')"
           python -m uvicorn main:app --host 127.0.0.1 --port 8000 &
           SERVER_PID=$!
-          sleep 5
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 3 http://127.0.0.1:8000/api/v1/health > /dev/null; then break; fi
+            if ! kill -0 $SERVER_PID 2>/dev/null; then echo "::error::API server exited before becoming healthy"; exit 1; fi
+            if [ "$i" = "30" ]; then echo "::error::API server did not become healthy in 30s"; kill $SERVER_PID || true; exit 1; fi
+            sleep 1
+          done
           python ../scripts/smoke.py --base-url http://127.0.0.1:8000
           STATUS=$?
           kill $SERVER_PID || true
@@ -479,29 +487,56 @@ jobs:
       # ── Quality Gate (runs LAST with if: always()) ──
       - name: Evaluate pipeline execution status
         if: always()
+        env:
+          DETECT: ${{ needs.detect-changes.result }}
+          SECRETS_SCAN: ${{ needs.security-secrets-scan.result }}
+          FRONTEND: ${{ needs.frontend-check.result }}
+          PYTHON: ${{ needs.python-check.result }}
+          BACKEND: ${{ needs.backend-and-db-tests.result }}
+          CONTAINER: ${{ needs.container-validation.result }}
+          CHANGED_FRONTEND: ${{ needs.detect-changes.outputs.frontend }}
+          CHANGED_BACKEND: ${{ needs.detect-changes.outputs.backend }}
+          CHANGED_AI: ${{ needs.detect-changes.outputs.ai-workers }}
+          EVENT: ${{ github.event_name }}
         run: |
           echo "=== CI Job Results ==="
-          echo "frontend-check:       ${{ needs.frontend-check.result }}"
-          echo "python-check:         ${{ needs.python-check.result }}"
-          echo "backend-and-db-tests: ${{ needs.backend-and-db-tests.result }}"
-          echo "container-validation: ${{ needs.container-validation.result }}"
+          echo "detect-changes:        $DETECT"
+          echo "security-secrets-scan: $SECRETS_SCAN"
+          echo "frontend-check:        $FRONTEND"
+          echo "python-check:          $PYTHON"
+          echo "backend-and-db-tests:  $BACKEND"
+          echo "container-validation:  $CONTAINER"
           echo "======================"
 
-          is_ok() {
-            case "$1" in
-              success|skipped) return 0 ;;
-              *) return 1 ;;
-            esac
+          FAILED=""
+
+          # Must always succeed. A skipped or failed detect-changes would otherwise
+          # skip every job below and let the gate pass with nothing tested.
+          require_success() {
+            [ "$2" = "success" ] || FAILED="$FAILED $1($2)"
+          }
+          # Must succeed when the matching paths changed (or on a manual run);
+          # may be skipped otherwise.
+          require_if_changed() {
+            if [ "$3" = "true" ] || [ "$EVENT" = "workflow_dispatch" ]; then
+              [ "$2" = "success" ] || FAILED="$FAILED $1($2)"
+            else
+              case "$2" in success|skipped) ;; *) FAILED="$FAILED $1($2)" ;; esac
+            fi
           }
 
-          FAILED=""
-          ! is_ok "${{ needs.frontend-check.result }}" && FAILED="$FAILED frontend-check"
-          ! is_ok "${{ needs.python-check.result }}" && FAILED="$FAILED python-check"
-          ! is_ok "${{ needs.backend-and-db-tests.result }}" && FAILED="$FAILED backend-and-db-tests"
-          ! is_ok "${{ needs.container-validation.result }}" && FAILED="$FAILED container-validation"
+          PY_CHANGED=false
+          if [ "$CHANGED_BACKEND" = "true" ] || [ "$CHANGED_AI" = "true" ]; then PY_CHANGED=true; fi
+
+          require_success detect-changes "$DETECT"
+          require_success security-secrets-scan "$SECRETS_SCAN"
+          require_if_changed frontend-check "$FRONTEND" "$CHANGED_FRONTEND"
+          require_if_changed python-check "$PYTHON" "$PY_CHANGED"
+          require_if_changed backend-and-db-tests "$BACKEND" "$CHANGED_BACKEND"
+          require_success container-validation "$CONTAINER"
 
           if [ -n "$FAILED" ]; then
-            echo "CI check FAILED: the following job(s) did not succeed: $FAILED"
+            echo "::error::CI quality gate FAILED. Jobs that did not succeed:$FAILED"
             exit 1
           fi
-          echo "CI check PASSED: all required validation and security jobs succeeded."
+          echo "CI quality gate PASSED: every required job succeeded."

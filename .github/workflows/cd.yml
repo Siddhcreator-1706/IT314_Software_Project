@@ -60,13 +60,70 @@ jobs:
               - '.github/workflows/cd.yml'
 
   # ============================================================================
+  # 0b. CI Gate: nothing is built or deployed unless CI passed on this exact commit
+  # ============================================================================
+  verify-ci:
+    name: Verify CI Passed
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      checks: read
+    steps:
+      - name: Only main and release tags may run CD
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ] && [ "$GITHUB_REF_TYPE" != "tag" ]; then
+            echo "::error::CD runs only from main or a release tag (got $GITHUB_REF)."
+            exit 1
+          fi
+
+      - name: Checkout repository
+        if: ${{ github.ref_type == 'tag' }}
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Release tag must be on main
+        if: ${{ github.ref_type == 'tag' }}
+        run: |
+          git fetch origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME ($GITHUB_SHA) is not on main."
+            exit 1
+          fi
+
+      - name: Wait for the CI quality gate on this commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          GATE="Pipeline Status / Quality Gate"
+          echo "Waiting for '$GATE' on $GITHUB_SHA..."
+          for i in $(seq 1 80); do
+            STATE=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
+              --jq "[.check_runs[] | select(.name == \"$GATE\")] | sort_by(.started_at) | last | (.status + \":\" + (.conclusion // \"none\"))" 2>/dev/null || echo "")
+            case "$STATE" in
+              completed:success)
+                echo "CI passed on this commit."
+                exit 0 ;;
+              completed:*)
+                echo "::error::CI quality gate finished with '${STATE#completed:}' on $GITHUB_SHA. Not deploying."
+                exit 1 ;;
+              *)
+                echo "Attempt $i/80: CI gate not finished yet (${STATE:-not found}), retrying in 30s..." ;;
+            esac
+            sleep 30
+          done
+          echo "::error::Timed out waiting for the CI quality gate on $GITHUB_SHA."
+          exit 1
+
+  # ============================================================================
   # 1. Build and Publish Frontend Container to GHCR (Only if frontend changed)
   # ============================================================================
   publish-frontend:
     name: Publish Container / Frontend
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: detect-changes
+    needs: [detect-changes, verify-ci]
     if: ${{ needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
     permissions:
       contents: read
@@ -91,7 +148,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}/drch_frontend
           tags: |
-            type=raw,value=latest,enable=${{ github.ref_type == 'branch' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha,format=short,prefix=sha-
             type=ref,event=tag
 
@@ -113,7 +170,7 @@ jobs:
     name: Publish Container / Backend
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    needs: detect-changes
+    needs: [detect-changes, verify-ci]
     if: ${{ needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
     permissions:
       contents: read
@@ -138,7 +195,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}/drch_backend
           tags: |
-            type=raw,value=latest,enable=${{ github.ref_type == 'branch' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha,format=short,prefix=sha-
             type=ref,event=tag
 
@@ -162,7 +219,7 @@ jobs:
     name: Publish Container / AI Workers
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    needs: detect-changes
+    needs: [detect-changes, verify-ci]
     if: ${{ needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
     permissions:
       contents: read
@@ -187,7 +244,7 @@ jobs:
         with:
           images: ghcr.io/${{ github.repository }}/drch_ai_workers
           tags: |
-            type=raw,value=latest,enable=${{ github.ref_type == 'branch' }}
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
             type=sha,format=short,prefix=sha-
             type=ref,event=tag
 
@@ -212,10 +269,10 @@ jobs:
     name: Check Deploy Hooks
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    needs: [detect-changes, publish-frontend, publish-backend, publish-ai-workers]
+    needs: [detect-changes, verify-ci, publish-frontend, publish-backend, publish-ai-workers]
     if: |
       always() &&
-      github.ref_type == 'branch' &&
+      github.ref == 'refs/heads/main' &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
       (needs.detect-changes.outputs.frontend == 'true' || needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch')
@@ -395,8 +452,7 @@ jobs:
       always() &&
       needs.deploy-render.result == 'success' &&
       needs.check-hooks.outputs.backend_url == 'true' &&
-      github.ref_type == 'branch' &&
-      github.ref_type == 'branch' &&
+      github.ref == 'refs/heads/main' &&
       !contains(needs.*.result, 'failure') &&
       !contains(needs.*.result, 'cancelled') &&
       (needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch')
