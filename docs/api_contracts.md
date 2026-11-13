@@ -732,9 +732,11 @@ The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm
   "amount": 2500.00,
   "currency": "INR",
   "status": "PENDING",
-  "is_sandbox": true
+  "is_sandbox": true,
+  "checkout_key": null
 }
 ```
+* **`checkout_key`:** the public Razorpay key id the browser needs to open Razorpay Checkout; `null` for the mock gateway. It is never a secret. After checkout succeeds, the browser sends Razorpay's `razorpay_payment_id` and `razorpay_signature` to 7.2 as `gateway_payment_id` and `signature`.
 
 * **Gateway:** selected with `PAYMENT_GATEWAY` (`mock` or `razorpay`); `gateway_name` is `MOCK_GATEWAY` or `RAZORPAY`. `is_sandbox` comes from the gateway: always `true` for the mock gateway, `true` for Razorpay test keys, `false` only for `rzp_live` keys.
 * **Errors:** `422 IDEMPOTENCY_KEY_REQUIRED`, `409 IDEMPOTENCY_CONFLICT`, `409 CAMPAIGN_NOT_ACTIVE`, `502 GATEWAY_UNAVAILABLE` (the gateway refused or could not be reached; nothing is stored).

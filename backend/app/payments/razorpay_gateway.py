@@ -57,6 +57,10 @@ class RazorpayGateway(PaymentGateway):
         key_id = get_settings().razorpay_key_id or ""
         return not key_id.startswith("rzp_live")
 
+    def checkout_key(self) -> str | None:
+        # The key id is public by design: Razorpay Checkout needs it in the browser.
+        return get_settings().razorpay_key_id or None
+
     def create_order(self, amount: Decimal, currency: str, reference: str) -> Order:
         key_id, key_secret = self._credentials()
         try:

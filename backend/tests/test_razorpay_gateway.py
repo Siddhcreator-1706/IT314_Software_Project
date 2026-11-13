@@ -123,6 +123,21 @@ def test_valid_signature_verifies_and_test_key_is_sandbox(gateway):
     assert result.verified and gateway.is_sandbox
 
 
+def test_checkout_key_is_the_public_key_id_only(gateway):
+    key = gateway.checkout_key()
+    assert key == "rzp_test_abc"
+    assert "key-secret-for-tests" not in key and "webhook-secret-for-tests" not in key
+
+
+def test_mock_gateway_has_no_checkout_key(monkeypatch):
+    monkeypatch.setenv("MOCK_GATEWAY_SECRET", "mock-secret-for-tests")
+    get_settings.cache_clear()
+    try:
+        assert MockGateway().checkout_key() is None
+    finally:
+        get_settings.cache_clear()
+
+
 def test_tampered_signature_is_rejected(gateway):
     result = gateway.verify_payment("order_1", "pay_1", "0" * 64, Decimal(100), "INR")
     assert not result.verified and result.error_message

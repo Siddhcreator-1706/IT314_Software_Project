@@ -57,7 +57,10 @@ class DonationVerify(BaseModel):
 
 
 def _order_body(row: dict) -> dict:
+    gateway = get_gateway()
     return {
+        # Public key the browser needs to open the gateway checkout; null for the sandbox gateway.
+        "checkout_key": gateway.checkout_key() if gateway.name == row["gateway_name"] else None,
         "donation_id": row["donation_id"],
         "gateway_name": row["gateway_name"],
         "gateway_order_id": row["gateway_order_id"],

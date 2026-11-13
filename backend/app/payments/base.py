@@ -128,6 +128,13 @@ class PaymentGateway(ABC):
     def is_sandbox(self) -> bool:
         """True when no real money can move (shown to the donor as a sandbox label)."""
 
+    def checkout_key(self) -> str | None:
+        """Public key the browser needs to open the gateway's hosted checkout (None when there is none).
+
+        Only ever a publishable identifier, never a secret.
+        """
+        return None
+
     @abstractmethod
     def create_order(self, amount: Decimal, currency: str, reference: str) -> Order:
         """Create a gateway order for exactly this amount and currency."""
