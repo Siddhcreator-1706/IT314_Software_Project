@@ -15,6 +15,7 @@ from app import audit, db
 from app.auth import Moderator
 from app.common import Rationale
 from app.errors import conflict, not_found
+from app.services.evidence_storage import storage_enabled
 
 router = APIRouter()
 
@@ -56,7 +57,11 @@ def moderation_queue(principal: Moderator):
         "backlog": {"count": len(items), "oldest_age_seconds": oldest},
         "notes": [
             "No automated scanner is connected; items stay Pending until a moderator decides.",
-            "File previews are unavailable because no evidence storage service is configured.",
+            (
+                "Files are stored by the evidence storage service; previews are not shown in this view."
+                if storage_enabled()
+                else "Citizen photo upload is off because no evidence storage service is configured."
+            ),
         ],
     }
 

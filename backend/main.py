@@ -14,6 +14,7 @@ from app.routers import auth, citizen, donations, field, internal
 from app.routers.dm import router as dm_router
 from app.routers.public import router as public_router  # Nisarg S1-07: public incidents API
 from app.services.dispatch import escalate_overdue
+from app.services.evidence_storage import evidence_storage_problems
 
 logger = logging.getLogger("drch.backend")
 logging.basicConfig(level=logging.INFO)
@@ -114,7 +115,11 @@ async def ingestion_background_worker():
 async def lifespan(app: FastAPI):
     # Payment configuration is checked in every environment: an unsupported PAYMENT_GATEWAY
     # must stop startup, not turn the first donation into a 500.
-    problems = validate_for_environment(get_settings()) + payment_config_problems(get_settings())
+    problems = (
+        validate_for_environment(get_settings())
+        + payment_config_problems(get_settings())
+        + evidence_storage_problems(get_settings())
+    )
     if problems:
         raise ConfigError("; ".join(problems))
     # Startup: ensure database schema migrations are applied

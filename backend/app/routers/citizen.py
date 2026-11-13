@@ -5,15 +5,18 @@ Every query is scoped to the authenticated citizen (reporter_id); another
 citizen's incident is reported as 404 so its existence is never revealed.
 """
 
+import hashlib
 import json
+import logging
 import uuid
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Request
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from psycopg import sql
 from pydantic import BaseModel, Field, field_validator
+from starlette.concurrency import run_in_threadpool
 
 from app import audit, db
 from app.auth import Citizen
@@ -21,10 +24,19 @@ from app.common import Page, Priority, Scenario, next_incident_ref, notify, page
 from app.errors import ApiError, not_found
 from app.geo import district_for, is_in_gujarat
 from app.ratelimit import rate_limit
+from app.services.evidence_storage import EvidenceStorageUnavailable, get_evidence_storage, storage_enabled
+from app.uploads import read_capped_body, safe_filename, sniff_image_type
+
+logger = logging.getLogger("drch.citizen")
 
 router = APIRouter(prefix="/api/v1", tags=["citizen"])
 
 _MAX_DETAILS_BYTES = 4096
+
+# Evidence upload (issue #68): photos only, small enough for mobile networks.
+EVIDENCE_MAX_BYTES = 5 * 1024 * 1024
+EVIDENCE_TYPES = {"image/jpeg": ".jpg", "image/png": ".png"}
+_EVIDENCE_CLOSED_STATUSES = ("CLOSED", "REJECTED")
 
 
 class IncidentCreate(BaseModel):
@@ -244,6 +256,102 @@ def reply_to_information_request(incident_id: uuid.UUID, body: InformationReply,
             ip=principal.ip,
         )
     return {"incident_id": incident_id, "status": "SUBMITTED"}
+
+
+# ── Evidence upload (issue #68) ─────────────────────────────────────────
+
+
+@router.get("/incidents/evidence-policy")
+def evidence_policy(principal: Citizen):
+    """What the report form may offer: whether uploads work, and the size and type limits."""
+    return {
+        "enabled": storage_enabled(),
+        "max_bytes": EVIDENCE_MAX_BYTES,
+        "allowed_types": sorted(EVIDENCE_TYPES),
+    }
+
+
+def _own_open_incident_for_evidence(incident_id: uuid.UUID, user_id: uuid.UUID) -> None:
+    with db.transaction() as conn:
+        row = conn.execute(
+            "SELECT status FROM incidents WHERE incident_id = %s AND reporter_id = %s",
+            (incident_id, user_id),
+        ).fetchone()
+    # Another citizen's incident is "not found", never "forbidden" (no existence leak).
+    if row is None:
+        raise not_found("Incident")
+    if row["status"] in _EVIDENCE_CLOSED_STATUSES:
+        raise ApiError(409, "INCIDENT_CLOSED", "Evidence cannot be added to a closed or rejected report")
+
+
+def _record_evidence(principal, incident_id, evidence_id, file_name, mime_type, size, key, digest) -> dict:
+    with db.transaction() as conn:
+        row = conn.execute(
+            """
+            INSERT INTO evidence_files
+                (evidence_id, incident_id, uploaded_by, file_name, mime_type, size_bytes, storage_key, sha256)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            RETURNING evidence_id, incident_id, file_name, mime_type, size_bytes, sha256, scan_state, uploaded_at
+            """,
+            (evidence_id, incident_id, principal.user_id, file_name, mime_type, size, key, digest),
+        ).fetchone()
+        audit.record(
+            conn,
+            actor=principal,
+            action="EVIDENCE_UPLOADED",
+            entity_type="evidence",
+            entity_id=evidence_id,
+            rationale="Photo attached by the reporter; awaiting moderation",
+            after={"incident_id": str(incident_id), "sha256": digest, "size_bytes": size, "mime_type": mime_type},
+            ip=principal.ip,
+        )
+    return row
+
+
+@router.post(
+    "/incidents/{incident_id}/evidence",
+    status_code=201,
+    dependencies=[rate_limit("evidence", 20, 3600)],
+)
+async def upload_evidence(incident_id: uuid.UUID, request: Request, principal: Citizen):
+    """Attach a photo to the caller's own report.
+
+    Send the image as the raw request body with Content-Type image/jpeg or image/png (max 5 MB)
+    and the original name in a percent-encoded X-Filename header. The type is checked from the
+    bytes, the SHA-256 is stored, and the item enters the DM moderation queue as PENDING.
+    """
+    if not storage_enabled():
+        raise ApiError(503, "EVIDENCE_STORAGE_UNAVAILABLE", "Photo upload is not available right now")
+    declared_type = request.headers.get("content-type", "").split(";")[0].strip().lower()
+    if declared_type not in EVIDENCE_TYPES:
+        raise ApiError(415, "UNSUPPORTED_MEDIA_TYPE", "Send a JPEG or PNG image as the request body")
+    await run_in_threadpool(_own_open_incident_for_evidence, incident_id, principal.user_id)
+
+    content = await read_capped_body(request, EVIDENCE_MAX_BYTES)
+    mime_type = sniff_image_type(content)
+    if mime_type not in EVIDENCE_TYPES:
+        raise ApiError(415, "INVALID_IMAGE", "The file is not a JPEG or PNG image")
+
+    evidence_id = uuid.uuid4()
+    key = f"incidents/{incident_id}/{evidence_id}{EVIDENCE_TYPES[mime_type]}"
+    digest = hashlib.sha256(content).hexdigest()
+    file_name = safe_filename(request.headers.get("x-filename"))
+    try:
+        storage = get_evidence_storage()
+        await run_in_threadpool(storage.put, key, content, mime_type)
+    except (EvidenceStorageUnavailable, OSError) as exc:
+        logger.exception("Evidence storage write failed")
+        raise ApiError(503, "EVIDENCE_STORAGE_UNAVAILABLE", "Photo upload is not available right now") from exc
+
+    try:
+        row = await run_in_threadpool(
+            _record_evidence, principal, incident_id, evidence_id, file_name, mime_type, len(content), key, digest
+        )
+    except Exception:
+        # Never leave an orphan object that no moderator can see.
+        await run_in_threadpool(storage.delete, key)
+        raise
+    return {**row, "moderation_state": "PENDING"}
 
 
 @router.get("/me/notifications")

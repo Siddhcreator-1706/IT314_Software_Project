@@ -75,6 +75,8 @@ class Settings:
     bluesky_search_enabled: bool = False
     bluesky_search_url: str = ""
     ingest_interval_seconds: int = 600
+    evidence_storage: str = "disabled"
+    evidence_storage_dir: str | None = None
 
     def require(self, name: str) -> str:
         value = getattr(self, name)
@@ -119,6 +121,8 @@ def get_settings() -> Settings:
         smtp_password=os.getenv("SMTP_PASSWORD") or None,
         email_from=os.getenv("EMAIL_FROM", "no-reply@drch.gujarat.gov.in"),
         frontend_url=os.getenv("FRONTEND_URL", "http://localhost:3000").rstrip("/"),
+        evidence_storage=os.getenv("EVIDENCE_STORAGE", "disabled").strip().lower() or "disabled",
+        evidence_storage_dir=os.getenv("EVIDENCE_STORAGE_DIR") or None,
         invitation_token_hours=_int("INVITATION_TOKEN_HOURS", 48),
         password_reset_token_minutes=_int("PASSWORD_RESET_TOKEN_MINUTES", 15),
         google_client_id=os.getenv("GOOGLE_CLIENT_ID") or None,
