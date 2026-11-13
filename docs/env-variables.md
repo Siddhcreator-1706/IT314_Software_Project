@@ -31,8 +31,10 @@ When `APP_ENV` is `staging` or `production` the backend refuses to start unless 
 | `BOUNDARY_SYNC_INTERVAL_HOURS` | no | `720` | Minimum hours between upstream syncs. |
 | `BOUNDARY_SYNC_CHECK_INTERVAL_SECONDS` | no | `86400` | Worker wake-up interval. |
 | `GEOJSON_GUJARAT_DISTRICTS_URL` | no | empty | GeoJSON FeatureCollection of Gujarat districts. Empty = sync disabled (packaged state polygon + PostGIS data are used). |
-| `PAYMENT_GATEWAY` | no | `mock` | Only `mock` is implemented. |
+| `PAYMENT_GATEWAY` | no | `mock` | `mock` (sandbox, no money moves) or `razorpay`. Any other value stops startup with a configuration error. |
 | `MOCK_GATEWAY_SECRET` (S) | when donations are used | - | HMAC key for the sandbox gateway. |
+| `EVIDENCE_STORAGE` | no | `disabled` | Where citizen evidence photos are stored: `disabled` (upload answers 503 and the report form hides the photo field) or `local`. The cloud provider is pending decision D-3; it is added as one more option. Any other value stops startup. |
+| `EVIDENCE_STORAGE_DIR` | when `EVIDENCE_STORAGE=local` | - | Directory for `local` evidence storage. Use a persistent volume; container filesystems such as Render's are wiped on deploy. |
 | `SACHET_FEED_URL` | no | empty | SACHET RSS feed URL (public Gujarat feed: `https://sachet.ndma.gov.in/cap_public_website/rss/rss_gujarat.xml`; the all-India `rss_india.xml` holds only the latest 100 alerts, mostly other states); the adapter fetches linked CAP XML and honors ETags. Empty = adapter disabled. |
 | `NEWS_RSS_ENABLED` | no | `false` | Turns on the `GNEWS` signal adapter: Google News RSS search for Gujarat hazard headlines in English, Gujarati and Hindi. Stores headline, publisher, time and link only. |
 | `BLUESKY_SEARCH_ENABLED` | no | `false` | Turns on the `BLUESKY` signal adapter: public post search for Gujarat hazard posts. Author identity is never stored. |
@@ -46,9 +48,9 @@ When `APP_ENV` is `staging` or `production` the backend refuses to start unless 
 | `RESQ_FIELD_PASSWORD` (S) | no | - | Non-interactive password for the field-team provisioning command in `python -m app.cli`. |
 | `DRCH_STAFF_PASSWORD` (S) | no | - | Backward-compatible alias for `RESQ_STAFF_PASSWORD`. |
 | `DRCH_FIELD_PASSWORD` (S) | no | - | Backward-compatible alias for `RESQ_FIELD_PASSWORD`. |
-| `RAZORPAY_KEY_ID` | no | - | Razorpay key id for the (not yet wired) Razorpay adapter; a `rzp_live` prefix marks live mode. |
-| `RAZORPAY_KEY_SECRET` (S) | no | - | Razorpay key secret used to verify payment signatures. |
-| `RAZORPAY_WEBHOOK_SECRET` (S) | no | - | Razorpay webhook signing secret. |
+| `RAZORPAY_KEY_ID` | when `PAYMENT_GATEWAY=razorpay` | - | Razorpay key id used to create orders; a `rzp_live` prefix marks live mode (`is_sandbox: false`), any other key is test mode. |
+| `RAZORPAY_KEY_SECRET` (S) | when `PAYMENT_GATEWAY=razorpay` | - | Razorpay key secret: Orders API basic auth and checkout signature verification. |
+| `RAZORPAY_WEBHOOK_SECRET` (S) | when `PAYMENT_GATEWAY=razorpay` | - | Signing secret for `POST /api/v1/payments/webhook/razorpay` (`X-Razorpay-Signature`). Startup fails if any of the three Razorpay values is missing. |
 | `SMTP_HOST` | no | - | SMTP server for invitation and password-reset emails. When unset, emails are only logged and kept in the in-memory outbox (development). |
 | `SMTP_PORT` | no | `587` | SMTP port (`465` uses implicit TLS, anything else uses STARTTLS when offered). |
 | `SMTP_USERNAME`, `SMTP_PASSWORD` (S) | no | - | SMTP credentials. |
