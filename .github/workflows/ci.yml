@@ -26,10 +26,10 @@ jobs:
       ai-workers: ${{ steps.filter.outputs.ai-workers }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@v4
       - name: Detect modified paths
         id: filter
-        uses: dorny/paths-filter@0e4a8c6effa4802afeda77dc8d303f8176d7dfad # v3.0.4
+        uses: dorny/paths-filter@v3
         with:
           filters: |
             frontend:
@@ -55,11 +55,11 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@v4
         with:
           fetch-depth: 50
       - name: Run Gitleaks secret detection
-        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
+        uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -77,17 +77,17 @@ jobs:
         working-directory: ./frontend
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@v4
 
       - name: Set up Node.js 22 with npm cache
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
           cache-dependency-path: './frontend/package-lock.json'
 
       - name: Cache Next.js build cache and ESLint cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@v4
         with:
           path: |
             ./frontend/.next/cache
@@ -125,10 +125,10 @@ jobs:
     if: ${{ needs.detect-changes.outputs.backend == 'true' || needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@v4
 
       - name: Set up Python 3.12 with pip cache
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -137,7 +137,7 @@ jobs:
             ai-workers/requirements.txt
 
       - name: Cache Ruff cache
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@v4
         with:
           path: .ruff_cache
           key: ${{ runner.os }}-ruff-${{ hashFiles('backend/**', 'ai-workers/**') }}
@@ -170,10 +170,10 @@ jobs:
     if: ${{ needs.detect-changes.outputs.ai-workers == 'true' || github.event_name == 'workflow_dispatch' }}
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@v4
 
       - name: Set up Python 3.12 with pip cache
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -189,7 +189,7 @@ jobs:
 
       - name: Upload AI workers test results
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@v4
         with:
           name: ai-workers-test-results
           path: ai-workers/junit-ai-workers.xml
@@ -226,10 +226,10 @@ jobs:
       PGPASSWORD: postgres
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@v4
 
       - name: Set up Python 3.12 with pip cache
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -274,7 +274,7 @@ jobs:
 
       - name: Upload backend test results and coverage
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@v4
         with:
           name: backend-test-results
           path: |
@@ -344,10 +344,10 @@ jobs:
       NEXT_TELEMETRY_DISABLED: 1
     steps:
       - name: Checkout repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@v4
 
       - name: Set up Python 3.12 with pip cache
-        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        uses: actions/setup-python@v5
         with:
           python-version: '3.12'
           cache: 'pip'
@@ -372,7 +372,7 @@ jobs:
           echo "::error::API did not become healthy in 30s"; cat "$RUNNER_TEMP/api.log"; exit 1
 
       - name: Set up Node.js 22 with npm cache
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
           cache: 'npm'
@@ -407,7 +407,7 @@ jobs:
 
       - name: Upload Playwright report and server logs
         if: failure()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@v4
         with:
           name: playwright-report
           path: |
@@ -474,15 +474,15 @@ jobs:
 
       - name: Checkout repository
         if: steps.check.outputs.should_run == 'true'
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@v4
 
       - name: Set up Docker Buildx
         if: steps.check.outputs.should_run == 'true'
-        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+        uses: docker/setup-buildx-action@v3
 
       - name: Build image with Buildx Layer Cache
         if: steps.check.outputs.should_run == 'true'
-        uses: docker/build-push-action@10e90e3645eae34f1e60eeb005ba3a3d33f178e8 # v6.19.2
+        uses: docker/build-push-action@v6
         with:
           context: ${{ matrix.context }}
           file: ${{ matrix.file }}
@@ -525,7 +525,7 @@ jobs:
 
       - name: Cache Trivy Vulnerability Database
         if: steps.check.outputs.should_run == 'true'
-        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        uses: actions/cache@v4
         with:
           path: ~/.cache/trivy
           key: ${{ runner.os }}-trivy-${{ steps.trivy_date.outputs.day }}
@@ -534,7 +534,7 @@ jobs:
 
       - name: Run Trivy vulnerability scan
         if: steps.check.outputs.should_run == 'true'
-        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: 'image'
           image-ref: ${{ matrix.image_name }}:test
@@ -549,7 +549,7 @@ jobs:
       # (a fork's token cannot write packages).
       - name: Log in to GHCR
         if: steps.check.outputs.should_run == 'true' && github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
-        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -587,12 +587,12 @@ jobs:
       issues: write
     steps:
       - name: Checkout repository for Vercel deployment
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
       - name: Setup Node.js for Vercel CLI
-        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        uses: actions/setup-node@v4
         with:
           node-version: '22'
 
@@ -632,7 +632,7 @@ jobs:
         continue-on-error: true
         env:
           PREVIEW_URL: ${{ steps.vercel_deploy.outputs.url }}
-        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7.1.0
+        uses: actions/github-script@v7
         with:
           script: |
             const url = process.env.PREVIEW_URL;
