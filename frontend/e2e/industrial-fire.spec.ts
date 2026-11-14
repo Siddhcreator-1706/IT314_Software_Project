@@ -19,13 +19,12 @@ test.describe("End-to-End Industrial Fire Scenario (Sprint 3)", () => {
 
     // Negative check: Foreign coordinates (Delhi) refused
     const foreignCoordRes = await request.post(`${apiUrl}/api/v1/incidents`, {
-      headers: citizenHeaders,
+      headers: { ...citizenHeaders, "Idempotency-Key": `fire-outside-${Date.now()}` },
       data: {
         scenario: "industrial_fire",
         description: "Chemical refinery fire in Okhla, Delhi",
         latitude: 28.5355,
         longitude: 77.2638,
-        idempotency_key: `delhi-fire-${Date.now()}`,
       },
     });
     expect(foreignCoordRes.status()).toBe(422);
@@ -41,14 +40,13 @@ test.describe("End-to-End Industrial Fire Scenario (Sprint 3)", () => {
     const dahejLat = 21.7100;
     const dahejLon = 72.5800;
     const submitRes = await request.post(`${apiUrl}/api/v1/incidents`, {
-      headers: citizenHeaders,
+      headers: { ...citizenHeaders, "Idempotency-Key": `fire-submit-${Date.now()}` },
       data: {
         scenario: "industrial_fire",
         description: "Major boiler explosion and toxic chemical blaze in Dahej chemical park.",
         latitude: dahejLat,
         longitude: dahejLon,
         address_text: "Dahej SEZ, Bharuch District, Gujarat",
-        idempotency_key: `fire-inc-${Date.now()}`,
       },
     });
     expect(submitRes.status()).toBe(201);

@@ -32,13 +32,12 @@ test.describe("End-to-End Cyclone Scenario (Sprint 3)", () => {
 
     // Negative check: Out of Gujarat submission with citizen auth
     const outOfStateRes = await request.post(`${apiUrl}/api/v1/incidents`, {
-      headers: citizenHeaders,
+      headers: { ...citizenHeaders, "Idempotency-Key": `cyclone-outside-${Date.now()}` },
       data: {
         scenario: "cyclone",
         description: "Jaipur high winds",
         latitude: 26.9124,
         longitude: 75.7873,
-        idempotency_key: `bad-loc-${Date.now()}`,
       },
     });
     expect(outOfStateRes.status()).toBe(422);
@@ -55,14 +54,13 @@ test.describe("End-to-End Cyclone Scenario (Sprint 3)", () => {
     const porbandarLat = 21.6417;
     const porbandarLon = 69.6293;
     const submitRes = await request.post(`${apiUrl}/api/v1/incidents`, {
-      headers: citizenHeaders,
+      headers: { ...citizenHeaders, "Idempotency-Key": `cyclone-submit-${Date.now()}` },
       data: {
         scenario: "cyclone",
         description: "Severe cyclonic storm causing coastal inundation and fallen power lines in Porbandar.",
         latitude: porbandarLat,
         longitude: porbandarLon,
         address_text: "Porbandar Coastal Road, Gujarat",
-        idempotency_key: `cyc-inc-${Date.now()}`,
       },
     });
     expect(submitRes.status()).toBe(201);

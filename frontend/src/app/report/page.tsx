@@ -477,7 +477,7 @@ export default function ReportIncidentPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans overflow-y-auto">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
       {/* Top Emergency Lifeline Banner */}
       <div className="bg-red-600 text-white px-4 py-2 text-xs md:text-sm font-semibold flex items-center justify-between shadow-md">
         <div className="flex items-center gap-2 max-w-4xl mx-auto w-full justify-between">

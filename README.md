@@ -160,11 +160,9 @@ gantt
 
 ---
 
-## 📋 Sprint Roadmap & Archived Work Allocation
+## 📋 Sprint Roadmap
 
 The active implementation plan follows the **3-Sprint Production Delivery Roadmap** shown in the Gantt chart above.
-
-The original 5-phase theoretical concept allocation (Kafka, drone edge CV, Indic-BERT, 10-member allocation) has been archived for reference in [`docs/archive/original-roadmap.md`](docs/archive/original-roadmap.md).
 
 ---
 
@@ -186,7 +184,7 @@ The original 5-phase theoretical concept allocation (Kafka, drone edge CV, Indic
 
 ### Prerequisites
 - [Docker & Docker Compose](https://www.docker.com/) installed
-- [Node.js (v18+)](https://nodejs.org/) & [Python (v3.10+)](https://python.org/)
+- [Node.js (v20+)](https://nodejs.org/) (the frontend uses Next.js 16, and CI runs Node 20) & [Python (v3.10+)](https://python.org/)
 - Git
 
 ### 1. Clone the Repository
@@ -226,6 +224,7 @@ uvicorn main:app --reload --port 8000
 
 # Terminal 2 - Next.js Frontend (starts web client on :3000)
 cd frontend
+npm ci        # first run only: installs exact versions from package-lock.json
 npm run dev
 ```
 
@@ -243,6 +242,36 @@ Once the services are running, access:
 - **System Health Diagnostics:**
   - Liveness: `http://localhost:8000/health`
   - Readiness (database): `http://localhost:8000/api/v1/health`
+
+### 6. Frontend UI, Branding & Checks
+
+The web client lives in `frontend/` (Next.js App Router, React 19, TypeScript, Tailwind CSS). Every screen shares one identity and one top bar.
+
+**Logo and header**
+- The final logo is the **Q-Radar** lockup: R, E and S drawn as strokes, with the Q drawn as a radar sweep and a red alert dot. Assets are in `frontend/public/` (`logo.svg` for light backgrounds, `logo-dark.svg` for dark/navy backgrounds, `logo-symbol.svg` for the symbol alone, `icon.svg` for the app icon) and `frontend/src/app/icon.svg` is the favicon.
+- `frontend/src/components/Brand.tsx` exports `Logo`, `LogoMark`, `Brand`, `SiteHeader` and `NavLink`. Every page header uses `SiteHeader`; do not hand-roll headers or use emoji logos.
+- Brand tokens are defined in `frontend/src/app/globals.css`: navy `#0C4A75`, sky `#38BDF8` and alert red `#DC2626`, with Montserrat for header text.
+
+**Layout rules**
+- The document scrolls normally. Do not set `overflow: hidden` or `100vh` on `body`.
+- Only full-screen app views (the public map `/` and the `/dm` workspace) use the fixed `.app-screen` class, and `/dm` scrolls inside its own pane.
+- Header links and primary controls must be at least 44 px tall, and pages must not scroll horizontally at 375 px wide.
+
+**Checks** (run from `frontend/`)
+
+```bash
+npm run lint
+npm run build
+```
+
+The scroll and overflow regression test needs a running production build:
+
+```bash
+npx playwright install chromium
+npm run build
+npx next start -p 3100
+PLAYWRIGHT_BASE_URL=http://localhost:3100 npx playwright test e2e/scroll-layout.spec.ts
+```
 
 ---
 

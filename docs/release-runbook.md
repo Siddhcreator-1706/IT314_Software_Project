@@ -1,8 +1,8 @@
-# Release Runbook (S3-12 deployment, S3-15 rehearsal, S3-18 release)
+# Release Runbook
 
 Owner: Siddh. Secret values are entered by the owner in the hosting consoles only; this file lists names, never values (see [env-variables.md](env-variables.md)).
 
-## 1. Production-like deployment (S3-12)
+## 1. Production-like deployment
 
 | Layer | Where | Config source |
 |---|---|---|
@@ -36,7 +36,7 @@ Rollback:
 2. Database: migrations are forward-only. Restore the Neon branch `backup-pre-<tag>` taken in step 1 if a migration must be undone, then redeploy the matching image.
 3. Re-run `scripts/smoke.py` and confirm `/api/v1/health` reports the expected `GIT_SHA`.
 
-## 3. Rehearsals (S3-15)
+## 3. Rehearsals
 
 Roles, the step-by-step script, on-stage fallbacks and the rehearsal log are in [demo-script.md](demo-script.md) (sections 1, 3, 4 and 7). Run it twice. Each run:
 
@@ -50,7 +50,7 @@ Roles, the step-by-step script, on-stage fallbacks and the rehearsal log are in 
 
 Record the problems found in the defect list that Dhruv triages (S3-17).
 
-## 4. Freeze, tag and release (S3-18)
+## 4. Freeze, tag and release
 
 1. Merge freeze announced; only P0 fixes (as approved in S3-17) merge afterwards.
 2. CI green on the release pull requests (the `main` ruleset requires the Quality Gate check) and the release tag points at a commit on `main` (CD refuses other tags); pip-audit, npm audit and Trivy now fail CI on high or critical findings, so review any ignored or accepted findings and update the findings log in [security-review.md](security-review.md).

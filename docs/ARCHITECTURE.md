@@ -327,7 +327,7 @@ To maintain factual engineering clarity, capabilities in the repository are cata
 
 ---
 
-## 8. Deployment & Release Overview (S3-12, S3-18)
+## 8. Deployment & Release Overview
 
 ```mermaid
 flowchart LR
