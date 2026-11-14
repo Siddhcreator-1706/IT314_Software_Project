@@ -19,9 +19,8 @@ PAYLOAD = {
 
 
 def _post(client, citizen, payload=None, key=None):
-    headers = dict(citizen["headers"])
-    if key:
-        headers["Idempotency-Key"] = key
+    """Submit a report; every call carries an Idempotency-Key (fresh unless one is given)."""
+    headers = {**citizen["headers"], "Idempotency-Key": key or str(uuid.uuid4())}
     return client.post("/api/v1/incidents", json=payload or PAYLOAD, headers=headers)
 
 
@@ -58,6 +57,30 @@ def test_idempotency_key_returns_same_incident(client, make):
     second = _post(client, citizen, key=key)
     assert first.status_code == 201 and second.status_code == 200
     assert first.json()["incident_id"] == second.json()["incident_id"]
+
+
+def test_missing_idempotency_key_is_rejected_and_creates_nothing(client, make, sql):
+    """Issue #103: a retry without a key must not be able to create a duplicate report."""
+    citizen = make.citizen()
+    for headers in (dict(citizen["headers"]), {**citizen["headers"], "Idempotency-Key": ""}):
+        r = client.post("/api/v1/incidents", json=PAYLOAD, headers=headers)
+        assert r.status_code == 422, r.text
+        assert r.json()["error"]["code"] == "IDEMPOTENCY_KEY_REQUIRED"
+    count = sql.execute(
+        "SELECT COUNT(*) AS n FROM incidents WHERE reporter_id = %s", (citizen["user_id"],)
+    ).fetchone()["n"]
+    assert count == 0
+
+
+def test_same_key_twice_creates_only_one_incident(client, make, sql):
+    citizen = make.citizen()
+    key = str(uuid.uuid4())
+    ids = {_post(client, citizen, key=key).json()["incident_id"] for _ in range(3)}
+    assert len(ids) == 1
+    count = sql.execute(
+        "SELECT COUNT(*) AS n FROM incidents WHERE reporter_id = %s", (citizen["user_id"],)
+    ).fetchone()["n"]
+    assert count == 1
 
 
 def test_outside_gujarat_is_rejected(client, make):
@@ -118,9 +141,31 @@ def test_reply_to_information_request(client, make):
                     json={"message": "It is near the temple"})
     assert r.status_code == 201, r.text
     assert r.json()["status"] == "SUBMITTED"
+
+    # Issue #99: the report returns to the verification queue with the reply on its timeline.
     mine = client.get(f"/api/v1/me/incidents/{iid}", headers=citizen["headers"]).json()
     assert mine["status"] == "SUBMITTED"
     assert any(t["message"] == "Which landmark is nearest?" for t in mine["timeline"])
+    assert mine["timeline"][-1] == {**mine["timeline"][-1], "status": "SUBMITTED",
+                                    "message": "Reporter reply: It is near the temple"}
+
+    detail = client.get(f"/api/v1/dm/incidents/{iid}", headers=staff["headers"]).json()
+    assert detail["status"] == "SUBMITTED"
+    assert any(h["reason"] == "Reporter reply: It is near the temple" for h in detail["history"])
+
+    # A second reply is refused cleanly: nothing is being asked any more.
+    again = client.post(f"/api/v1/me/incidents/{iid}/information", headers=citizen["headers"],
+                        json={"message": "Also near the bus stop"})
+    assert again.status_code == 409 and again.json()["error"]["code"] == "NOT_AWAITING_INFORMATION"
+
+
+def test_reply_must_be_3_to_2000_characters(client, make):
+    citizen = make.citizen()
+    iid = _needs_information(client, make, citizen)
+    for message in ("  a ", "x" * 2001):
+        r = client.post(f"/api/v1/me/incidents/{iid}/information", headers=citizen["headers"],
+                        json={"message": message})
+        assert r.status_code == 422, r.text
 
 
 def _needs_information(client, make, citizen):
