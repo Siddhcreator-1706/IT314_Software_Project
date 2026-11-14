@@ -61,6 +61,13 @@ class InformationReply(BaseModel):
     longitude: float | None = Field(default=None, ge=-180, le=180)
     address_text: str | None = Field(default=None, max_length=300)
 
+    @field_validator("message")
+    @classmethod
+    def _message_has_content(cls, value: str | None) -> str | None:
+        if value is not None and len(value.strip()) < 3:
+            raise ValueError("message must contain at least 3 non-whitespace characters")
+        return value
+
     @model_validator(mode="after")
     def _needs_content(self):
         if (self.latitude is None) != (self.longitude is None):
