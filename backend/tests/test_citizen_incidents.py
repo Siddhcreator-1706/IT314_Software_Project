@@ -39,6 +39,18 @@ def test_submit_creates_submitted_incident_visible_to_dm(client, make):
     assert queue["total"] == 1
 
 
+def test_report_reaches_the_database_even_when_demo_mode_is_set(client, make, sql, monkeypatch):
+    """Regression: a stray DEMO_MODE=true once routed reports into process memory, out of the dispatch queue."""
+    monkeypatch.setenv("DEMO_MODE", "true")
+    citizen = make.citizen()
+    r = _post(client, citizen, key=str(uuid.uuid4()))
+    assert r.status_code == 201, r.text
+    stored = sql.execute(
+        "SELECT reporter_id FROM incidents WHERE incident_id = %s", (r.json()["incident_id"],)
+    ).fetchone()
+    assert stored is not None and stored["reporter_id"] == citizen["user_id"]
+
+
 def test_idempotency_key_returns_same_incident(client, make):
     citizen = make.citizen()
     key = str(uuid.uuid4())
@@ -105,8 +117,75 @@ def test_reply_to_information_request(client, make):
     r = client.post(f"/api/v1/me/incidents/{iid}/information", headers=citizen["headers"],
                     json={"message": "It is near the temple"})
     assert r.status_code == 201, r.text
+    assert r.json()["status"] == "SUBMITTED"
     mine = client.get(f"/api/v1/me/incidents/{iid}", headers=citizen["headers"]).json()
+    assert mine["status"] == "SUBMITTED"
     assert any(t["message"] == "Which landmark is nearest?" for t in mine["timeline"])
+
+
+def _needs_information(client, make, citizen):
+    iid = _post(client, citizen).json()["incident_id"]
+    staff = make.staff()
+    version = client.get(f"/api/v1/dm/incidents/{iid}", headers=staff["headers"]).json()["version"]
+    assert client.post(f"/api/v1/dm/incidents/{iid}/information-requests", headers=staff["headers"],
+                       json={"question": "Where exactly?", "version": version}).status_code == 201
+    return iid
+
+
+def test_information_response_can_correct_the_location(client, make, sql):
+    citizen = make.citizen()
+    iid = _needs_information(client, make, citizen)
+    r = client.post(f"/api/v1/me/incidents/{iid}/information-response", headers=citizen["headers"],
+                    json={"latitude": 21.1702, "longitude": 72.8311, "address_text": "Ring Road, Surat"})
+    assert r.status_code == 201 and r.json()["status"] == "SUBMITTED"
+    row = sql.execute("SELECT status, district, latitude::float AS lat FROM incidents WHERE incident_id = %s", (iid,)).fetchone()
+    assert row["status"] == "SUBMITTED" and row["district"] == "Surat" and abs(row["lat"] - 21.1702) < 1e-4
+    history = sql.execute(
+        "SELECT to_status FROM incident_status_history WHERE incident_id = %s ORDER BY history_id DESC LIMIT 1", (iid,)
+    ).fetchone()
+    assert history["to_status"] == "SUBMITTED"
+
+
+def test_information_response_is_refused_outside_needs_information(client, make):
+    citizen = make.citizen()
+    iid = _post(client, citizen).json()["incident_id"]
+    r = client.post(f"/api/v1/me/incidents/{iid}/information-response", headers=citizen["headers"],
+                    json={"message": "Trying to answer without a request"})
+    assert r.status_code == 409 and r.json()["error"]["code"] == "NOT_AWAITING_INFORMATION"
+
+
+def test_information_response_validation_and_ownership(client, make):
+    owner, other = make.citizen(), make.citizen()
+    iid = _needs_information(client, make, owner)
+    url = f"/api/v1/me/incidents/{iid}/information-response"
+    assert client.post(url, headers=owner["headers"], json={}).status_code == 422
+    assert client.post(url, headers=owner["headers"], json={"latitude": 26.9, "longitude": 75.8}).status_code == 422
+    assert client.post(url, headers=other["headers"], json={"message": "Not my report"}).status_code == 404
+
+
+def test_timeline_has_readable_labels(client, make):
+    citizen = make.citizen()
+    iid = _post(client, citizen).json()["incident_id"]
+    mine = client.get(f"/api/v1/me/incidents/{iid}", headers=citizen["headers"]).json()
+    assert mine["status_label"] == "Report submitted"
+    assert all(t["label"] and t["label"] != t["status"] for t in mine["timeline"])
+    listing = client.get("/api/v1/me/incidents", headers=citizen["headers"]).json()
+    assert listing["items"][0]["timeline"][0]["label"] == "Report submitted"
+
+
+def test_information_response_is_rate_limited(client, make, monkeypatch):
+    from app import ratelimit
+
+    citizen = make.citizen()
+    iid = _post(client, citizen).json()["incident_id"]
+    monkeypatch.setenv("RATE_LIMIT_ENABLED", "true")
+    ratelimit.reset()
+    try:
+        codes = [client.post(f"/api/v1/me/incidents/{iid}/information-response", headers=citizen["headers"],
+                             json={"message": "hello there"}).status_code for _ in range(22)]
+    finally:
+        ratelimit.reset()
+    assert codes[:20] == [409] * 20 and codes[20:] == [429, 429]
 
 
 def test_mark_notification_read_is_owner_scoped(client, make):

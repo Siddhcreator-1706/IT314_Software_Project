@@ -82,6 +82,12 @@
 ]
 ```
 
+### 1.4 Published Safety Guidance & Public Updates (NU-FR-08)
+* **Paths:** `GET /api/v1/public/safety-content` and `GET /api/v1/public/updates`. No authentication. Optional `scenario` filter (`cyclone`, `industrial_fire`, `urban_flooding`; anything else is `422`).
+* **safety-content:** only guidance a publisher has published. Fields: `content_id`, `scenario`, `title`, `body`, `source`, `version`, `published_at`. Drafts, approved-but-unpublished and superseded versions are never returned.
+* **updates:** only published broadcast updates. Fields: `update_id`, `scenario`, `title`, `body`, `area_label`, `published_at`; newest first, at most 50.
+* **Privacy:** no author or approver names, no linked incident, no internal notes. The `/safety` page shows these above its general guidance and falls back to the general guidance when the service is unreachable.
+
 ---
 
 ## 2. Citizen Authentication & Reporting API (Owner: Zalak)
@@ -217,39 +223,35 @@
 }
 ```
 * **Isolation Rule:** Attempting to access another citizen's incident returns `404 NOT_FOUND` (no existence leak). Internal dispatcher notes and rationale are stripped.
+* **Readable labels:** the incident has `status_label` and every timeline entry has `label` (for example "Report submitted", "More information requested"); clients show these instead of raw status codes.
 
-### 2.5 Reply to an Information Request
-* **Path:** `POST /api/v1/me/incidents/{id}/information`
-* **Auth:** Bearer Token (`require_citizen`); only the reporter of the incident.
-* **Note:** this is the citizen reply endpoint the sprint plan calls `information-response`; that name does not exist in the API.
-* **When:** the incident is `NEEDS_INFORMATION` (a dispatcher asked a question with `POST /api/v1/dm/incidents/{id}/information-requests`). The question appears in the incident `timeline` (2.4) as the `message` of the `NEEDS_INFORMATION` entry.
-* **Request Body:**
+### 2.5 Information Response
+* **Path:** `POST /api/v1/me/incidents/{id}/information-response` (the earlier `/information` path still works)
+* **Auth:** Bearer Token (`require_citizen`); own incident only (others return `404`)
+* **When:** the incident is `NEEDS_INFORMATION` (a dispatcher asked with `POST /api/v1/dm/incidents/{id}/information-requests`). The question appears in the incident `timeline` (2.4) as the `message` of the `NEEDS_INFORMATION` entry.
+* **Request Body:** `message` (3-2000 characters) and/or a corrected `latitude` + `longitude` (given together, with optional `address_text`); at least one is required.
 ```json
 { "message": "It is next to the Jain temple, water is waist deep." }
 ```
-* **Response (201 Created):** `{"incident_id": "3c0b05b3-…", "status": "SUBMITTED"}`. The reply returns the report to `SUBMITTED` so it re-enters the verification queue. The reply is stored in the incident status history as `Reporter reply: <message>` and is visible to dispatchers on the incident.
-* **Errors:** `404 NOT_FOUND` (not the caller's incident), `409 NOT_AWAITING_INFORMATION` (no question is open), `422 VALIDATION_FAILED` (`message` must be 3–2000 characters).
+* **Response (201 Created):** `{"incident_id": "...", "status": "SUBMITTED", "status_label": "Report submitted"}`; the incident returns to `SUBMITTED` so it re-enters the verification queue. The reply is stored in the status history as `Reporter reply: <message>` (and "Reporter corrected the location" when a point is sent), visible to dispatchers, and an audit entry is written.
+* **Errors:** `404 NOT_FOUND` (not your incident); `409 NOT_AWAITING_INFORMATION` unless the incident is in `NEEDS_INFORMATION`; `422 VALIDATION_FAILED` (bad message length or coordinates); `422 OUTSIDE_GUJARAT` for a corrected point outside Gujarat; `429 RATE_LIMITED` (the response does not state the limit).
 
-### 2.6 Attach Evidence to a Report
-* **Policy:** `GET /api/v1/incidents/evidence-policy` (Bearer, `require_citizen`) → `{"enabled": true, "max_bytes": 5242880, "allowed_types": ["image/jpeg", "image/png"]}`. `enabled` is `false` while no storage service is configured (`EVIDENCE_STORAGE`).
-* **Upload:** `POST /api/v1/incidents/{id}/evidence` (Bearer, `require_citizen`; only the reporter of the incident). Rate limit 20 per hour per client IP.
-* **Request:** the image is the raw request body. Headers: `Content-Type: image/jpeg` or `image/png`; optional `X-Filename` (percent-encoded original name). The type is verified from the file bytes, not the header.
-* **Response (201 Created):**
-```json
-{
-  "evidence_id": "5b0c…",
-  "incident_id": "3c0b05b3-3a1e-450e-a226-bcfe69d0d939",
-  "file_name": "flood photo.jpg",
-  "mime_type": "image/jpeg",
-  "size_bytes": 482113,
-  "sha256": "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
-  "scan_state": "PENDING",
-  "moderation_state": "PENDING",
-  "uploaded_at": "2026-11-12T15:07:29Z"
-}
-```
-* The item enters the DM moderation queue (`GET /api/v1/dm/moderation/queue`) as `PENDING`; it is never shown publicly before a moderator approves it.
-* **Errors:** `404 NOT_FOUND` (not the caller's incident), `409 INCIDENT_CLOSED` (report is `CLOSED` or `REJECTED`), `413 FILE_TOO_LARGE` (over 5 MB), `415 UNSUPPORTED_MEDIA_TYPE` (header type not JPEG/PNG), `415 INVALID_IMAGE` (bytes are not a JPEG/PNG), `503 EVIDENCE_STORAGE_UNAVAILABLE`, `429 RATE_LIMITED`.
+---
+
+### 2.6 Photo Attachments (NU-FR-05)
+* **Upload:** `POST /api/v1/me/incidents/{id}/attachments`, citizen only, own open incident. The photo is the raw request body with `Content-Type: image/jpeg|image/png|image/webp` and an optional percent-encoded `X-Filename`. Returns `201` with `{evidence_id, file_name, mime_type, size_bytes, status, uploaded_at}`; the same photo again returns `200` with the first.
+* **List / download / remove:** `GET .../attachments` (`{items, max_attachments}`), `GET .../attachments/{evidence_id}` (the image, `nosniff`, not cached), `DELETE .../attachments/{evidence_id}` (deletes the file and keeps an audit record).
+* **Limits:** 5 MB per photo, 5 photos per report. The type is checked from the file's bytes, not the header. `status` is `Awaiting review` until a moderator decides (`Approved`, `Held for review`); removed photos are not listed.
+* **Errors:** `413 FILE_TOO_LARGE`, `415 UNSUPPORTED_MEDIA_TYPE` / `INVALID_IMAGE`, `409 TOO_MANY_ATTACHMENTS` / `INCIDENT_CLOSED`, `404` for anyone else's report or photo, `429 RATE_LIMITED`.
+* **Storage:** bytes live in `evidence_blobs` (migration 11); metadata and moderation state stay in `evidence_files`, so photos appear in the moderation queue (`GET /api/v1/dm/moderation/queue`), where a moderator opens the image with `GET /api/v1/dm/moderation/{evidence_id}/content` (`MODERATOR` permission, audited). A photo is never shown publicly before a moderator approves it.
+
+### 2.7 Account: Profile, Password, Notifications
+* **Profile:** `GET /api/v1/me/profile` returns `{user_id, email, full_name, phone, preferred_language, alerts: {in_app, email, sms}, created_at, has_password}`; `has_password` is `false` for a Google sign-in account that never set one. `PATCH /api/v1/me/profile` accepts any of `full_name`, `phone`, `preferred_language` (`en`, `hi`, `gu`), `email_alerts`, `sms_alerts`. The email is the sign-in identity and is not editable; in-app notifications cannot be turned off; email and SMS are stored preferences only. Invalid values return `422`; changes are audited.
+* **Password:** `POST /api/v1/me/password` with `{current_password, new_password}`. The new password follows the registration policy and must differ from the current one (`422 WEAK_PASSWORD` / `PASSWORD_UNCHANGED`); a wrong current password is `400 INVALID_CURRENT_PASSWORD` and is audited. An account with no password (Google sign-in only) gets `409 NO_PASSWORD_SET` and sets one through `POST /api/v1/auth/forgot-password` first. On success every session, including this one, is ended and the response is `{"changed": true, "sign_in_required": true}`. Rate limited.
+* **Notifications:** `POST /api/v1/me/notifications/read-all` marks all of your in-app notifications read and returns `{"marked_read": n}`.
+* **Email copy:** a citizen with email alerts on is also emailed each in-app notification (sent in the background, never blocks the action; simulated and logged when no SMTP is configured). SMS is only a stored preference; there is no SMS provider.
+* **Withdraw request:** `POST /api/v1/me/incidents/{id}/withdrawal-request` with optional `{reason}`. Allowed for your own report while `SUBMITTED`, `NEEDS_INFORMATION` or `VERIFIED`; it only records the request (history row and audit entry, `withdrawal_requested: true` on the report) and never changes the status, because a dispatcher decides. `409 NOT_WITHDRAWABLE` after dispatch or closure, `409 ALREADY_REQUESTED`, `404` for another citizen's report. Rate limited.
+* **Delete account:** `POST /api/v1/me/account/deletion` with `{password}`. Refused with `409 OPEN_REPORTS` while any report is not `RESOLVED`, `CLOSED` or `REJECTED`; a wrong password is `400 INVALID_CURRENT_PASSWORD` and audited; an account with no password gets `409 NO_PASSWORD_SET`, as above. On success the name, email, phone and address are erased, photos and notifications deleted, the account disabled and every session ended (`{"deleted": true, "sign_in_required": true}`). Reports stay on record for the audit trail without a link to an identity. Rate limited.
 
 ---
 
@@ -851,6 +853,16 @@ The backend scheduler runs configured sources every 10 minutes. `POST /api/v1/dm
 ### 8.3 AI Service Health
 * **Path:** `GET /health`
 * **Response (200 OK):** `{"status": "ok", "service": "drch-ai-triage"}`
+
+### 8.4 Optional LLM Adapter (`ai-workers/service/llm.py`, S2-08)
+* Not an HTTP endpoint: a library the triage service can call. **Off by default** (`LLM_ENABLED`); the provider key is read from `LLM_API_KEY` only.
+* `second_opinion` runs only when the rules confidence is below 0.6 and returns `{"scenario", "priority", "source": "llm"}` limited to the allowed labels, otherwise nothing. `english_summary` summarises Hindi or Gujarati text. Replies that are not valid JSON or use other labels are rejected.
+* Only the report text is sent, with emails and phone numbers masked; no reporter identity. The result is advisory and never decides anything.
+
+### 8.5 AI Versus Human Decisions (`GET /api/v1/dm/analytics`, S3-06)
+* The `ai_by_decision` list counts AI suggestions by `scenario`, `human_action` and `confidence_band` (`n` per row). Filters: `scenario`, `from`, `to`.
+* **Definitions:** `human_action` is what the dispatcher recorded: `ACCEPTED` (suggestion used as given), `MODIFIED` (used with changes) or `REJECTED`; `UNDECIDED` means no decision yet. `confidence_band` is the AI confidence at suggestion time: `HIGH` 0.80 or more, `MEDIUM` 0.60 to 0.79, `LOW` below 0.60, `UNKNOWN` when none was recorded. The same wording is returned in `definitions.confidence_bands`.
+* Suggestions are advisory; this endpoint only counts what humans decided.
 
 ---
 

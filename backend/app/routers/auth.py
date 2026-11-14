@@ -6,7 +6,7 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app import audit, db, security
 from app.auth import (
@@ -194,6 +194,31 @@ class SignupRequest(BaseModel):
     full_name: str = Field(min_length=1, max_length=120)
     phone: str | None = Field(default=None, max_length=32)
 
+    @field_validator("email")
+    @classmethod
+    def _valid_email(cls, value: str) -> str:
+        if not _EMAIL_RE.fullmatch(value.strip()):
+            raise ValueError("Enter a valid email address")
+        return value
+
+    @field_validator("full_name")
+    @classmethod
+    def _valid_name(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("Name must not be blank")
+        return value
+
+    @field_validator("phone")
+    @classmethod
+    def _valid_phone(cls, value: str | None) -> str | None:
+        if value is not None and value.strip() and not _PHONE_RE.fullmatch(value.strip()):
+            raise ValueError("Enter a valid phone number, for example +919876543210")
+        return value
+
+
+_EMAIL_RE = re.compile(r"[^@\s]+@[^@\s]+\.[^@\s]{2,}")
+_PHONE_RE = re.compile(r"\+?[0-9][0-9 \-]{6,14}[0-9]")
+
 
 def _check_password_policy(password: str) -> None:
     """Contract s.2.1: at least 8 characters, one digit and one special symbol."""
@@ -242,6 +267,8 @@ def signup(body: SignupRequest, request: Request):
         )
 
         account = _load_account(conn, user_id=user_id)
+        # Email verification is a documented stub: the link is only logged/outboxed, never enforced.
+        email_service.send_verification_email(email, body.full_name.strip())
         result = _complete_login(conn, account, ip, mfa=False)
         # Contract s.2.1 fields, in addition to the sign-in fields so the client can start a session at once.
         result.update(

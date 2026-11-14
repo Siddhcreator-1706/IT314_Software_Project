@@ -33,8 +33,6 @@ When `APP_ENV` is `staging` or `production` the backend refuses to start unless 
 | `GEOJSON_GUJARAT_DISTRICTS_URL` | no | empty | GeoJSON FeatureCollection of Gujarat districts. Empty = sync disabled (packaged state polygon + PostGIS data are used). |
 | `PAYMENT_GATEWAY` | no | `mock` | `mock` (sandbox, no money moves) or `razorpay`. Any other value stops startup with a configuration error. |
 | `MOCK_GATEWAY_SECRET` (S) | when donations are used | - | HMAC key for the sandbox gateway. |
-| `EVIDENCE_STORAGE` | no | `disabled` | Where citizen evidence photos are stored: `disabled` (upload answers 503 and the report form hides the photo field) or `local`. The cloud provider is pending decision D-3; it is added as one more option. Any other value stops startup. |
-| `EVIDENCE_STORAGE_DIR` | when `EVIDENCE_STORAGE=local` | - | Directory for `local` evidence storage. Use a persistent volume; container filesystems such as Render's are wiped on deploy. |
 | `SACHET_FEED_URL` | no | empty | SACHET RSS feed URL (public Gujarat feed: `https://sachet.ndma.gov.in/cap_public_website/rss/rss_gujarat.xml`; the all-India `rss_india.xml` holds only the latest 100 alerts, mostly other states); the adapter fetches linked CAP XML and honors ETags. Empty = adapter disabled. |
 | `NEWS_RSS_ENABLED` | no | `false` | Turns on the `GNEWS` signal adapter: Google News RSS search for Gujarat hazard headlines in English, Gujarati and Hindi. Stores headline, publisher, time and link only. |
 | `BLUESKY_SEARCH_ENABLED` | no | `false` | Turns on the `BLUESKY` signal adapter: public post search for Gujarat hazard posts. Author identity is never stored. |
@@ -81,6 +79,11 @@ When `APP_ENV` is `staging` or `production` the backend refuses to start unless 
 | Variable | Required | Purpose |
 |---|---|---|
 | `AI_TRIAGE_TOKEN` (S) | recommended | If set, `POST /triage` requires `Authorization: Bearer <token>`. |
+| `LLM_ENABLED` | no | `true` turns on the optional LLM adapter (`service/llm.py`). Off by default. |
+| `LLM_PROVIDER` | if enabled | `groq`, `gemini` or `ollama`. |
+| `LLM_API_KEY` (S) | if enabled | Provider key (not needed for `ollama`). Set in the hosting environment only, never in git. |
+| `LLM_MODEL` | no | Overrides the provider's default model. |
+| `OLLAMA_URL` | no | Base URL for `ollama` (default `http://localhost:11434`). |
 
 ## Database container
 
