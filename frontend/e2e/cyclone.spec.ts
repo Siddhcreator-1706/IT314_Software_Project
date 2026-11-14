@@ -68,16 +68,17 @@ test.describe("End-to-End Cyclone Scenario (Sprint 3)", () => {
     expect(submitRes.status()).toBe(201);
     const incident = await submitRes.json();
     const incidentId = incident.incident_id;
-    expect(incident.scenario).toBe("cyclone");
+    expect(incident.incident_ref).toBeTruthy();
     expect(incident.status).toBe("SUBMITTED");
 
     // Negative check: Unverified incident MUST NOT appear on the public map
     const pubIncidentsBefore = await (await request.get(`${apiUrl}/api/v1/public/incidents`)).json();
-    const foundBefore = pubIncidentsBefore.find((i: { incident_id: string }) => i.incident_id === incidentId);
+    const foundBefore = pubIncidentsBefore.find((i: { reference: string }) => i.reference === incident.incident_ref);
     expect(foundBefore).toBeUndefined();
 
     // 3. Citizen checks timeline: initially SUBMITTED
     const timelineBefore = await (await request.get(`${apiUrl}/api/v1/me/incidents/${incidentId}`, { headers: citizenHeaders })).json();
     expect(timelineBefore.status).toBe("SUBMITTED");
+    expect(timelineBefore.scenario).toBe("cyclone");
   });
 });

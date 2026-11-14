@@ -67,11 +67,16 @@ async function forward(request: NextRequest, ctx: RouteContext<"/api/dm/[...path
     return error(503, "BACKEND_UNAVAILABLE", "The operations service is unreachable. Try again shortly.");
   }
 
-  const body = upstream.status === 204 ? null : await upstream.text();
-  return new Response(body, {
-    status: upstream.status,
-    headers: { "content-type": upstream.headers.get("content-type") ?? "application/json" },
-  });
+  // Bytes, not text: evidence photos for moderators are binary and must pass through unchanged.
+  const responseHeaders: Record<string, string> = {
+    "content-type": upstream.headers.get("content-type") ?? "application/json",
+  };
+  for (const name of ["x-content-type-options", "cache-control", "content-security-policy"]) {
+    const value = upstream.headers.get(name);
+    if (value) responseHeaders[name] = value;
+  }
+  const body = upstream.status === 204 ? null : await upstream.arrayBuffer();
+  return new Response(body, { status: upstream.status, headers: responseHeaders });
 }
 
 export const GET = forward;

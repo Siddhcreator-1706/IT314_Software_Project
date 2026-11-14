@@ -31,8 +31,8 @@ test.describe("End-to-End Urban Flooding Scenario (Sprint 3)", () => {
     expect(mumbaiCoordRes.status()).toBe(422);
     expect((await mumbaiCoordRes.json()).error.code).toBe("OUTSIDE_GUJARAT");
 
-    // Negative check: Citizen accessing DM triage queue
-    const triageRes = await request.get(`${apiUrl}/api/v1/dm/triage-queue`, {
+    // Negative check: Citizen accessing the DM incident list
+    const triageRes = await request.get(`${apiUrl}/api/v1/dm/incidents`, {
       headers: citizenHeaders,
     });
     expect(triageRes.status()).toBe(403);
@@ -54,14 +54,14 @@ test.describe("End-to-End Urban Flooding Scenario (Sprint 3)", () => {
     expect(submitRes.status()).toBe(201);
     const incident = await submitRes.json();
     const incidentId = incident.incident_id;
-    expect(incident.scenario).toBe("urban_flooding");
+    expect(incident.incident_ref).toBeTruthy();
 
     // Negative check: Unverified incident omitted from public list
     const publicList = await (await request.get(`${apiUrl}/api/v1/public/incidents`)).json();
-    expect(publicList.some((i: { incident_id: string }) => i.incident_id === incidentId)).toBe(false);
+    expect(publicList.some((i: { reference: string }) => i.reference === incident.incident_ref)).toBe(false);
 
     // Verify incident appears in citizen's personal list
     const myReports = await (await request.get(`${apiUrl}/api/v1/me/incidents`, { headers: citizenHeaders })).json();
-    expect(myReports.some((i: { incident_id: string }) => i.incident_id === incidentId)).toBe(true);
+    expect(myReports.items.some((i: { incident_id: string }) => i.incident_id === incidentId)).toBe(true);
   });
 });

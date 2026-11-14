@@ -54,15 +54,16 @@ test.describe("End-to-End Industrial Fire Scenario (Sprint 3)", () => {
     expect(submitRes.status()).toBe(201);
     const incident = await submitRes.json();
     const incidentId = incident.incident_id;
-    expect(incident.scenario).toBe("industrial_fire");
+    expect(incident.incident_ref).toBeTruthy();
 
     // Negative check: unverified incident is omitted from public feed
     const publicList = await (await request.get(`${apiUrl}/api/v1/public/incidents`)).json();
-    expect(publicList.some((i: { incident_id: string }) => i.incident_id === incidentId)).toBe(false);
+    expect(publicList.some((i: { reference: string }) => i.reference === incident.incident_ref)).toBe(false);
 
     // Citizen tracks report
     const myIncident = await (await request.get(`${apiUrl}/api/v1/me/incidents/${incidentId}`, { headers: citizenHeaders })).json();
     expect(myIncident.incident_id).toBe(incidentId);
     expect(myIncident.status).toBe("SUBMITTED");
+    expect(myIncident.scenario).toBe("industrial_fire");
   });
 });
