@@ -106,6 +106,7 @@ def test_create_donation_order_and_idempotency(client, campaign):
     assert order1["currency"] == "INR"
     assert order1["status"] == "PENDING"
     assert order1["is_sandbox"] is True
+    assert order1["checkout_key"] is None
 
     # Same Idempotency-Key returns 200 OK with identical donation record
     res2 = _create_donation(client, campaign, key=key)
