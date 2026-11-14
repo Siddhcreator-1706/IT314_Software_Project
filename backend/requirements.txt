@@ -2,7 +2,7 @@ fastapi==0.141.1
 uvicorn[standard]==0.54.0
 pydantic==2.13.5
 python-dotenv==1.2.3
-psycopg[binary]==3.3.6
+psycopg[binary]==3.3.8
 psycopg-pool==3.3.3
 argon2-cffi==25.1.0
 PyJWT==2.15.1
