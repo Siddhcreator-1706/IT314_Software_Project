@@ -161,7 +161,7 @@ def test_reply_to_information_request(client, make):
 
 def test_reply_must_be_3_to_2000_characters(client, make):
     citizen = make.citizen()
-    iid = _post(client, citizen).json()["incident_id"]
+    iid = _needs_information(client, make, citizen)
     for message in ("  a ", "x" * 2001):
         r = client.post(f"/api/v1/me/incidents/{iid}/information", headers=citizen["headers"],
                         json={"message": message})
