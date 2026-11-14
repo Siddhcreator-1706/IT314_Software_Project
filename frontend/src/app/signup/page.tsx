@@ -6,6 +6,7 @@ import { useActionState, useState } from "react";
 import { useAuthLanguage } from "@/components/auth/AuthLanguage";
 import { AuthShell, ErrorBox, Spinner, authButton, authInput, authLabel } from "@/components/auth/AuthShell";
 import { LanguageSelector } from "@/components/auth/LanguageSelector";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
 import { register } from "../login/actions";
 
@@ -124,6 +125,8 @@ function SignupCard() {
           )}
         </button>
       </form>
+
+      <GoogleSignInButton mode="signup" />
 
       <div className="border-t border-slate-200 pt-5 text-center text-base text-slate-700">
         {copy.alreadyHaveAccount}{" "}

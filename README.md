@@ -280,31 +280,33 @@ PLAYWRIGHT_BASE_URL=http://localhost:3100 npx playwright test e2e/scroll-layout.
 The platform supports both multi-cloud serverless deployment and fully containerized production orchestration:
 
 ### Option A: Cloud / Managed Services (Recommended)
-- **Frontend:** Hosted on **Vercel** (`frontend/`) with change-detection filtering via `vercel.json` and `vercel-ignored-build.sh`.
+- **Frontend:** Hosted on **Vercel** (`frontend/`). Vercel's own Git deployments are disabled in `frontend/vercel.json`; production deploys come from the `cd.yml` deploy hook, and pull requests get a preview from `ci.yml`.
 - **Backend API:** Hosted on **Render** using `render.yaml` with auto-deployments, containerized runtime, and health check probes at `/health`.
 - **Database:** Hosted on **Neon Serverless PostgreSQL** with PostGIS enabled.
 
 ### Option B: Self-Hosted Production Docker Compose
-To deploy the full stack against external cloud databases/queues using production containers:
+To deploy the full stack from the published images (a release or commit tag is required; the app ports bind to localhost, so put a TLS-terminating reverse proxy in front):
 
 ```bash
-docker compose -f docker-compose.prod.yml up --build -d
+IMAGE_TAG=v1.0.0 docker compose -f docker-compose.prod.yml up -d
 ```
 
 ### 🔄 CI/CD Automation & Security Gates
 The repository separates verification (CI) from publication & deployment (CD):
 1. **Continuous Integration ([`.github/workflows/ci.yml`](.github/workflows/ci.yml))**:
-   - Triggers on every **Pull Request** targeting `main`.
-   - **Frontend Check:** Node.js 20 & ESLint.
-   - **Python Check:** Ruff linter + Bandit static security analysis (SAST).
-   - **Database Integrity:** PostgreSQL 16 + PostGIS schema validation and cryptographic audit chain hash verification.
-   - **Backend Tests:** Pytest unit test execution.
-   - **Container Validation:** Fast Docker build verification and **Aqua Security Trivy** vulnerability scan.
-   - **Quality Gate:** `ci-gatekeeper` blocks PR merge if any check fails.
+   - Runs on every **Pull Request** targeting `main` (and on manual dispatch); path filters skip jobs for components that did not change.
+   - **Secrets scan:** Gitleaks.
+   - **Frontend:** Node.js 22, ESLint (warnings fail), production build, `npm audit` (high and critical fail).
+   - **Python:** Ruff, Bandit (SAST) and `pip-audit` for the backend and AI workers.
+   - **Backend and database:** PostGIS 16, migrations through `app.migrate`, audit hash-chain trigger check, the full pytest suite with coverage, and a strict core-loop smoke test.
+   - **AI workers:** their own pytest suite.
+   - **E2E:** Playwright against a real API and the built frontend.
+   - **Containers:** only after every check above passed, each changed image is built (in parallel), started, scanned with Trivy (critical and high fail) and, from same-repository pull requests, pushed as `ci-<head sha>` so CD can promote it.
+   - **Quality Gate:** `ci-gatekeeper` ("Pipeline Status / Quality Gate") is the required check on `main`; it fails when a required job failed or was skipped although its paths changed. The Vercel preview runs only when the pull request changes the frontend, every container image built and passed its scan (the gate runs after it and ignores its outcome), is updated in place as one PR comment on each new commit, and never blocks.
 2. **Continuous Deployment ([`.github/workflows/cd.yml`](.github/workflows/cd.yml))**:
-   - Triggers on **Push / Merge to `main`**.
-   - Builds production container images with tags (`latest`, `sha-*`) and pushes them to **GitHub Container Registry (GHCR)**.
-   - Verifies deployment readiness against production manifests (`docker-compose.prod.yml`).
+   - Runs on a push to `main` or a release tag (`vX.Y.Z`); manual runs from other branches are refused.
+   - Finds what changed since the last successful CD run, retags the image CI already scanned when the merged tree equals the pull request head (otherwise builds it), and publishes to **GHCR** (`latest`, `sha-*`).
+   - Deploys the backend to **staging**, waits for the new commit, runs the smoke test there, and only then deploys production. Vercel and the AI triage service deploy by their own hooks. A deploy whose secret is missing is shown as skipped. A newer push cancels an older run.
 
 ---
 

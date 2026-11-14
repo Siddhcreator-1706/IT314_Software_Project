@@ -71,9 +71,17 @@ async function forward(request: NextRequest, ctx: RouteContext) {
       cache: "no-store",
       signal: AbortSignal.timeout(20000),
     });
-    return new Response(upstream.status === 204 ? null : await upstream.text(), {
+    // Bytes, not text: photo attachments are binary and must pass through unchanged.
+    const responseHeaders: Record<string, string> = {
+      "content-type": upstream.headers.get("content-type") ?? "application/json",
+    };
+    for (const name of ["x-content-type-options", "cache-control"]) {
+      const value = upstream.headers.get(name);
+      if (value) responseHeaders[name] = value;
+    }
+    return new Response(upstream.status === 204 ? null : await upstream.arrayBuffer(), {
       status: upstream.status,
-      headers: { "content-type": upstream.headers.get("content-type") ?? "application/json" },
+      headers: responseHeaders,
     });
   } catch {
     return error(503, "BACKEND_UNAVAILABLE", "The citizen service is unreachable. Try again shortly.");

@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { useAuthLanguage } from "@/components/auth/AuthLanguage";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { LanguageSelector } from "@/components/auth/LanguageSelector";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
 import { StaffSignIn } from "./staff-sign-in";
 
@@ -24,6 +25,8 @@ function LoginCard() {
       </div>
 
       <StaffSignIn next={next} />
+
+      <GoogleSignInButton next={next} />
 
       <div className="space-y-3 border-t border-slate-200 pt-5 text-center">
         <div className="flex justify-center gap-4 text-sm text-slate-600">

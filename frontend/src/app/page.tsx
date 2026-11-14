@@ -6,7 +6,7 @@ import { fetchPublicIncidents, fetchPublicAlerts, PublicIncident, PublicAlert } 
 import { LiveOperationsLayer } from "../components/dm/LiveOperationsLayer";
 import { signOut } from "./login/actions";
 import { NavLink, SiteHeader } from "../components/Brand";
-import { GUJARAT_BOUNDS, GUJARAT_CENTER, GUJARAT_DEFAULT_ZOOM, GUJARAT_DISTRICTS } from "../lib/geo";
+import { GUJARAT_CENTER, GUJARAT_DEFAULT_ZOOM, GUJARAT_DISTRICTS, INDIA_BOUNDS } from "../lib/geo";
 
 interface SessionInfo {
   authenticated: boolean;
@@ -16,20 +16,22 @@ interface SessionInfo {
   name: string | null;
 }
 
+// Two base maps, both OpenStreetMap data. The map keeps its position and zoom when you switch between them.
 const TILE_LAYERS = {
   streets: {
     name: "OpenStreetMap",
     base: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
-    subdomains: [],
-    maxZoom: 19,
+    subdomains: [] as string[],
+    maxNativeZoom: 19,
   },
   humanitarian: {
     name: "Humanitarian OSM",
     base: "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png",
     subdomains: ["a", "b"],
-    maxZoom: 19,
+    maxNativeZoom: 19,
   },
 };
+const OSM_ATTRIBUTION = '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
 
 const SEVERITY_COLORS: Record<string, string> = {
   CRITICAL: "#ef4444",
@@ -45,6 +47,8 @@ export default function PublicPortalPage() {
   const mapRef = useRef<any>(null);
   const markersLayerRef = useRef<any>(null);
   const alertsLayerRef = useRef<any>(null);
+  // Last map position, so switching the base map keeps where you are zoomed in.
+  const viewRef = useRef<{ center: [number, number]; zoom: number } | null>(null);
 
   const [incidents, setIncidents] = useState<PublicIncident[]>([]);
   const [alerts, setAlerts] = useState<PublicAlert[]>([]);
@@ -54,10 +58,10 @@ export default function PublicPortalPage() {
   const [error, setError] = useState<string | null>(null);
   const [coordsText, setCoordsText] = useState("Gujarat, India");
   const [mapReadyVersion, setMapReadyVersion] = useState(0);
-  const [activeBaseLayer, setActiveBaseLayer] = useState<"streets" | "humanitarian">("streets");
   const [showAlertsLayer, setShowAlertsLayer] = useState(true);
   const [showAlertsDrawer, setShowAlertsDrawer] = useState(false);
   const [districtFilter, setDistrictFilter] = useState<string>("");
+  const [activeBaseLayer, setActiveBaseLayer] = useState<"streets" | "humanitarian">("streets");
   const visibleIncidents = districtFilter ? incidents.filter((i) => i.district === districtFilter) : incidents;
 
   // 1. Fetch user session
@@ -130,22 +134,49 @@ export default function PublicPortalPage() {
         const map = L.map(mapContainerRef.current, {
           zoomControl: false,
           attributionControl: true,
-          minZoom: 6,
-          maxZoom: 18,
-          maxBounds: GUJARAT_BOUNDS,
+          minZoom: 4,
+          maxZoom: 19,
+          // Panning limit: India plus a wide margin. It must be roomy, because a Gujarat-centred view on a wide screen reaches
+          // well west of India's edge; a tight limit pushed the opening view east so Gujarat sat on the left. The lowest zoom
+          // (fitIndiaZoom below) still shows exactly all of India.
+          maxBounds: L.latLngBounds(INDIA_BOUNDS).pad(0.4),
           maxBoundsViscosity: 1.0,
-        }).setView(GUJARAT_CENTER, GUJARAT_DEFAULT_ZOOM);
+        }).setView(viewRef.current?.center ?? GUJARAT_CENTER, viewRef.current?.zoom ?? GUJARAT_DEFAULT_ZOOM);
 
         mapRef.current = map;
+        // The lowest zoom is the one at which all of India just fits the screen, so it stays centred at any window size.
+        const fitIndiaZoom = () => map.setMinZoom(map.getBoundsZoom(INDIA_BOUNDS));
+        fitIndiaZoom();
+        map.on("resize", fitIndiaZoom);
+        map.on("moveend", () => {
+          const c = map.getCenter();
+          viewRef.current = { center: [c.lat, c.lng], zoom: map.getZoom() };
+        });
 
         const cfg = TILE_LAYERS[activeBaseLayer];
         L.tileLayer(cfg.base, {
-          maxZoom: cfg.maxZoom,
+          maxZoom: 19,
+          maxNativeZoom: cfg.maxNativeZoom,
+          // Leaflet's default tile updating while zooming is kept: turning it off (updateWhenZooming) makes zooming look blurrier.
+          // detectRetina is not used: it asks OSM for zoom 20 tiles, which do not exist, and blanks the map.
           subdomains: cfg.subdomains,
-          attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+          attribution: OSM_ATTRIBUTION,
         }).addTo(map);
 
-        L.control.zoom({ position: "bottomright" }).addTo(map);
+        const zoomControl = L.control.zoom({ position: "bottomright" }).addTo(map);
+        // From the all-India view the middle of the screen is central India, so zooming in there would leave Gujarat
+        // stuck on the left. While zoomed out further than the Gujarat view, the + button zooms in towards Gujarat instead.
+        zoomControl.getContainer()?.addEventListener(
+          "click",
+          (event: Event) => {
+            const button = (event.target as HTMLElement).closest(".leaflet-control-zoom-in");
+            if (!button || button.classList.contains("leaflet-disabled") || map.getZoom() >= GUJARAT_DEFAULT_ZOOM) return;
+            event.stopPropagation();
+            event.preventDefault();
+            map.flyTo(GUJARAT_CENTER, Math.min(map.getZoom() + 1, GUJARAT_DEFAULT_ZOOM), { duration: 0.6 });
+          },
+          true
+        );
         L.control.scale({ imperial: false, position: "bottomleft" }).addTo(map);
 
         markersLayerRef.current = L.layerGroup().addTo(map);
@@ -153,6 +184,28 @@ export default function PublicPortalPage() {
 
         map.on("mousemove", (e: any) => {
           setCoordsText(`${e.latlng.lat.toFixed(4)}°N, ${e.latlng.lng.toFixed(4)}°E`);
+        });
+
+        // Click anywhere to see the address down to street level (society, street, locality) from OpenStreetMap.
+        // Incident markers handle their own clicks. Nominatim allows about one request per second.
+        let lastLookup = 0;
+        map.on("click", async (e: any) => {
+          if (Date.now() - lastLookup < 1100) return;
+          lastLookup = Date.now();
+          const box = document.createElement("div");
+          box.style.cssText = "max-width:240px;font-size:12px;line-height:1.4;color:#0f172a";
+          box.textContent = "Looking up the address…";
+          const popup = L.popup().setLatLng(e.latlng).setContent(box).openOn(map);
+          try {
+            const res = await fetch(
+              `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&accept-language=en&lat=${e.latlng.lat.toFixed(6)}&lon=${e.latlng.lng.toFixed(6)}`
+            );
+            const data = await res.json();
+            box.textContent = data?.display_name || "No named place or street is mapped at this spot.";
+          } catch {
+            box.textContent = "Could not look up this address. Try again in a moment.";
+          }
+          popup.update();
         });
         setMapReadyVersion((version) => version + 1);
       } catch (err) {
@@ -170,6 +223,20 @@ export default function PublicPortalPage() {
       }
     };
   }, [activeBaseLayer]);
+
+  // Zoom to the chosen district's incidents, or back to the overview for "All Gujarat".
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const points = incidents.filter((i) => i.district === districtFilter && i.lat && i.lon).map((i) => [i.lat, i.lon] as [number, number]);
+    if (!districtFilter) {
+      map.flyTo(GUJARAT_CENTER, GUJARAT_DEFAULT_ZOOM, { duration: 0.8 });
+    } else if (points.length) {
+      map.flyToBounds(points, { padding: [60, 60], maxZoom: 13, duration: 0.8 });
+    }
+    // Only when the district choice changes; new incident data should not move the map.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [districtFilter]);
 
   // 4. Update Incident Markers
   useEffect(() => {
@@ -201,6 +268,8 @@ export default function PublicPortalPage() {
 
       marker.on("click", () => {
         setSelectedIncident(inc);
+        // Zoom in to street level around the incident so its surroundings and street names are visible.
+        map.flyTo([inc.lat, inc.lon], Math.max(map.getZoom(), 16), { duration: 0.8 });
       });
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
