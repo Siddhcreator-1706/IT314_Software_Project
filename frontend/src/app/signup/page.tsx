@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState, useState } from "react";
 
 import { AuthShell, ErrorBox, Spinner, authButton, authInput, authLabel } from "@/components/auth/AuthShell";
+import { GoogleSignInButton } from "@/components/GoogleSignInButton";
 
 import { register } from "../login/actions";
 
@@ -113,6 +114,8 @@ export default function SignupPage() {
             )}
           </button>
         </form>
+
+        <GoogleSignInButton mode="signup" />
 
         <div className="border-t border-slate-200 pt-5 text-center text-base text-slate-700">
           Already have an account?{" "}

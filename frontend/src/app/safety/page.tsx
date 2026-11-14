@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 
 import { PublicPage, Section } from "@/components/public/PublicPage";
+import { API_URL } from "@/lib/config";
 
 export const metadata: Metadata = { title: "Safety guidance · ResQ Gujarat" };
 
@@ -52,6 +53,21 @@ const GUIDES: Guide[] = [
   },
 ];
 
+type PublishedGuidance = { content_id: string; scenario: string; title: string; body: string; source: string | null; version: number };
+type PublishedUpdate = { update_id: string; scenario: string; title: string; body: string; area_label: string | null; published_at: string | null };
+
+const SCENARIO_NAME: Record<string, string> = { cyclone: "Cyclone", industrial_fire: "Fire", urban_flooding: "Flood" };
+
+/** Dispatcher-published guidance and updates. null means the service could not be reached; the static guidance below still shows. */
+async function loadPublished<T>(path: string): Promise<T[] | null> {
+  try {
+    const res = await fetch(`${API_URL}/api/v1/public/${path}`, { next: { revalidate: 60 }, signal: AbortSignal.timeout(5000) });
+    return res.ok ? ((await res.json()) as T[]) : null;
+  } catch {
+    return null;
+  }
+}
+
 const List = ({ title, items }: { title: string; items: string[] }) => (
   <div>
     <h3 className="font-semibold text-slate-900">{title}</h3>
@@ -63,9 +79,47 @@ const List = ({ title, items }: { title: string; items: string[] }) => (
   </div>
 );
 
-export default function SafetyPage() {
+export default async function SafetyPage() {
+  const [guidance, updates] = await Promise.all([
+    loadPublished<PublishedGuidance>("safety-content"),
+    loadPublished<PublishedUpdate>("updates"),
+  ]);
   return (
     <PublicPage title="Safety guidance" intro="Basic guidance for the hazards most likely in Gujarat. Always follow instructions from local authorities first.">
+      {updates && updates.length > 0 && (
+        <Section title="Verified updates from Gujarat dispatchers">
+          {updates.map((u) => (
+            <div key={u.update_id}>
+              <h3 className="font-semibold text-slate-900">{u.title}</h3>
+              <p className="text-xs text-slate-500">
+                {SCENARIO_NAME[u.scenario] ?? u.scenario}
+                {u.area_label ? ` · ${u.area_label}` : ""}
+                {u.published_at ? ` · ${new Date(u.published_at).toLocaleString("en-IN")}` : ""}
+              </p>
+              <p className="whitespace-pre-wrap">{u.body}</p>
+            </div>
+          ))}
+        </Section>
+      )}
+      {guidance && guidance.length > 0 && (
+        <Section title="Approved guidance from dispatchers">
+          {guidance.map((g) => (
+            <div key={g.content_id}>
+              <h3 className="font-semibold text-slate-900">{g.title}</h3>
+              <p className="text-xs text-slate-500">
+                {SCENARIO_NAME[g.scenario] ?? g.scenario}
+                {g.source ? ` · Source: ${g.source}` : ""}
+              </p>
+              <p className="whitespace-pre-wrap">{g.body}</p>
+            </div>
+          ))}
+        </Section>
+      )}
+      {(guidance === null || updates === null) && (
+        <p className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="status">
+          Live dispatcher guidance could not be loaded right now. The general guidance below is still available.
+        </p>
+      )}
       {GUIDES.map((g) => (
         <Section key={g.title} title={g.title}>
           <List title="Before" items={g.before} />
