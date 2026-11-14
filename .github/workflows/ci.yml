@@ -632,7 +632,7 @@ jobs:
         continue-on-error: true
         env:
           PREVIEW_URL: ${{ steps.vercel_deploy.outputs.url }}
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           script: |
             const url = process.env.PREVIEW_URL;
