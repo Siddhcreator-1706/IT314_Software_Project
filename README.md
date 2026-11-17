@@ -1,342 +1,367 @@
+<div align="center">
+
+<img src="frontend/public/logo.svg" alt="ResQ" width="220" />
+
 # ResQ — Gujarat Disaster Response Coordination Hub
 
-ResQ is an operational disaster response coordination platform built for the
-State of Gujarat. The system connects three groups of users: citizens who
-report emergencies, disaster management staff who triage and dispatch
-resources, and field teams who receive assignments and report progress in the
-field.
+**One platform for citizens, dispatchers and field teams to report, verify and respond to disasters in Gujarat.**
+
+[![CI](https://github.com/Siddhcreator-1706/IT314_Software_Project/actions/workflows/ci.yml/badge.svg)](https://github.com/Siddhcreator-1706/IT314_Software_Project/actions/workflows/ci.yml)
+[![CodeQL](https://github.com/Siddhcreator-1706/IT314_Software_Project/actions/workflows/codeql.yml/badge.svg)](https://github.com/Siddhcreator-1706/IT314_Software_Project/actions/workflows/codeql.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
+Next.js 16 · FastAPI · PostgreSQL 16 + PostGIS · Python AI workers
+
+*Course project for IT314 Software Engineering, DA-IICT.*
+
+</div>
 
 ---
 
-## What is real (verified in code)
+## Contents
 
-The following capabilities are implemented end-to-end and covered by
-automated tests in `backend/tests/`.
-
-**Staff authentication with mandatory two-factor login.**
-Staff accounts require an Argon2id password followed by a TOTP code
-(RFC 6238, 30-second window). The MFA challenge is a short-lived,
-purpose-bound JWT. A failed code or expired challenge does not issue an
-access token. Login failures are counted; after five consecutive failures
-the account is locked and all existing tokens are revoked by incrementing
-`token_version`. (`backend/app/routers/auth.py`, `backend/app/security.py`)
-
-**Incident verification workflow.**
-A dispatcher can move an incident through the states SUBMITTED,
-NEEDS_INFORMATION, VERIFIED, REJECTED, DISPATCHED, RESOLVED, and CLOSED.
-Each transition is validated by a strict state machine, recorded in
-`incident_status_history`, written to the audit log, and triggers a
-notification to the reporting citizen. A VERIFIED decision requires a
-priority level (CRITICAL, HIGH, MEDIUM, or LOW) and a rationale.
-(`backend/app/routers/dm/incidents.py`)
-
-**Resource dispatch with row-level locking.**
-When a dispatcher creates a dispatch order, each requested resource row is
-locked with `SELECT ... FOR UPDATE` before the available quantity is
-decremented. Concurrent requests for the same resource that would
-over-allocate are refused with a 409 RESOURCE_CONFLICT response and no
-partial state is written. Resources are released automatically when a
-dispatch order is rejected or completed.
-(`backend/app/services/resources.py`, `backend/app/services/dispatch.py`)
-
-**Append-only, hash-chained audit log.**
-Every state change, login event, access denial, and dispatch action writes
-a row to `audit_logs`. A PostgreSQL trigger (`fn_audit_log_hash_chain`)
-computes a SHA-256 hash of each new row concatenated with the previous
-row's hash, storing it in `row_hash`. Database-level triggers also block
-UPDATE and DELETE on the table. The CI pipeline verifies the hash chain
-on every pull request. (`backend/db/migrations/01_schema.sql`, lines 602-629)
-
-**Gujarat boundary enforcement.**
-Incident coordinates are validated against Gujarat state boundaries via
-PostGIS spatial queries, with automatic fallback to the Google Maps
-Geocoding API (if `GOOGLE_MAPS_API_KEY` is configured) and then to
-OpenStreetMap Nominatim (free, no key required). Resolved districts are
-cached in the `administrative_boundaries` table.
-(`backend/app/geo.py`)
-
-**Advisory AI triage.**
-`POST /api/v1/dm/incidents/{id}/ai-triage` sends a PII-scrubbed copy of the report to the
-rules-based triage service in `ai-workers/` (`AI_TRIAGE_URL`, optional `AI_TRIAGE_TOKEN`) and stores
-the validated suggestion separately. Output is advisory only and is never applied to an incident
-automatically; a dispatcher makes the final decision. Without `AI_TRIAGE_URL` the result is
-`UNAVAILABLE` and staff triage manually. (`backend/app/services/ai_provider.py`,
-`backend/app/routers/dm/ai.py`, `ai-workers/rules.py`)
+- [Overview](#overview)
+- [Features](#features)
+- [Architecture](#architecture)
+- [Technology stack](#technology-stack)
+- [What is real and what is simulated](#what-is-real-and-what-is-simulated)
+- [Repository structure](#repository-structure)
+- [Getting started](#getting-started)
+- [Testing and quality checks](#testing-and-quality-checks)
+- [CI/CD and deployment](#cicd-and-deployment)
+- [Security and privacy](#security-and-privacy)
+- [Documentation](#documentation)
+- [Team](#team)
+- [Contributing](#contributing)
+- [License](#license)
+- [Acknowledgements](#acknowledgements)
 
 ---
 
-## What is simulated
+## Overview
 
-**Demo seed data (development only).**
-`backend/db/seeds/demo/` (sample field teams, sample campaigns and four incidents flagged
-`is_simulated = TRUE`) is applied only when `APP_ENV=development`. Staging and production receive
-only `backend/db/seeds/reference/` (roles, agencies, system accounts, safety content). The public API
-hides simulated incidents outside development.
+During a disaster, reports arrive from many people at once, often incomplete, duplicated or outside the area a control room covers. ResQ gives Gujarat's disaster response a single workflow from the first report to the closed incident:
 
-**Mock payment gateway (SANDBOX).**
-Donations use `MockGateway` (HMAC-signed sandbox, `PAYMENT_GATEWAY=mock`). There is no live
-gateway integration; receipts are issued only after a valid signature is verified.
+1. **Citizens** report an emergency with its location, details and photos, then follow its status.
+2. **Disaster management staff** verify reports, ask for missing information, check advisory AI suggestions and dispatch teams and equipment.
+3. **Field teams** receive assignments, acknowledge them and report progress from the scene.
+4. **Administrators** manage staff accounts, invitations and permissions.
 
-**Fallback fixtures for external alerts.**
-No ingestion adapters are installed yet: `POST /api/v1/internal/ingest/run` answers
-`NOT_IMPLEMENTED` and stores nothing. `GET /api/v1/public/alerts` returns whatever is in
-`external_alerts` (rows flagged `is_fallback` must be labelled in the UI).
-
-**Synthetic or replayed social data.**
-Social distress signals and external disaster feeds are not ingested live;
-any social feed data displayed in the interface is synthetic or replayed.
+The platform supports exactly three scenarios: **cyclone**, **industrial fire** and **urban flooding**. Every operational decision (verification, priority, dispatch, escalation and closure) is made by a person; AI output is advisory only.
 
 ---
 
-## Staging and cold-start
+## Features
 
-- Backend API (Render): Configured via `STAGING_URL` or Render web service `https://drch-backend.onrender.com`
-- Frontend (Vercel Preview): Deployment preview URL generated via Vercel integration
+### Citizens
+- Report an incident with a map pin or device location, checked against the Gujarat boundary, plus urgency, people affected, needs and up to five photos.
+- Duplicate hints that show nearby reports of the same kind before submitting.
+- *My Reports*: a timeline for each report, replies to dispatcher information requests (text or a corrected location) and withdrawal requests.
+- Account settings: profile, language (English, Hindi, Gujarati), email alerts, password change and account deletion.
+- Sign in with email and password or with Google.
+- Donations to relief campaigns with official receipts; see [Payments](docs/payments.md).
 
-The backend runs on Render's free tier. Free tier services sleep after a
-period of inactivity. The first request after an idle period may take 45 to
-90 seconds while the container wakes up, initializes database connection pools,
-and completes background worker checks. Cold-start polling and smoke scripts
-should use a 90-second timeout.
+### Disaster management staff
+- A verification queue with a strict incident state machine: `SUBMITTED → NEEDS_INFORMATION / VERIFIED / REJECTED → DISPATCHED → RESOLVED → CLOSED`.
+- Advisory AI triage, team recommendations ranked by PostGIS distance, capability and workload, and dispatch with row-locked resource allocation.
+- A live operations map, ingested signal clusters (official alerts and social signals), photo moderation, published safety content and analytics.
+- Permissions per staff member: `DISPATCH`, `CLOSURE`, `MODERATOR`, `PUBLISHER`, `SUPERVISOR`.
 
-Health check endpoints:
-- Liveness probe: `GET /health` returns `{"status": "healthy", "service": "drch-backend"}`
-- Database reachability: `GET /api/v1/health` returns `{"status": "healthy", "service": "drch-backend", "database": "ok"}` when PostGIS is connected, or `"unavailable"` / `"not_configured"` otherwise.
+### Field teams
+- An assignment inbox: acknowledge or reject a dispatch, move it through `DISPATCHED` to `COMPLETED` (or `FAILED`), and post situation updates. A dispatch nobody acknowledges is escalated after a timeout.
 
----
-
-## 👥 Team Roster & Ownership Matrix
-
-| Member | Group | Role in Project | Key Module Ownership |
-| :--- | :--- | :--- | :--- |
-| **Siddh** | **Leader** | Tech Lead & Integration Owner | CI/CD, database migrations (01-04), secrets management, merge gatekeeper, repo hygiene. |
-| **Zalak** | Frontend & Backend | Citizen & Public Backend Lead | Citizen auth/register API, incident reporting, timeline, LLM adapter, AI-vs-human analytics. |
-| **Nisarg** | Frontend & Backend | Dispatch & Field Backend Lead | Field team role & assignments API, Gujarat geofencing (`geo.py`), team recommendation engine. |
-| **Shlok** | Frontend & Backend | Payments & Dispatch Refactor | Payment gateway interface & MockGateway, donation APIs, signal promotion, state transitions. |
-| **Rudra** | ML | Ingestion & External Feeds | Official alert adapter (SACHET CAP), ingestion runs scheduler, AI service skeleton. |
-| **Neeti** | ML (GenAI) | AI Lead | Dataset design, text classification models, evaluation harness, AI triage integration & guardrails. |
-| **Dhruvil** | ML | Computer Vision & Similarity | Image classification reproduction, duplicate text-similarity model, in-process model provider. |
-| **Janvi** | Frontend & Backend | Frontend Lead (Citizen & Field) | Citizen report forms, My Reports timeline, Field responder dashboards, alerts map layer. |
-| **Tanishq** | Frontend & Backend | Frontend Lead (Public & Dispatch)| Public Gujarat interactive map, Dispatcher workspace console, recommendations UI. |
-| **Dhruv** | Frontend & Backend | QA & Test Lead | DB test fixtures, smoke test suite (`scripts/smoke.py`), ran-and-skipped guard, scenario tests. |
-
-### Ingestion sources
-
-The backend polls the configured SACHET CAP feed every 10 minutes. It also replays team-authored social-style samples into the dispatcher signal queue; replay items are sanitised and clearly marked simulated. Only unexpired alerts from official sources are returned by the public alerts API. Ingested signals never become incidents or public alerts without a human dispatcher workflow. See [the source-access memo](docs/ingestion-sources.md) for access, caching, attribution and deployment checks.
+### Public
+- A live map of verified incidents (coordinates rounded to 4 decimal places), official alerts, safety guidance and emergency helplines. No sign-in is needed.
 
 ---
 
-## 📅 3-Sprint Implementation Plan
+## Architecture
 
 ```mermaid
-gantt
-    title Gujarat Disaster Management Platform - 3-Sprint Roadmap
-    dateFormat  YYYY-MM-DD
-    section Sprint 1: Core Loop
-    Migrations 03/04 & Gujarat Seeds (Siddh)     :s1_siddh, 2026-10-24, 5d
-    Citizen Register & Report API (Zalak)        :s1_zalak, 2026-10-24, 5d
-    Public Verified API & Geo Fence (Nisarg)     :s1_nisarg, 2026-10-24, 5d
-    Public Map & Dispatcher UI on Real Data (Tanishq):s1_tanishq, 2026-10-24, 5d
-    Ingestion Base & USGS Adapter (Rudra)        :s1_rudra, 2026-10-24, 5d
-    Payment Foundation & MockGateway (Shlok)     :s1_shlok, 2026-10-24, 5d
-    Test Harness & Smoke Automation (Dhruv)      :s1_dhruv, 2026-10-24, 5d
+flowchart LR
+    subgraph Browser
+        C[Citizen portal]
+        D[DM workspace]
+        F[Field view]
+        A[Admin]
+    end
+    subgraph Vercel["Next.js 16 (Vercel)"]
+        BFF["BFF route handlers<br/>httpOnly session cookies,<br/>token refresh"]
+    end
+    subgraph Render
+        API["FastAPI backend<br/>auth · incidents · dispatch ·<br/>ingestion · payments"]
+        AI["AI triage service<br/>rules baseline, optional model"]
+    end
+    DB[("Neon PostgreSQL 16<br/>+ PostGIS")]
+    Feeds["SACHET CAP alerts ·<br/>social signals"]
 
-    section Sprint 2: Response & AI
-    Field Team Backend & Assignments (Nisarg)    :s2_nisarg, after s1_siddh, 5d
-    Team Recommendations Engine (Nisarg)         :s2_recs, after s1_siddh, 5d
-    Field Team Mobile Dashboards (Janvi)         :s2_janvi, after s1_zalak, 5d
-    Text AI Model v1 & Triage Integration (Neeti):s2_neeti, after s1_rudra, 5d
-    Duplicate Text Similarity v2 (Dhruvil)       :s2_dhruvil, after s1_rudra, 5d
-    Ingestion 10-Min Scheduler & CAP (Rudra)     :s2_sched, after s1_rudra, 5d
-    Donations End-to-End Verification (Shlok)    :s2_pay, after s1_shlok, 5d
+    C & D & F & A --> BFF --> API
+    API --> DB
+    API -- advisory only --> AI
+    Feeds --> API
+```
 
-    section Sprint 3: Harden & Release
-    RBAC & Security Audit Matrix (Siddh/Dhruv)   :s3_sec, after s2_nisarg, 5d
-    End-to-End Cyclone Scenario (Dhruv)          :s3_scen, after s2_nisarg, 5d
-    AI Error Analysis & Decision (Neeti/Zalak)   :s3_ai, after s2_neeti, 5d
-    Frontend Accessibility & Polish (Janvi/Tanishq):s3_fe, after s2_janvi, 5d
-    Production Deployment & Fallback (Siddh)     :s3_prod, after s3_sec, 5d
+- The browser never holds an access token. Next.js route handlers (`/api/citizen`, `/api/dm`, `/api/field`) attach it from an httpOnly cookie and refresh it with a rotating refresh token.
+- The backend owns authentication, the incident and dispatch state machines and the hash-chained audit log. The AI service is a separate process and can be switched off.
+
+Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) · ER diagram: [docs/er-diagram.md](docs/er-diagram.md) · API: [docs/api_contracts.md](docs/api_contracts.md)
+
+---
+
+## Technology stack
+
+| Layer | Technologies |
+| :--- | :--- |
+| Frontend | Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS 4, Leaflet with OpenStreetMap |
+| Backend | Python 3.12, FastAPI, psycopg 3 with a connection pool, Argon2id, TOTP (RFC 6238), JWT |
+| Database | PostgreSQL 16 with PostGIS 3.4 (Neon in staging and production) |
+| AI workers | FastAPI triage service with a rules baseline; scikit-learn text classifier; optional PyTorch image and transformer experiments |
+| Payments | Sandbox gateway by default; Razorpay Checkout (test or live keys) |
+| Testing | pytest, Playwright, Ruff, Bandit, ESLint |
+| Delivery | Docker, GitHub Actions, GHCR, Render (API and AI service), Vercel (frontend) |
+
+---
+
+## What is real and what is simulated
+
+| Capability | Status |
+| :--- | :--- |
+| Staff sign-in with password and TOTP, lockout and token revocation | Implemented |
+| Rotating refresh tokens with idle, absolute and session-count limits | Implemented |
+| Incident verification workflow and status history | Implemented |
+| Dispatch with `SELECT … FOR UPDATE` resource locking | Implemented |
+| Append-only, SHA-256 hash-chained audit log | Implemented; checked with `python -m app.cli verify-audit` |
+| Gujarat boundary checks (PostGIS) with geocoding fallback | Implemented |
+| Citizen photo upload and moderation (stored in PostgreSQL) | Implemented |
+| Official alert ingestion (SACHET CAP) | Implemented; runs on a schedule |
+| Social signals (Bluesky, Google News) | Implemented, off by default (`BLUESKY_SEARCH_ENABLED`, `NEWS_RSS_ENABLED`) |
+| AI triage | Rules baseline in production; a trained model plugs in through `TRIAGE_MODEL_DIR` |
+| Image classifier | Prototype, not deployed (photo analysis answers `503`) |
+| Payments | Sandbox gateway by default; Razorpay in test mode unless live keys are set |
+| Demo incidents, teams and campaigns | Simulated; seeded only when `APP_ENV=development` and flagged `is_simulated` |
+| Fallback alerts and social replay data | Simulated; always labelled in the UI |
+
+---
+
+## Repository structure
+
+```text
+.
+├── backend/            FastAPI application
+│   ├── app/            routers (auth, citizen, dm, field, public, internal), services, payments, CLI
+│   ├── db/             SQL migrations (01–15) and seeds (reference, demo)
+│   └── tests/          pytest suite (unit and PostGIS-backed)
+├── frontend/           Next.js application
+│   ├── src/app/        pages and BFF route handlers
+│   ├── src/components/ shared UI, maps, role views
+│   └── e2e/            Playwright tests
+├── ai-workers/         triage service, text model, image model, evaluation
+├── scripts/            smoke test, seed reset, boundary sync, load test, tooling
+├── docs/               architecture, API contracts, runbooks, reports
+├── docker-compose.yml  local stack (PostGIS, backend, frontend, AI workers)
+└── render.yaml         Render service definitions
 ```
 
 ---
 
-## 📋 Sprint Roadmap
-
-The active implementation plan follows the **3-Sprint Production Delivery Roadmap** shown in the Gantt chart above.
-
----
-
-## 🛠️ Technology Stack Recommendations
-
-| Tier | Technologies |
-| :--- | :--- |
-| **Frontend & PWA** | Next.js / React 18, Leaflet / Mapbox GL JS, TailwindCSS, Service Workers, IndexedDB |
-| **Backend & APIs** | Node.js (TypeScript) / Python (FastAPI), RESTful API, WebSocket (Socket.io) |
-| **Database & GIS** | PostgreSQL 16 with **PostGIS 3.4**, Redis (Caching & Pub/Sub), Uber H3 Spatial Index |
-| **AI / Machine Learning** | Multilingual Indic-LLM / Llama-3 (vLLM / Ollama), YOLOv8/v9 (PyTorch/ONNX), LangChain |
-| **Data Ingestion** | Apache Kafka / RabbitMQ, XML-to-JSON CAP Parser, Webhook Adapters |
-| **DevOps & Infra** | Docker, Kubernetes, Nginx / Traefik, GitHub Actions CI/CD, Prometheus & Grafana |
-| **Compliance & Security** | OAuth 2.0 / JWT, MeitY-empaneled Cloud (AWS Mumbai / Azure India), DPDP PII Sanitizer |
-
----
-
-## 🚀 Quick Start Guide (Local Development Setup)
+## Getting started
 
 ### Prerequisites
-- [Docker & Docker Compose](https://www.docker.com/) installed
-- [Node.js (v20+)](https://nodejs.org/) (the frontend uses Next.js 16, and CI runs Node 20) & [Python (v3.10+)](https://python.org/)
+
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) (for the local PostGIS database)
+- [Node.js 22](https://nodejs.org/) and npm
+- [Python 3.12](https://www.python.org/)
 - Git
 
-### 1. Clone the Repository
+### 1. Clone and configure
+
 ```bash
 git clone https://github.com/Siddhcreator-1706/IT314_Software_Project.git
 cd IT314_Software_Project
-```
-
-### 2. Configure Environment Variables
-```bash
 cp .env.example .env
-# Edit .env with your LLM API keys, DB credentials, and mock ports
+cp frontend/.env.example frontend/.env.local
 ```
 
-### 3. Database Initialization (Migrations & Seed Data)
-When setting up locally or connecting to a remote PostgreSQL/Neon database, apply the schema migration and baseline seed data:
+Set a random `JWT_SECRET` of at least 32 characters in `.env`. Every variable is described in [docs/env-variables.md](docs/env-variables.md). Never point a local `.env` at the production database.
+
+### 2. Start the database
 
 ```bash
-# Using the automated migration runner (applies all migrations & seeds in order, skipping already run):
-cd backend && python -m app.migrate
-
-# Or manually applying via psql:
-for f in $(find backend/db/migrations -name '*.sql' | sort -V); do psql "$DATABASE_URL" -f "$f"; done
-for s in $(find backend/db/seeds -name '*.sql' | sort -V); do psql "$DATABASE_URL" -f "$s"; done
+docker compose up -d postgres-postgis
 ```
-*Note: the backend applies pending migrations (and reference seeds) itself on startup; it refuses to start outside `APP_ENV=development` if required settings are missing.*
 
-### 4. Running the Applications
+This starts PostgreSQL 16 with PostGIS on `localhost:5432`, matching the `DATABASE_URL` in `.env.example`.
 
-#### Option A: Local Development (without Docker)
-Run the backend and frontend in separate terminals:
+### 3. Run the backend
 
 ```bash
-# Terminal 1 - FastAPI Backend (runs migrations and starts API server on :8000)
 cd backend
+python -m venv .venv
+source .venv/bin/activate        # Windows: .venv\Scripts\activate
+pip install -r requirements.txt -r requirements-dev.txt
+python -m app.migrate            # applies migrations, reference seeds and (in development) demo seeds
 uvicorn main:app --reload --port 8000
+```
 
-# Terminal 2 - Next.js Frontend (starts web client on :3000)
+API docs: <http://localhost:8000/docs> · Health: <http://localhost:8000/api/v1/health>
+
+### 4. Run the frontend
+
+```bash
 cd frontend
-npm ci        # first run only: installs exact versions from package-lock.json
+npm ci
 npm run dev
 ```
 
-#### Option B: Containerized Platform (Docker Compose)
-Since the project is containerized, you can launch the Next.js frontend, FastAPI backend, Python AI workers, and the local PostgreSQL/PostGIS database with a single command:
+Open <http://localhost:3000>.
+
+### 5. (Optional) Run the AI triage service
+
+```bash
+cd ai-workers
+pip install -r requirements.txt
+uvicorn triage_service:app --port 8001
+```
+
+Then set `AI_TRIAGE_URL=http://localhost:8001/triage` in `.env`. Without it, AI triage reports `UNAVAILABLE` and staff triage manually.
+
+### 6. Create accounts
+
+Citizens sign up in the app. Staff, administrator and field accounts are created with the CLI from `backend/`. Each command prints a TOTP secret and QR code for an authenticator app.
+
+```bash
+python -m app.cli create-staff --email dispatcher@example.org --name "Asha Rao" --permissions DISPATCH,CLOSURE,MODERATOR
+python -m app.cli create-admin --email admin@example.org --name "Platform Admin"
+python -m app.cli create-field --email responder@example.org --name "Ravi Patel" --team "<team name or id>"
+```
+
+### Run everything with Docker
 
 ```bash
 docker compose up --build
 ```
 
-### 5. Access the Applications & Health Endpoints
-Once the services are running, access:
-- **Frontend (Web Client & Tactical Portals):** `http://localhost:3000`
-- **Backend API Docs (Swagger UI):** `http://localhost:8000/docs`
-- **System Health Diagnostics:**
-  - Liveness: `http://localhost:8000/health`
-  - Readiness (database): `http://localhost:8000/api/v1/health`
-
-### 6. Frontend UI, Branding & Checks
-
-The web client lives in `frontend/` (Next.js App Router, React 19, TypeScript, Tailwind CSS). Every screen shares one identity and one top bar.
-
-**Logo and header**
-- The final logo is the **Q-Radar** lockup: R, E and S drawn as strokes, with the Q drawn as a radar sweep and a red alert dot. Assets are in `frontend/public/` (`logo.svg` for light backgrounds, `logo-dark.svg` for dark/navy backgrounds, `logo-symbol.svg` for the symbol alone, `icon.svg` for the app icon) and `frontend/src/app/icon.svg` is the favicon.
-- `frontend/src/components/Brand.tsx` exports `Logo`, `LogoMark`, `Brand`, `SiteHeader` and `NavLink`. Every page header uses `SiteHeader`; do not hand-roll headers or use emoji logos.
-- Brand tokens are defined in `frontend/src/app/globals.css`: navy `#0C4A75`, sky `#38BDF8` and alert red `#DC2626`, with Montserrat for header text.
-
-**Layout rules**
-- The document scrolls normally. Do not set `overflow: hidden` or `100vh` on `body`.
-- Only full-screen app views (the public map `/` and the `/dm` workspace) use the fixed `.app-screen` class, and `/dm` scrolls inside its own pane.
-- Header links and primary controls must be at least 44 px tall, and pages must not scroll horizontally at 375 px wide.
-
-**Checks** (run from `frontend/`)
-
-```bash
-npm run lint
-npm run build
-```
-
-The scroll and overflow regression test needs a running production build:
-
-```bash
-npx playwright install chromium
-npm run build
-npx next start -p 3100
-PLAYWRIGHT_BASE_URL=http://localhost:3100 npx playwright test e2e/scroll-layout.spec.ts
-```
+This builds and starts the database, backend (`:8000`), frontend (`:3000`) and AI workers (`:8001`).
 
 ---
 
-## 🌐 Production Deployment Architecture
+## Testing and quality checks
 
-The platform supports both multi-cloud serverless deployment and fully containerized production orchestration:
+| Check | Command |
+| :--- | :--- |
+| Backend lint | `python -m ruff check backend/` |
+| Backend security scan | `python -m bandit -r backend/app -ll` |
+| Backend unit tests | `python -m pytest backend/tests/test_units.py -v` |
+| Full backend suite (needs PostGIS) | `TEST_DATABASE_URL=postgresql://postgres:password@localhost:5432/drch_test python -m pytest backend/tests/ -v --tb=short` |
+| AI workers | `cd ai-workers && python -m pytest tests -q` |
+| Frontend lint and build | `cd frontend && npm run lint && npm run build` |
+| End-to-end (app running) | `cd frontend && npx playwright install chromium && npx playwright test` |
+| Core-loop smoke test | `python scripts/smoke.py --base-url http://localhost:8000` (needs `SMOKE_STAFF_*`) |
+| Audit hash chain | `cd backend && python -m app.cli verify-audit` |
+| Environment docs | `python scripts/check_env_docs.py` |
 
-### Option A: Cloud / Managed Services (Recommended)
-- **Frontend:** Hosted on **Vercel** (`frontend/`). Vercel's own Git deployments are disabled in `frontend/vercel.json`; production deploys come from the `cd.yml` deploy hook, and pull requests get a preview from `ci.yml`.
-- **Backend API:** Hosted on **Render** using `render.yaml` with auto-deployments, containerized runtime, and health check probes at `/health`.
-- **Database:** Hosted on **Neon Serverless PostgreSQL** with PostGIS enabled.
-
-### Option B: Self-Hosted Production Docker Compose
-To deploy the full stack from the published images (a release or commit tag is required; the app ports bind to localhost, so put a TLS-terminating reverse proxy in front):
-
-```bash
-IMAGE_TAG=v1.0.0 docker compose -f docker-compose.prod.yml up -d
-```
-
-### 🔄 CI/CD Automation & Security Gates
-The repository separates verification (CI) from publication & deployment (CD):
-1. **Continuous Integration ([`.github/workflows/ci.yml`](.github/workflows/ci.yml))**:
-   - Runs on every **Pull Request** targeting `main` (and on manual dispatch); path filters skip jobs for components that did not change.
-   - **Secrets scan:** Gitleaks.
-   - **Frontend:** Node.js 22, ESLint (warnings fail), production build, `npm audit` (high and critical fail).
-   - **Python:** Ruff, Bandit (SAST) and `pip-audit` for the backend and AI workers.
-   - **Backend and database:** PostGIS 16, migrations through `app.migrate`, audit hash-chain trigger check, the full pytest suite with coverage, and a strict core-loop smoke test.
-   - **AI workers:** their own pytest suite.
-   - **E2E:** Playwright against a real API and the built frontend.
-   - **Containers:** only after every check above passed, each changed image is built (in parallel), started, scanned with Trivy (critical and high fail) and, from same-repository pull requests, pushed as `ci-<head sha>` so CD can promote it.
-   - **Quality Gate:** `ci-gatekeeper` ("Pipeline Status / Quality Gate") is the required check on `main`; it fails when a required job failed or was skipped although its paths changed. The Vercel preview runs only when the pull request changes the frontend, every container image built and passed its scan (the gate runs after it and ignores its outcome), is updated in place as one PR comment on each new commit, and never blocks.
-2. **Continuous Deployment ([`.github/workflows/cd.yml`](.github/workflows/cd.yml))**:
-   - Runs on a push to `main` or a release tag (`vX.Y.Z`); manual runs from other branches are refused.
-   - Finds what changed since the last successful CD run, retags the image CI already scanned when the merged tree equals the pull request head (otherwise builds it), and publishes to **GHCR** (`latest`, `sha-*`).
-   - Deploys the backend to **staging**, waits for the new commit, runs the smoke test there, and only then deploys production. Vercel and the AI triage service deploy by their own hooks. A deploy whose secret is missing is shown as skipped. A newer push cancels an older run.
+The test database name must end in `_test`; the suite refuses any other. See [docs/testing.md](docs/testing.md) for fixtures and database guards.
 
 ---
 
-## 🤝 Contributing to DRCH
+## CI/CD and deployment
 
-We welcome contributions from all 10 team members! To keep our codebase clean and organized, please follow these guidelines:
+**Continuous integration** ([`ci.yml`](.github/workflows/ci.yml)) runs on every pull request to `main`, skipping components that did not change:
+- **Secrets and dependencies:** Gitleaks secret scan; `npm audit` and `pip-audit`.
+- **Code checks:** ESLint, Ruff and Bandit.
+- **Backend:** migrations and the full pytest suite on PostGIS, then a strict smoke test.
+- **AI workers:** their own pytest suite.
+- **End to end:** Playwright tests against a real backend.
+- **Containers:** images built and scanned with Trivy.
 
-1. **How to Decide What to Work On:**
-   - Cross-reference the **Team Roster** and **Sprint Roadmap** above.
-   - Find an unassigned GitHub Issue matching your phase/role and assign it to yourself.
-2. **Branching Strategy:**
-   - Never commit directly to `main`. 
-   - Create a new branch: `feature/<module>-<description>` (e.g., `feature/medic-dashboard`) or `bugfix/<description>`.
-3. **Commit Messages:**
-   - Follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) format (e.g., `feat(frontend): add map pins`, `fix(backend): resolve db crash`).
-4. **Submitting a Pull Request (PR):**
-   - Push your branch, open a PR against `main`, and link the Issue it resolves.
-   - Request a code review from the Team Lead or a peer. Once approved and CI passes, it will be merged.
+`Pipeline Status / Quality Gate` is the required check. CodeQL runs separately.
+
+**Continuous deployment** ([`cd.yml`](.github/workflows/cd.yml)) runs on every merge to `main` and on release tags:
+1. Publishes the images to GHCR.
+2. Deploys the backend to Render **staging** and smoke-tests it there.
+3. Promotes the backend to **production** once the staging smoke test passes.
+4. Deploys the frontend and the AI triage service through their own deploy hooks.
+
+A scheduled workflow ([`ingest-cron.yml`](.github/workflows/ingest-cron.yml)) wakes the backend and runs ingestion.
+
+| Component | Hosting |
+| :--- | :--- |
+| Frontend and BFF | Vercel |
+| Backend API (staging and production) | Render, from GHCR images |
+| AI triage service | Render |
+| Database | Neon PostgreSQL 16 + PostGIS |
+
+Render's free tier sleeps when idle, so the first request after a pause can take up to about 90 seconds. Release steps, rollback and secrets: [docs/release-runbook.md](docs/release-runbook.md).
 
 ---
 
-## 🔒 Compliance & Standards
+## Security and privacy
 
-- **NDMA / IRS Guidelines**: Incident categorization, resource management, and command chain mapping.
-- **DPDP Act 2023**: Strict data minimization, on-the-fly PII scrubbing, and right-to-forget compliance for citizen distress data.
-- **C-DAC ERSS 112 Norms**: Encrypted transport, RBAC audit trails, and strict data isolation for telecom metadata.
-- **MeitY Guidelines**: Strict hosting within certified sovereign data centers on Indian soil.
+- **Human in the loop.** AI suggestions are stored separately from the incident and never verify, prioritise or dispatch anything.
+- **Strong staff authentication.** Staff use Argon2id passwords and mandatory TOTP. Accounts lock after repeated failures, and sessions can be revoked.
+- **Tamper-evident audit.** Every state change is written to `audit_logs`. The log is hash-chained and protected by triggers that block updates and deletes.
+- **Least exposure of personal data.**
+  - Public feeds never include reporter details and round coordinates to 4 decimal places.
+  - Text is scrubbed of personal details before it reaches the AI service.
+  - Photos are visible only to their owner and to moderators, and every moderator view is audited.
+- **Safe payments.** Only a verified gateway signature confirms a donation, and sandbox payments are always labelled.
+
+Security review and threat notes: [docs/security-review.md](docs/security-review.md). Please report vulnerabilities privately to the maintainers rather than in a public issue.
 
 ---
 
-## 📜 License
+## Documentation
 
-This project is licensed under the **Apache License 2.0** - see the `LICENSE` file for details.
+| Topic | Document |
+| :--- | :--- |
+| Architecture and module map | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) |
+| REST API contracts and error format | [docs/api_contracts.md](docs/api_contracts.md) |
+| Environment variables | [docs/env-variables.md](docs/env-variables.md) |
+| Database ER diagram | [docs/er-diagram.md](docs/er-diagram.md) |
+| Testing guide | [docs/testing.md](docs/testing.md) |
+| Release and migration runbooks | [docs/release-runbook.md](docs/release-runbook.md), [docs/runbook-migration.md](docs/runbook-migration.md) |
+| Ingestion sources | [docs/ingestion-sources.md](docs/ingestion-sources.md) |
+| Payments and donations | [docs/payments.md](docs/payments.md) |
+| AI model card and evaluation | [docs/ai/model-card.md](docs/ai/model-card.md), [docs/ai/evaluation-report.md](docs/ai/evaluation-report.md) |
+| User guides | [Citizen and field](docs/frontend-citizen-field-guide.md), [Dispatcher and public](docs/frontend-dispatcher-public-guide.md) |
+| Demo script and defect list | [docs/demo-script.md](docs/demo-script.md), [docs/defect-list.md](docs/defect-list.md) |
+| AI-assisted development workflow | [docs/AI_WORKFLOW.md](docs/AI_WORKFLOW.md) |
+
+---
+
+## Team
+
+| Member | Role | Main areas |
+| :--- | :--- | :--- |
+| **Siddh** (lead) | Tech lead and integration | CI/CD, database migrations, security, releases, code review |
+| **Zalak** | Citizen and public backend | Citizen accounts and reporting, timelines, LLM adapter, AI-versus-human analytics |
+| **Nisarg** | Dispatch and field backend | Field assignments, Gujarat geofencing, team recommendations |
+| **Shlok** | Payments and dispatch | Payment gateways, donations and receipts, signal promotion |
+| **Rudra** | Ingestion | Official alert adapters (SACHET CAP), ingestion scheduler |
+| **Neeti** | AI lead | Datasets, text classification, evaluation, triage guardrails |
+| **Dhruvil** | Computer vision | Image classification, duplicate-text similarity |
+| **Janvi** | Frontend (citizen and field) | Report forms, My Reports, field dashboards, alerts layer |
+| **Tanishq** | Frontend (public and dispatch) | Public map, dispatcher workspace, recommendations UI |
+| **Dhruv** | QA and testing | Test fixtures, smoke and scenario tests, defect tracking |
+
+The work was delivered in three sprints: the core reporting and dispatch loop, then response and AI, then hardening and release. Per-member sprint tasks are in [docs/sprints/](docs/sprints/).
+
+---
+
+## Contributing
+
+Contributions follow a branch → pull request → review workflow with Conventional Commits and a required CI quality gate. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, and use the [issue forms](.github/ISSUE_TEMPLATE/) for bugs and feature requests.
+
+---
+
+## License
+
+Released under the [MIT License](LICENSE).
+
+---
+
+## Acknowledgements
+
+- Map data and geocoding: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors (tiles and Nominatim).
+- Official alerts: NDMA [SACHET](https://sachet.ndma.gov.in/) Common Alerting Protocol feeds.
+- Text model training data: R. Munro, *Disaster Response Messages* (CC BY 4.0) and Sinha, Nath and Swain, *Hierarchical Disaster Tweet Classification Corpus* (CC BY 4.0). See [ai-workers/text_model/README.md](ai-workers/text_model/README.md) for full attribution and terms.

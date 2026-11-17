@@ -1,233 +1,236 @@
-# Contributing to DRCH (Fork Workflow Guide)
+# Contributing to ResQ
 
-Thank you for contributing to **DRCH** (Disaster Response Coordination Hub)! This document explains step-by-step how to contribute to the repository using GitHub's **Fork & Pull Request Workflow**.
+Thank you for helping build ResQ, the Gujarat Disaster Response Coordination Hub. This guide covers how to set up, make a change, and get it reviewed and merged.
 
-Following this standard workflow ensures that your changes stay up-to-date with the main repository, avoid merge conflicts, and pass all Continuous Integration (CI) checks smoothly.
+## Contents
 
----
-
-## Table of Contents
-1. [Overview & Prerequisites](#1-overview--prerequisites)
-2. [Step 1: Fork the Repository](#step-1-fork-the-repository)
-3. [Step 2: Clone Your Fork Locally](#step-2-clone-your-fork-locally)
-4. [Step 3: Configure Upstream Remote](#step-3-configure-upstream-remote)
-5. [Step 4: Create a Dedicated Feature Branch](#step-4-create-a-dedicated-feature-branch)
-6. [Step 5: Make Changes & Test Locally](#step-5-make-changes--test-locally)
-7. [Step 6: Keep Your Branch In Sync with Upstream](#step-6-keep-your-branch-in-sync-with-upstream)
-8. [Step 7: Commit & Push to Your Fork](#step-7-commit--push-to-your-fork)
-9. [Step 8: Open a Pull Request (PR)](#step-8-open-a-pull-request-pr)
-10. [Step 9: PR Review & CI Checks](#step-9-pr-review--ci-checks)
-11. [Troubleshooting Common Issues](#troubleshooting-common-issues)
+1. [Ground rules](#1-ground-rules)
+2. [Set up your copy](#2-set-up-your-copy)
+3. [Create a branch](#3-create-a-branch)
+4. [Make your change](#4-make-your-change)
+5. [Run the checks locally](#5-run-the-checks-locally)
+6. [Commit](#6-commit)
+7. [Open a pull request](#7-open-a-pull-request)
+8. [Review, CI and merge](#8-review-ci-and-merge)
+9. [Issues](#9-issues)
+10. [Security problems](#10-security-problems)
+11. [Troubleshooting](#11-troubleshooting)
 
 ---
 
-## 1. Overview & Prerequisites
+## 1. Ground rules
 
-- **Upstream Repository**: The official central repository (`https://github.com/Siddhcreator-1706/IT314_Software_Project.git`)
-- **Origin Repository**: Your personal GitHub fork (`https://github.com/<your-username>/IT314_Software_Project.git`)
-- **Git & GitHub CLI / SSH Keys**: Ensure Git is installed and you are authenticated with GitHub.
+These rules come from the project's design and are checked in review:
+
+- **Humans decide.** AI output is advisory and stored separately. Code must never verify, prioritise, dispatch, escalate or close an incident automatically.
+- **Audit every state change.** Transitions write to the hash-chained `audit_logs` table; never update or delete audit rows.
+- **Lock when allocating.** Resource allocation uses `SELECT … FOR UPDATE` (`backend/app/services/resources.py`).
+- **Three scenarios only:** `cyclone`, `industrial_fire`, `urban_flooding`.
+- **Protect personal data.** Never expose reporter details publicly. Public coordinates are rounded to 4 decimal places. Never commit secrets, real personal data or real emergency reports.
+- **Neon PostgreSQL + PostGIS, application-managed auth.** No Supabase Auth or Supabase-specific SQL.
+- **Reuse before adding.** Check `backend/app/` and `frontend/src/` for an existing service, component or type first, and keep changes focused on one task.
+
+Background reading: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/api_contracts.md](docs/api_contracts.md) and [docs/env-variables.md](docs/env-variables.md).
 
 ---
 
-## Step 1: Fork the Repository
+## 2. Set up your copy
 
-1. In the top-right corner of the page, click the **Fork** button to fork the repository.
-2. Select your GitHub personal account or designated organization as the destination.
-3. Ensure **"Copy the `main` branch only"** is **unchecked** if you need other branches, or checked if you only need the latest stable `main`. Click **Create fork**.
-
----
-
-## Step 2: Clone Your Fork Locally
-
-Clone your newly created fork to your local machine (replace `<your-username>` with your GitHub username):
+**Team members** with write access clone the main repository directly:
 
 ```bash
-# Using HTTPS:
-git clone https://github.com/<your-username>/IT314_Software_Project.git
-
-# Or using SSH:
-git clone git@github.com:<your-username>/IT314_Software_Project.git
-
+git clone https://github.com/Siddhcreator-1706/IT314_Software_Project.git
 cd IT314_Software_Project
 ```
 
----
+**External contributors** fork the repository on GitHub, clone the fork, and add the main repository as `upstream`:
 
-## Step 3: Configure Upstream Remote
+```bash
+git clone https://github.com/<your-username>/IT314_Software_Project.git
+cd IT314_Software_Project
+git remote add upstream https://github.com/Siddhcreator-1706/IT314_Software_Project.git
+```
 
-Connecting your local repository to the original upstream repository allows you to pull the latest changes, preventing merge conflicts.
-
-1. Add the upstream remote:
-   ```bash
-   git remote add upstream https://github.com/Siddhcreator-1706/IT314_Software_Project.git
-   ```
-
-2. Verify that both `origin` (your fork) and `upstream` (the main repo) are configured:
-   ```bash
-   git remote -v
-   ```
-   *Expected output:*
-   ```text
-   origin    https://github.com/<your-username>/IT314_Software_Project.git (fetch)
-   origin    https://github.com/<your-username>/IT314_Software_Project.git (push)
-   upstream  https://github.com/Siddhcreator-1706/IT314_Software_Project.git (fetch)
-   upstream  https://github.com/Siddhcreator-1706/IT314_Software_Project.git (push)
-   ```
+Then follow [Getting started](README.md#getting-started) in the README to configure `.env`, start PostGIS and run the backend and frontend.
 
 ---
 
-## Step 4: Create a Dedicated Feature Branch
+## 3. Create a branch
 
-> [!IMPORTANT]
-> **Never commit directly to your `main` branch.** Always create a separate, descriptive branch for each feature or bugfix.
+Never commit to `main`; it only changes through reviewed pull requests. Start every change from an up-to-date `main`:
 
-1. Fetch the latest changes from `upstream/main`:
-   ```bash
-   git fetch upstream
-   git checkout main
-   git merge upstream/main
-   ```
+```bash
+git switch main
+git pull                          # forks: git fetch upstream && git merge upstream/main
+git switch -c feat/citizen-offline-drafts
+```
 
-2. Create and switch to a new branch:
-   ```bash
-   # Branch naming convention: feat/<topic>, fix/<topic>, or chore/<topic>
-   git checkout -b feat/citizen-report-geocoding
-   ```
+Name branches `<type>/<short-topic>` (for example `fix/dispatch-timeout`, `docs/api-errors`) or `<your-name>/<short-topic>`. Use one branch per task.
 
 ---
 
-## Step 5: Make Changes & Test Locally
+## 4. Make your change
 
-Before submitting code, verify that your changes build and pass linting checks locally.
+- Follow the existing structure and naming, and the FastAPI and Next.js App Router patterns already in the code.
+- Update the docs your change affects:
+  - an endpoint → `docs/api_contracts.md`;
+  - a setting → `docs/env-variables.md` (names only, never values);
+  - architecture → `docs/ARCHITECTURE.md`.
+- Add or update tests for new behaviour and bug fixes.
+- Database changes go in a new numbered file in `backend/db/migrations/`. Never edit a migration that has already been merged.
 
-### Frontend (`frontend/`):
+---
+
+## 5. Run the checks locally
+
+Run the checks for the parts you changed before pushing. CI runs the same ones.
+
+**Backend** (from the repository root, with your virtual environment active):
+
+```bash
+pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+python -m ruff check backend/
+python -m bandit -r backend/app -ll
+python -m pytest backend/tests/test_units.py -v
+python scripts/check_env_docs.py
+```
+
+The full suite needs PostGIS. With `docker compose up -d postgres-postgis` running:
+
+```bash
+TEST_DATABASE_URL=postgresql://postgres:password@localhost:5432/drch_test python -m pytest backend/tests/ -v --tb=short
+```
+
+The test database name must end in `_test`; never point tests at a shared or production database.
+
+**AI workers:**
+
+```bash
+cd ai-workers
+pip install -r requirements.txt -r requirements-dev.txt
+python -m pytest tests -q
+```
+
+**Frontend:**
+
 ```bash
 cd frontend
-npm ci --legacy-peer-deps
-
-# 1. Run ESLint (must have 0 errors)
-npm run lint
-
-# 2. Run TypeScript & Next.js production build check
-npm run build
+npm ci
+npm run lint      # must report 0 errors
+npm run build     # type check and production build
 ```
 
-### Backend (`backend/`):
-```bash
-cd backend
-# With your virtual environment activated:
-pip install -r requirements.txt
-pip install ruff bandit pytest httpx
+End-to-end tests (needs the backend and frontend running): `npx playwright install chromium && npx playwright test`.
 
-# 1. Lint and format checks
-ruff check .
-
-# 2. Security scan
-bandit -r app -ll
-
-# 3. Test suite
-pytest tests/ -v
-```
+See [docs/testing.md](docs/testing.md) for fixtures and database guards.
 
 ---
 
-## Step 6: Keep Your Branch In Sync with Upstream
+## 6. Commit
 
-Before pushing your changes, sync with any newly merged work on `upstream/main` to avoid merge conflicts:
+Commits follow [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/):
 
-```bash
-# Fetch latest commits from upstream
-git fetch upstream
-
-# Rebase your feature branch on upstream/main (recommended):
-git rebase upstream/main
-
-# Or merge upstream/main into your branch:
-git merge upstream/main
+```text
+type(scope): imperative summary
 ```
 
-If any conflicts arise, Git will prompt you to resolve them. Once resolved, continue with:
+- **Types:** `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`, `revert`.
+- **Scope** is the module, such as `citizen`, `dm`, `field`, `security`, `ai-workers`, `frontend`, `payments`.
+- **Subject:** lowercase, imperative ("add", not "added"), no trailing period, and specific. "fix bug", "update files" and "wip" are not accepted.
+- **Breaking changes:** mark with `!` after the type or a `BREAKING CHANGE:` footer.
+- **Body:** any non-trivial commit has a blank line and then a full description: what changed and why, which areas it affects, how you verified it, and any trade-off or follow-up. Don't hard-wrap the body to a fixed width.
+- **Issue references** go in a footer: `Refs #123` or `Fixes #123`.
+- **One concern per commit.** Keep unrelated code and documentation changes in separate commits.
+
+Stage only the files that belong to the task; avoid `git add .` so stray or untracked files are not committed:
+
 ```bash
+git add backend/app/routers/citizen.py backend/tests/test_citizen_incidents.py
+git commit
+git push -u origin feat/citizen-offline-drafts
+```
+
+Commits and pull request descriptions carry no AI co-author or attribution lines. The one exception: commits on an open pull request that apply review feedback or fix bugs found in that pull request (including CI failures) may end with the AI tool's co-author trailer.
+
+---
+
+## 7. Open a pull request
+
+1. Open a pull request against `main`. Forks: base repository `Siddhcreator-1706/IT314_Software_Project`.
+2. Give it a Conventional Commit title, for example `feat(citizen): add offline report drafts`.
+3. Fill in [the pull request template](.github/PULL_REQUEST_TEMPLATE.md) completely:
+   - Keep every section: Summary, Type of change, Related issue, Changes, Verification, Before merge or deploy, Screenshots and Checklist.
+   - Write "None" or "Not applicable" rather than deleting a section.
+   - Tick only what you actually did.
+4. Add screenshots for any user-facing change.
+5. Keep the pull request to one task. Mention new environment variables (names only) and any migration under *Before merge or deploy*.
+
+---
+
+## 8. Review, CI and merge
+
+**CI** ([`ci.yml`](.github/workflows/ci.yml)) runs on every pull request. It skips components you did not change.
+
+- **Secrets and dependencies:** a Gitleaks secret scan, `npm audit` and `pip-audit`.
+- **Code checks:** ESLint, Ruff and Bandit.
+- **Builds and tests:**
+  - the frontend production build;
+  - migrations and the full backend suite on PostGIS;
+  - a smoke test;
+  - the AI workers' tests;
+  - Playwright end-to-end tests.
+- **Containers:** builds and scans the container images with Trivy.
+
+`Pipeline Status / Quality Gate` must pass, and the branch must be up to date with `main`.
+
+**Review:**
+- Ask for a review from the project lead or the owner of the module you changed (see [Team](README.md#team)).
+- Answer review comments by pushing new commits to the same branch; the pull request and CI update automatically.
+
+**Merge:** a maintainer merges once the pull request is approved and green. Merging to `main` deploys to staging and then production (see [docs/release-runbook.md](docs/release-runbook.md)), so keep `main` releasable.
+
+First-time contributors from a fork need a maintainer to click **Approve and run** before CI starts.
+
+---
+
+## 9. Issues
+
+Blank issues are disabled. Use the forms in [.github/ISSUE_TEMPLATE/](.github/ISSUE_TEMPLATE/):
+
+- **Bug report** (`[Bug]: …`) for defects: steps to reproduce, expected and actual behaviour, environment.
+- **Feature request** (`[Feature]: …`) for enhancements.
+
+Fill every required field and keep the title prefix. Don't paste secrets, tokens or real personal data into issues.
+
+---
+
+## 10. Security problems
+
+Do not open a public issue for a vulnerability. Contact the maintainers privately (the project lead, via GitHub) with the details and steps to reproduce, and give them time to fix it before disclosure.
+
+---
+
+## 11. Troubleshooting
+
+**"This branch has conflicts that must be resolved."** Bring your branch up to date with `main`, resolve the conflict markers, then commit and push:
+
+```bash
+git fetch origin                  # forks: git fetch upstream
+git merge origin/main             # forks: git merge upstream/main
+# fix the files with <<<<<<< / ======= / >>>>>>> markers
 git add <resolved-files>
-git rebase --continue
+git commit
+git push
 ```
 
----
+**`SSL certificate problem` on Windows** (campus or office proxy):
 
-## Step 7: Commit & Push to Your Fork
-
-Follow conventional commit messages (e.g., `feat: ...`, `fix: ...`, `docs: ...`, `refactor: ...`):
-
-```bash
-git add .
-git commit -m "feat(citizen): add offline support for emergency reports"
-```
-
-Push the branch to **your fork** (`origin`):
-```bash
-git push -u origin feat/citizen-report-geocoding
-```
-
----
-
-## Step 8: Open a Pull Request (PR)
-
-1. Open your fork on GitHub in your browser (`https://github.com/<your-username>/IT314_Software_Project`).
-2. GitHub will automatically display a banner: **"Compare & pull request"**. Click it.
-3. Configure the PR details:
-   - **Base repository**: `Siddhcreator-1706/IT314_Software_Project`
-   - **Base branch**: `main` *(or the designated feature integration branch)*
-   - **Head repository**: `<your-username>/IT314_Software_Project`
-   - **Compare branch**: `feat/citizen-report-geocoding`
-4. Fill in the PR description:
-   - What changes were made and why.
-   - Any issue numbers linked (e.g., `Fixes #12`).
-   - Screenshots or verification steps if UI changes were made.
-5. Click **Create Pull Request**.
-
----
-
-## Step 9: PR Review & CI Checks
-
-Once the PR is opened:
-1. **Automated CI Checks**: GitHub Actions will automatically trigger:
-   - Frontend static analysis & Next.js Turbopack build
-   - Python code quality, Ruff linting, & Bandit SAST security scans
-   - Database schema migrations validation (PostGIS)
-   - Backend unit tests & API verification
-   - Container image build and Trivy vulnerability scan
-2. **Review & Revisions**:
-   - Repository maintainers will review the PR.
-   - If updates are requested, simply make the edits locally on your branch, commit, and push to your fork (`git push origin feat/citizen-report-geocoding`). The PR and CI will update automatically.
-3. **Merge**: Once approved and all checks are green, the maintainers will merge your PR into `main`.
-
----
-
-## Troubleshooting Common Issues
-
-### 1. `fatal: unable to access ... SSL certificate problem` (Windows)
-If you are behind a university/office proxy or firewall:
 ```powershell
 git config --global http.sslBackend schannel
 ```
 
-### 2. "This branch has conflicts that must be resolved" on GitHub
-Sync your branch with upstream:
-```bash
-git fetch upstream
-git checkout feat/your-branch-name
-git merge upstream/main
-# Fix conflict markers (<<<<<<<, =======, >>>>>>>)
-git add <conflicted-files>
-git commit -m "chore: resolve merge conflicts with upstream main"
-git push origin feat/your-branch-name
-```
+**Backend tests are all skipped.** No test database was reachable. Start PostGIS and set `TEST_DATABASE_URL` (see section 5).
 
-### 3. CI Checks are Not Triggering on Fork PRs
-- First-time contributors submitting from a fork require a repository maintainer to click **"Approve and run"** on the GitHub Actions tab for security reasons.
-- Ensure your PR is targetting `main` and has no merge conflicts.
+**CI did not start on a fork pull request.** A maintainer has to approve the first run. Also check that the pull request targets `main` and has no conflicts.
 
----
-
-### Happy Coding! 🚀
-If you have any questions or run into hurdles, feel free to open a GitHub Issue or reach out to the project maintainers.
+Questions? Open a discussion in your pull request or ask the maintainers.
