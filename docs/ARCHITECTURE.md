@@ -339,7 +339,7 @@ To maintain factual engineering clarity, capabilities in the repository are cata
 flowchart LR
     Dev["Pull request"] --> CI["ci.yml<br/>lint, tests on postgis/postgis:16-3.4,<br/>gitleaks, bandit, audits, image scan"]
     CI -->|"merge to main (ruleset: Quality Gate green, branch up to date)"| CD["cd.yml"]
-    CD --> GHCR[("GHCR images<br/>drch_backend, drch_frontend, drch_ai_workers<br/>tags: latest, sha-&lt;short&gt;")]
+    CD --> GHCR[("GHCR images<br/>drch_backend, drch_ai_workers<br/>tags: latest, sha-&lt;short&gt;")]
     CD -->|1. hook, sha image| Staging["Render staging<br/>drch-backend-latest"]
     Staging --> Smoke["scripts/smoke.py on staging<br/>(waits until the new GIT_SHA is live)"]
     Smoke -->|2. passes| Render["Render production<br/>it314-software-project-backend1 (FastAPI)"]

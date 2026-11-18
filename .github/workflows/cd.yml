@@ -103,88 +103,7 @@ jobs:
           check ai-workers "^(ai-workers/|$COMMON)"
 
   # ============================================================================
-  # 1. Build and Publish Frontend Container to GHCR (Only if frontend changed)
-  # ============================================================================
-  publish-frontend:
-    name: Publish Container / Frontend
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [detect-changes]
-    if: ${{ needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch' || github.ref_type == 'tag' }}
-    permissions:
-      contents: read
-      packages: write
-      pull-requests: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GitHub Container Registry (GHCR)
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      # CI already built, tested and scanned this code in the pull request. When the merged tree is
-      # identical to the PR head, retag that exact image instead of rebuilding it; otherwise (direct
-      # push, differing tree, no CI image) fall back to building from source below.
-      - name: Promote the CI-built image when it matches this commit
-        id: promote
-        if: ${{ github.ref == 'refs/heads/main' }}
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          echo "done=false" >> "$GITHUB_OUTPUT"
-          IMAGE="ghcr.io/${GITHUB_REPOSITORY,,}/drch_frontend"
-          PR_HEAD=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/pulls" \
-            --jq '[.[] | select(.base.ref == "main" and .merged_at != null)][0].head.sha // empty' 2>/dev/null || true)
-          if [ -z "$PR_HEAD" ]; then
-            echo "No merged pull request found for this commit; building from source."; exit 0
-          fi
-          TREE_NOW=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA" --jq .commit.tree.sha)
-          TREE_PR=$(gh api "repos/$GITHUB_REPOSITORY/commits/$PR_HEAD" --jq .commit.tree.sha)
-          if [ "$TREE_NOW" != "$TREE_PR" ]; then
-            echo "Merged tree differs from the pull request head; building from source."; exit 0
-          fi
-          if docker buildx imagetools create -t "$IMAGE:latest" -t "$IMAGE:sha-${GITHUB_SHA:0:7}" "$IMAGE:ci-$PR_HEAD"; then
-            echo "done=true" >> "$GITHUB_OUTPUT"
-            echo "version=$PR_HEAD" >> "$GITHUB_OUTPUT"
-            echo "Promoted $IMAGE:ci-$PR_HEAD to latest and sha-${GITHUB_SHA:0:7}."
-          else
-            echo "No CI image $IMAGE:ci-$PR_HEAD found; building from source."
-          fi
-
-      - name: Extract metadata (tags, labels) for Docker
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}/drch_frontend
-          tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha,format=short,prefix=sha-
-            type=ref,event=tag
-
-      - name: Build and push verified container to GHCR
-        if: ${{ steps.promote.outputs.done != 'true' }}
-        uses: docker/build-push-action@v6
-        with:
-          context: ./frontend
-          file: ./frontend/Dockerfile
-          push: true
-          build-args: |
-            NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
-            NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend
-
-  # ============================================================================
-  # 2. Build and Publish Backend Container to GHCR (Only if backend changed)
+  # 1. Build and Publish Backend Container to GHCR (Only if backend changed)
   # ============================================================================
   publish-backend:
     name: Publish Container / Backend
@@ -266,7 +185,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=backend
 
   # ============================================================================
-  # 3. Build and Publish AI Workers Container to GHCR (Only if ai-workers changed)
+  # 2. Build and Publish AI Workers Container to GHCR (Only if ai-workers changed)
   # ============================================================================
   publish-ai-workers:
     name: Publish Container / AI Workers
@@ -467,7 +386,7 @@ jobs:
           python scripts/smoke.py --base-url "$API_URL"
 
   # ============================================================================
-  # 4. Production Deployment (Vercel, Render backend and Render AI run in parallel)
+  # 3. Production Deployment (Vercel, Render backend and Render AI run in parallel)
   # ============================================================================
   # Each deploy job waits only for what it actually deploys: Vercel builds the frontend itself
   # (it does not use the GHCR image) and starts immediately; Render jobs wait for their own image.
@@ -636,7 +555,7 @@ jobs:
           fi
 
   # ============================================================================
-  # 5. Deployment summary: a skipped deploy must never look like a green run
+  # 4. Deployment summary: a skipped deploy must never look like a green run
   # ============================================================================
   # The check jobs above turn a missing hook or URL secret into a notice and the deploy jobs into
   # "Skipped", which GitHub shows as green. This job compares what the change needed with what was

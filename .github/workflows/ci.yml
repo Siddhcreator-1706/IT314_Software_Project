@@ -431,6 +431,8 @@ jobs:
       packages: write
     # Images are built, scanned and published only after every other check passed: the secrets scan,
     # lint/SAST, the test suites and e2e. "Skipped" is fine for components whose paths did not change.
+    # Only the backend and AI workers ship as images; the frontend deploys to Vercel from source and
+    # is already built and tested by frontend-check and e2e.
     needs:
       - detect-changes
       - security-secrets-scan
@@ -456,14 +458,6 @@ jobs:
             build_args: |
               GIT_SHA=${{ github.event.pull_request.head.sha || github.sha }}
             enabled: ${{ needs.detect-changes.outputs.backend == 'true' || github.event_name == 'workflow_dispatch' }}
-          - name: frontend
-            context: ./frontend
-            file: ./frontend/Dockerfile
-            image_name: drch_frontend
-            build_args: |
-              NEXT_PUBLIC_API_URL=${{ vars.NEXT_PUBLIC_API_URL }}
-              NEXT_PUBLIC_GOOGLE_CLIENT_ID=${{ vars.NEXT_PUBLIC_GOOGLE_CLIENT_ID }}
-            enabled: ${{ needs.detect-changes.outputs.frontend == 'true' || github.event_name == 'workflow_dispatch' }}
           - name: ai-workers
             context: ./ai-workers
             file: ./ai-workers/Dockerfile
@@ -504,7 +498,6 @@ jobs:
               docker run --rm "$IMAGE" python -c "import main"
               exit 0 ;;
             ai-workers) PORT_NUM=8001; URL_PATH=/health ;;
-            frontend)   PORT_NUM=3000; URL_PATH=/ ;;
           esac
           docker run -d --name ci-smoke -p "$PORT_NUM:$PORT_NUM" "$IMAGE"
           for i in $(seq 1 30); do
