@@ -8,25 +8,29 @@ and reinforcement backup team requests with strict cross-team isolation.
 import logging
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Query
 from psycopg import sql
 
 from app import audit, db
 from app.auth import FieldPrincipal, FieldUser
-from app.common import notify
 from app.config import get_settings
 from app.errors import ApiError, database_unavailable, not_found
+from app.geo import is_in_gujarat
+from app.ratelimit import rate_limit
 from app.schemas.field import (
     FieldAcknowledgementResponse,
     FieldAssignmentResponse,
     FieldCompletionRequest,
+    FieldLocationRequest,
+    FieldLocationResponse,
     FieldProfileResponse,
     FieldProgressRequest,
     FieldProgressResponse,
     FieldRejectionRequest,
     FieldTeamRequest,
+    FieldTeamRequestItem,
     FieldTeamRequestResponse,
 )
 from app.services.dispatch import (
@@ -90,6 +94,21 @@ def _run_field_event(
     if error:
         raise error
     return res
+
+
+def _record_position(conn, team_resource_id: uuid.UUID, latitude: float, longitude: float) -> datetime:
+    """Move the team's marker on the live map. Deliberately does not bump the resource's version, so a
+    dispatcher editing the same resource is never forced to reload by a position update."""
+    row = conn.execute(
+        """
+        UPDATE resources
+        SET current_geom = ST_SetSRID(ST_MakePoint(%s, %s), 4326)::geography, position_updated_at = now()
+        WHERE resource_id = %s
+        RETURNING position_updated_at
+        """,
+        (longitude, latitude, team_resource_id),
+    ).fetchone()
+    return row["position_updated_at"]
 
 
 # ── Profile & Assignments ───────────────────────────────────────────────
@@ -197,6 +216,42 @@ def get_field_assignments(
     ]
 
 
+@router.post(
+    "/location",
+    response_model=FieldLocationResponse,
+    dependencies=[rate_limit("field-location", 240, 3600)],
+)
+def field_report_location(body: FieldLocationRequest, principal: FieldUser) -> FieldLocationResponse:
+    """Share the team's position with dispatchers so its marker on the live map follows the team.
+
+    Accepted only while the team has an active dispatch (409 NO_ACTIVE_DISPATCH otherwise), so a responder
+    who is off duty is never tracked, and only inside Gujarat (422 OUTSIDE_GUJARAT). It moves the whole
+    team's marker, not an individual's. Position updates are not audited one by one: they are frequent
+    and are not a state change.
+    """
+    if not is_in_gujarat(body.latitude, body.longitude):
+        raise ApiError(422, "OUTSIDE_GUJARAT", "The position is outside Gujarat")
+    with db.transaction() as conn:
+        active = conn.execute(
+            """
+            SELECT 1 FROM dispatch_orders d
+            JOIN resource_assignments ra ON ra.dispatch_id = d.dispatch_id
+            WHERE ra.resource_id = %s AND ra.released_at IS NULL
+              AND d.status IN ('REQUESTED', 'ACKNOWLEDGED', 'DISPATCHED')
+            LIMIT 1
+            """,
+            (principal.team_resource_id,),
+        ).fetchone()
+        if active is None:
+            raise ApiError(
+                409,
+                "NO_ACTIVE_DISPATCH",
+                "Your location is shared only while your team has an active dispatch.",
+            )
+        recorded_at = _record_position(conn, principal.team_resource_id, body.latitude, body.longitude)
+    return FieldLocationResponse(recorded_at=recorded_at)
+
+
 # ── Tactical Operations & State Transitions ─────────────────────────────
 
 
@@ -266,7 +321,7 @@ def field_report_progress(
     body: FieldProgressRequest,
     principal: FieldUser,
 ) -> FieldProgressResponse:
-    """Field responder reports operational progress milestone (EN_ROUTE, ON_SCENE, UPDATE)."""
+    """Field responder reports operational progress milestone (EN_ROUTE, ON_SCENE, UPDATE, DELAYED)."""
     def handler(conn, dispatch):
         updated = apply_progress(
             conn,
@@ -280,6 +335,10 @@ def field_report_progress(
             longitude=body.longitude,
             dispatch=dispatch,
         )
+        # A progress report that carries coordinates also moves the team's marker. A position outside
+        # Gujarat is ignored here rather than failing the report itself.
+        if body.latitude is not None and body.longitude is not None and is_in_gujarat(body.latitude, body.longitude):
+            _record_position(conn, principal.team_resource_id, body.latitude, body.longitude)
         return FieldProgressResponse(
             progress_id=updated.get("progress_id") or uuid.uuid4(),
             dispatch_id=dispatch_id,
@@ -291,19 +350,70 @@ def field_report_progress(
     return _run_field_event(dispatch_id, principal, handler)
 
 
+@router.get("/team-requests", response_model=list[FieldTeamRequestItem])
+def list_my_team_requests(
+    principal: FieldUser,
+    status: Annotated[
+        Literal["OPEN", "APPROVED", "DECLINED", "ALL"], Query(description="Only requests in this state")
+    ] = "ALL",
+    limit: Annotated[int, Query(ge=1, le=100)] = 50,
+) -> list[FieldTeamRequestItem]:
+    """Backup requests on the responder's team's dispatches, with the dispatcher's decision once made.
+
+    Open requests come first, then newest first. Requests are visible to the whole team, not only the
+    member who filed them. A team never sees another team's requests: they are matched through the
+    dispatches the team is assigned to.
+    """
+    if not get_settings().database_url:
+        raise database_unavailable()
+
+    with db.transaction() as conn:
+        rows = conn.execute(
+            """
+            SELECT tr.request_id, tr.dispatch_id, d.dispatch_ref, tr.required_capability, tr.note, tr.status,
+                   tr.decision_rationale, tr.decided_at, tr.created_at
+            FROM team_requests tr
+            JOIN dispatch_orders d ON d.dispatch_id = tr.dispatch_id
+            WHERE EXISTS (
+                SELECT 1 FROM resource_assignments ra
+                WHERE ra.dispatch_id = d.dispatch_id AND ra.resource_id = %(team_id)s
+            )
+              AND (%(status)s = 'ALL' OR tr.status = %(status)s)
+            ORDER BY (tr.status = 'OPEN') DESC, tr.created_at DESC
+            LIMIT %(limit)s
+            """,
+            {"team_id": principal.team_resource_id, "status": status, "limit": limit},
+        ).fetchall()
+    return [FieldTeamRequestItem(**r) for r in rows]
+
+
 @router.post(
     "/dispatches/{dispatch_id}/team-requests",
     response_model=FieldTeamRequestResponse,
     status_code=201,
+    dependencies=[rate_limit("field-backup", 20, 3600)],
 )
 def field_request_team(
     dispatch_id: uuid.UUID,
     body: FieldTeamRequest,
     principal: FieldUser,
 ) -> FieldTeamRequestResponse:
-    """Field responder requests specialized reinforcement or backup units."""
+    """Field responder requests specialized reinforcement or backup units.
+
+    A team cannot have two open requests for the same capability on one dispatch (409
+    DUPLICATE_OPEN_REQUEST); once a dispatcher has decided, a new request is allowed.
+    """
     with db.transaction() as conn:
-        dispatch = _get_verified_team_dispatch(conn, principal, dispatch_id)
+        dispatch = _get_verified_team_dispatch(conn, principal, dispatch_id)  # also locks the dispatch row
+        if conn.execute(
+            "SELECT 1 FROM team_requests WHERE dispatch_id = %s AND lower(required_capability) = lower(%s) AND status = 'OPEN'",
+            (dispatch_id, body.required_capability.strip()),
+        ).fetchone():
+            raise ApiError(
+                409,
+                "DUPLICATE_OPEN_REQUEST",
+                "Your team already has an open request for this capability on this dispatch. Wait for the dispatcher's decision.",
+            )
 
         row = conn.execute(
             """
@@ -333,23 +443,23 @@ def field_request_team(
             ip=principal.ip,
         )
 
-        # Notify active dispatchers of the backup request
-        dispatchers = conn.execute(
+        # Notify every active dispatcher in one statement. This used to insert one notification per dispatcher
+        # in a loop, which cost two database round trips each and held the dispatch row locked for the whole
+        # fan-out. Staff accounts never receive the email copy notify() can add, so the rows are identical.
+        conn.execute(
             """
-            SELECT p.user_id FROM staff_permissions p
+            INSERT INTO notifications (user_id, event_code, channel, title, body, related_id, status)
+            SELECT DISTINCT p.user_id, 'TEAM_BACKUP_REQUESTED', 'IN_APP'::notif_channel, %s, %s, %s, 'QUEUED'::notif_status
+            FROM staff_permissions p
             JOIN users u ON u.user_id = p.user_id
             WHERE p.permission = 'DISPATCH' AND u.status = 'ACTIVE'
-            """
-        ).fetchall()
-        for d in dispatchers:
-            notify(
-                conn,
-                user_id=d["user_id"],
-                event_code="TEAM_BACKUP_REQUESTED",
-                title=f"Backup requested for {dispatch['dispatch_ref']}",
-                body=f"Team {principal.team_name} requests capability '{body.required_capability}'.",
-                related_id=dispatch_id,
-            )
+            """,
+            (
+                f"Backup requested for {dispatch['dispatch_ref']}"[:200],
+                f"Team {principal.team_name} requests capability '{body.required_capability}'.",
+                dispatch_id,
+            ),
+        )
 
         return FieldTeamRequestResponse(
             request_id=row["request_id"],

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { Badge, Button, Card, Dialog, EmptyState, ErrorState, Field, Input, LoadingRows, PageHeader, Textarea, type Tone } from "@/components/ui";
 
@@ -19,6 +19,25 @@ type Assignment = {
   dispatched_at: string;
 };
 
+type BackupRequest = {
+  request_id: string;
+  dispatch_id: string;
+  dispatch_ref: string;
+  required_capability: string;
+  note: string | null;
+  status: "OPEN" | "APPROVED" | "DECLINED";
+  decision_rationale: string | null;
+  decided_at: string | null;
+  created_at: string;
+};
+
+const requestTone: Record<BackupRequest["status"], Tone> = { OPEN: "medium", APPROVED: "low", DECLINED: "high" };
+const requestLabel: Record<BackupRequest["status"], string> = {
+  OPEN: "Waiting for the dispatcher",
+  APPROVED: "Approved",
+  DECLINED: "Declined",
+};
+
 type DialogType = "reject" | "delay" | "backup" | "complete";
 
 type ActiveDialog = {
@@ -35,6 +54,11 @@ const priorityTone: Record<string, Tone> = {
 
 export default function FieldPage() {
   const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [requests, setRequests] = useState<BackupRequest[]>([]);
+  // Sharing the team's position is an explicit opt-in each time the page is opened, never a default.
+  const [sharing, setSharing] = useState(false);
+  const [shareNote, setShareNote] = useState<string | null>(null);
+  const lastFix = useRef<{ latitude: number; longitude: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -57,6 +81,18 @@ export default function FieldPage() {
       setError(err instanceof Error ? err.message : "Failed to load field assignments");
     } finally {
       setLoading(false);
+    }
+  }, []);
+
+  // The team's backup requests and the dispatcher's decisions. A failure here must not hide the assignments.
+  const loadRequests = useCallback(async () => {
+    try {
+      const res = await fetch("/api/field/team-requests", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      setRequests(Array.isArray(data) ? data : []);
+    } catch {
+      // Keep showing the last list; the assignments screen reports connection problems.
     }
   }, []);
 
@@ -86,28 +122,95 @@ export default function FieldPage() {
       }
     };
 
-    fetchAssignments();
-    const interval = setInterval(fetchAssignments, 15000);
+    const refresh = () => {
+      fetchAssignments();
+      loadRequests();
+    };
+    refresh();
+    const interval = setInterval(refresh, 15000);
     return () => {
       ignore = true;
       clearInterval(interval);
     };
-  }, []);
+  }, [loadRequests]);
+
+  // While sharing is on, send the device position every minute. The server accepts it only while the team has
+  // an active dispatch, and says so when it does not; sharing then simply carries on and resumes by itself.
+  useEffect(() => {
+    if (!sharing) return;
+    let stopped = false;
+    const send = () => {
+      navigator.geolocation.getCurrentPosition(
+        async (pos) => {
+          const fix = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+          lastFix.current = fix;
+          try {
+            const res = await fetch("/api/field/location", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify(fix),
+            });
+            if (stopped) return;
+            if (res.ok) {
+              setShareNote(`Shared with dispatchers at ${new Date().toLocaleTimeString()}`);
+            } else {
+              const data = await res.json().catch(() => ({}));
+              setShareNote(data?.error?.message ?? `Could not share your location (${res.status}).`);
+            }
+          } catch {
+            if (!stopped) setShareNote("Could not reach the server. Trying again in a minute.");
+          }
+        },
+        (err) => {
+          if (stopped) return;
+          if (err.code === err.PERMISSION_DENIED) {
+            setShareNote("This device refused location access. Allow it in the browser settings to share.");
+            setSharing(false);
+          } else {
+            setShareNote("Could not get your position. Trying again in a minute.");
+          }
+        },
+        { enableHighAccuracy: true, maximumAge: 30_000, timeout: 15_000 },
+      );
+    };
+    send();
+    const timer = setInterval(send, 60_000);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+    };
+  }, [sharing]);
+
+  const toggleSharing = () => {
+    if (sharing) {
+      setSharing(false);
+      lastFix.current = null;
+      setShareNote(null);
+    } else if (typeof navigator !== "undefined" && "geolocation" in navigator) {
+      setShareNote("Getting your position…");
+      setSharing(true);
+    } else {
+      setShareNote("This device cannot share its location.");
+    }
+  };
 
   /** POST a field action. Returns null on success, or the error message to show the responder. */
   const postAction = async (dispatchId: string, url: string, body?: unknown): Promise<string | null> => {
     setBusyId(dispatchId);
     try {
+      // While sharing is on, a progress report carries the latest known position too.
+      const payload =
+        url.endsWith("/progress") && body && lastFix.current ? { ...(body as object), ...lastFix.current } : body;
       const res = await fetch(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: body ? JSON.stringify(body) : "{}",
+        body: payload ? JSON.stringify(payload) : "{}",
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
         return data?.error?.message ?? `Action failed (${res.status}).`;
       }
-      await loadAssignments();
+      await Promise.all([loadAssignments(), loadRequests()]);
       return null;
     } catch {
       return "Could not reach the server. Check your connection and try again.";
@@ -184,6 +287,23 @@ export default function FieldPage() {
           </Button>
         }
       />
+
+      <Card bodyClassName="p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            variant={sharing ? "primary" : "secondary"}
+            className="min-h-12 px-5 text-sm font-semibold"
+            onClick={toggleSharing}
+            aria-pressed={sharing}
+          >
+            {sharing ? "Sharing location: ON (tap to stop)" : "Share my location with dispatchers"}
+          </Button>
+          <p className="min-w-0 flex-1 text-xs text-muted" aria-live="polite">
+            {shareNote ??
+              "Off by default. When on, dispatchers see your team's position on their map while your team has an active dispatch. It is never shared otherwise, and you can stop at any time."}
+          </p>
+        </div>
+      </Card>
 
       {loading && <LoadingRows rows={3} />}
 
@@ -338,6 +458,35 @@ export default function FieldPage() {
             );
           })}
         </div>
+      )}
+
+      {requests.length > 0 && (
+        <Card
+          title="Backup requests"
+          subtitle="What your team asked for, and the dispatcher's answer. Anyone on your team can see these."
+          bodyClassName="p-0"
+        >
+          <ul className="divide-y divide-border">
+            {requests.map((r) => (
+              <li key={r.request_id} className="space-y-1.5 px-5 py-4">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold">{r.required_capability}</span>
+                  <Badge tone={requestTone[r.status]}>{requestLabel[r.status]}</Badge>
+                  <span className="font-mono text-xs text-muted">{r.dispatch_ref}</span>
+                  <span className="ml-auto text-xs text-muted">
+                    {r.decided_at ? `Decided ${new Date(r.decided_at).toLocaleTimeString()}` : `Asked ${new Date(r.created_at).toLocaleTimeString()}`}
+                  </span>
+                </div>
+                {r.note && <p className="text-xs text-muted">You said: {r.note}</p>}
+                {r.decision_rationale && (
+                  <p className="rounded-lg bg-surface-muted/60 px-3 py-2 text-sm">
+                    <span className="font-medium">Dispatcher:</span> {r.decision_rationale}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
 
       {/* Action Dialogs */}

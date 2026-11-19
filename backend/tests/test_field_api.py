@@ -293,7 +293,8 @@ def test_field_report_progress_en_route(
     }
 
     mock_conn = MagicMock()
-    mock_conn.execute.return_value.fetchone.return_value = mock_dispatch
+    # The dispatch lookup, then the team-position update that the coordinates in the report trigger.
+    mock_conn.execute.return_value.fetchone.side_effect = [mock_dispatch, {"position_updated_at": datetime.now(UTC)}]
 
     @contextmanager
     def mock_tx():
@@ -323,6 +324,8 @@ def test_field_report_progress_en_route(
     assert res.dispatch_id == dispatch_id
     assert res.note == body.note
     mock_prog.assert_called_once()
+    executed = [str(call.args[0]) for call in mock_conn.execute.call_args_list]
+    assert any("UPDATE resources" in q and "position_updated_at" in q for q in executed), "coordinates move the team marker"
 
 
 def test_field_request_backup_team_success(
@@ -341,10 +344,8 @@ def test_field_request_backup_team_success(
     mock_conn = MagicMock()
     mock_conn.execute.return_value.fetchone.side_effect = [
         mock_dispatch,
+        None,  # no open request for this capability yet
         {"request_id": request_id, "created_at": datetime.now(UTC)},
-    ]
-    mock_conn.execute.return_value.fetchall.return_value = [
-        {"user_id": uuid.uuid4()}
     ]
 
     @contextmanager
@@ -354,7 +355,6 @@ def test_field_request_backup_team_success(
     with (
         patch("app.db.transaction", mock_tx),
         patch("app.audit.record") as mock_audit,
-        patch("app.routers.field.notify") as mock_notify,
     ):
         body = FieldTeamRequest(
             required_capability="medical_first_aid",
@@ -367,7 +367,9 @@ def test_field_request_backup_team_success(
     assert res.required_capability == "medical_first_aid"
     assert res.status == "OPEN"
     mock_audit.assert_called_once()
-    mock_notify.assert_called_once()
+    inserted = [call for call in mock_conn.execute.call_args_list if "INSERT INTO notifications" in str(call.args[0])]
+    assert len(inserted) == 1, "one set-based insert reaches every dispatcher"
+    assert inserted[0].args[1][0].startswith("Backup requested for DISP-2026-")
 
 
 def test_field_complete_dispatch_success(

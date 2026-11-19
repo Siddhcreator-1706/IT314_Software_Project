@@ -353,7 +353,8 @@ def test_progress_reporting_advances_incident_status(
     }
 
     mock_conn = MagicMock()
-    mock_conn.execute.return_value.fetchone.return_value = mock_dispatch
+    # The dispatch lookup, then the team-position update that the coordinates in the report trigger.
+    mock_conn.execute.return_value.fetchone.side_effect = [mock_dispatch, {"position_updated_at": datetime.now(UTC)}]
 
     @contextmanager
     def mock_tx():
@@ -382,6 +383,8 @@ def test_progress_reporting_advances_incident_status(
     assert res.status == "EN_ROUTE"
     assert res.note == body.note
     mock_prog.assert_called_once()
+    executed = [str(call.args[0]) for call in mock_conn.execute.call_args_list]
+    assert any("UPDATE resources" in q and "position_updated_at" in q for q in executed), "coordinates move the team marker"
 
 
 # ── 8. Backup Team Request ──────────────────────────────────────────────
@@ -403,10 +406,8 @@ def test_backup_team_request_records_open_status(
     mock_conn = MagicMock()
     mock_conn.execute.return_value.fetchone.side_effect = [
         mock_dispatch,
+        None,  # no open request for this capability yet
         {"request_id": request_id, "created_at": datetime.now(UTC)},
-    ]
-    mock_conn.execute.return_value.fetchall.return_value = [
-        {"user_id": uuid.uuid4()}
     ]
 
     @contextmanager
@@ -416,7 +417,6 @@ def test_backup_team_request_records_open_status(
     with (
         patch("app.db.transaction", mock_tx),
         patch("app.audit.record") as mock_audit,
-        patch("app.routers.field.notify") as mock_notify,
     ):
         body = FieldTeamRequest(
             required_capability="hazmat",
@@ -429,7 +429,9 @@ def test_backup_team_request_records_open_status(
     assert res.required_capability == "hazmat"
     assert res.status == "OPEN"
     mock_audit.assert_called_once()
-    mock_notify.assert_called_once()
+    inserted = [call for call in mock_conn.execute.call_args_list if "INSERT INTO notifications" in str(call.args[0])]
+    assert len(inserted) == 1, "one set-based insert reaches every dispatcher"
+    assert inserted[0].args[1][0].startswith("Backup requested for DISP-2026-")
 
 
 # ── 9. Mission Completion ───────────────────────────────────────────────

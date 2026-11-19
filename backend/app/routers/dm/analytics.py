@@ -161,7 +161,7 @@ def operational_map(
             SELECT r.resource_id, r.name, r.type, r.status, r.quantity_available, r.quantity_total,
                    a.name AS agency_name,
                    ST_Y(r.current_geom::geometry) AS latitude, ST_X(r.current_geom::geometry) AS longitude,
-                   r.updated_at
+                   r.updated_at, r.position_updated_at
             FROM resources r LEFT JOIN agencies a ON a.agency_id = r.agency_id
             WHERE r.current_geom IS NOT NULL
             """
