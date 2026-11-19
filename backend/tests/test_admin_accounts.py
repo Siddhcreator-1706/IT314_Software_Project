@@ -702,8 +702,10 @@ def test_export_is_a_csv_of_the_filtered_directory_and_is_audited(make, client, 
     assert r.status_code == 200
     assert r.headers["content-type"].startswith("text/csv") and "attachment" in r.headers["content-disposition"]
     assert r.headers["cache-control"] == "no-store"
+    assert r.headers["x-export-truncated"] == "false"
     rows = list(csv.reader(io.StringIO(r.text.lstrip(chr(0xFEFF)))))
     assert rows[0][:3] == ["Name", "Email", "Role"] and len(rows) == 2
+    assert rows[1][5] == "yes"  # "Authenticator set up" comes from a boolean and is written as yes or no
     assert rows[1][0] == f"Export {tag}" and rows[1][2] == "DISASTER_MGMT" and rows[1][8] == "DISPATCH PUBLISHER"
 
     entry = sql.execute(
@@ -711,6 +713,28 @@ def test_export_is_a_csv_of_the_filtered_directory_and_is_audited(make, client, 
         (admin["user_id"],),
     ).fetchone()
     assert entry["after_state"]["rows"] == 1 and entry["after_state"]["filters"]["q"] == tag
+
+
+def test_an_export_cut_at_the_row_cap_says_so(make, client, sql, monkeypatch):
+    import csv
+    import io
+
+    admin, headers = _admin(make)
+    tag = uuid.uuid4().hex[:8]
+    for _ in range(2):
+        person = make.user("DISASTER_MGMT")
+        sql.execute("UPDATE users SET full_name = %s WHERE user_id = %s", (f"Cap {tag}", person["user_id"]))
+    monkeypatch.setattr("app.routers.admin.EXPORT_LIMIT", 1)
+
+    r = _export(client, headers, q=tag)
+    assert r.status_code == 200
+    assert r.headers["x-export-truncated"] == "true"
+    assert len(list(csv.reader(io.StringIO(r.text.lstrip(chr(0xFEFF)))))) == 2  # header plus the one row allowed
+    entry = sql.execute(
+        "SELECT after_state FROM audit_logs WHERE action = 'ACCOUNTS_EXPORTED' AND actor_id = %s ORDER BY audit_id DESC LIMIT 1",
+        (admin["user_id"],),
+    ).fetchone()
+    assert entry["after_state"]["rows"] == 1 and entry["after_state"]["truncated"] is True
 
 
 def test_export_never_includes_secrets_or_citizens(make, client):

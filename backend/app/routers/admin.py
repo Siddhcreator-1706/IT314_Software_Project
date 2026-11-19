@@ -10,14 +10,12 @@ Privacy: citizens are never listed here, and no phone number, password hash, MFA
 detail is returned. Every route needs the APP_MGMT role with verified MFA (AdminUser).
 """
 
-import csv
-import io
 import os
 import uuid
 from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Query
 from psycopg import sql
 from pydantic import BaseModel, Field
 
@@ -29,6 +27,7 @@ from app.errors import ApiError, conflict, not_found
 from app.ratelimit import rate_limit
 from app.services import email as email_service
 from app.services import sessions
+from app.services.csv_export import EXPORT_LIMIT, csv_response
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
@@ -138,18 +137,7 @@ def list_accounts(
     return {**page_body(items, total, page), "summary": summary}
 
 
-EXPORT_LIMIT = 5000
 _EXPORT_HEADER = ["Name", "Email", "Role", "Designation", "Status", "Authenticator set up", "Last sign-in", "Created", "Permissions", "Team"]
-
-
-def _csv_cell(value) -> str:
-    """One CSV cell. Text a spreadsheet would run as a formula (= + - @, tab, CR) is prefixed with a quote."""
-    if value is None:
-        return ""
-    if isinstance(value, datetime):
-        return value.astimezone(UTC).strftime("%Y-%m-%d %H:%M UTC")
-    text = str(value)
-    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
 
 
 @router.get("/accounts/export", dependencies=[rate_limit("admin-export", 10, 3600)])
@@ -168,36 +156,34 @@ def export_accounts(
     with db.transaction() as conn:
         rows = conn.execute(
             sql.SQL(_LIST_QUERY).format(from_=sql.SQL(_FROM), where=f.where()),
-            {**f.params, "limit": EXPORT_LIMIT, "offset": 0},
+            {**f.params, "limit": EXPORT_LIMIT + 1, "offset": 0},
         ).fetchall()
+        truncated = len(rows) > EXPORT_LIMIT
+        rows = rows[:EXPORT_LIMIT]
         audit.record(
             conn,
             actor=principal,
             action="ACCOUNTS_EXPORTED",
             entity_type="user",
             rationale=f"Exported {len(rows)} staff accounts",
-            after={"rows": len(rows), "filters": {"q": (q or "").strip() or None, "role": role, "status": status}},
+            after={
+                "rows": len(rows),
+                "truncated": truncated,
+                "filters": {"q": (q or "").strip() or None, "role": role, "status": status},
+            },
             ip=principal.ip,
         )
-    out = io.StringIO(newline="")
-    writer = csv.writer(out)
-    writer.writerow(_EXPORT_HEADER)
-    for r in rows:
-        writer.writerow(
-            [
-                _csv_cell(v)
-                for v in (
-                    r["full_name"], r["email"], r["role"], r["designation"], r["status"],
-                    "yes" if r["mfa_enabled"] else "no", r["last_login_at"], r["created_at"],
-                    " ".join(r["permissions"]), r["team_name"],
-                )
-            ]
-        )
-    stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M")
-    return Response(
-        content="\ufeff" + out.getvalue(),  # BOM so Excel reads UTF-8 names correctly
-        media_type="text/csv; charset=utf-8",
-        headers={"Content-Disposition": f'attachment; filename="staff-accounts-{stamp}.csv"', "Cache-Control": "no-store"},
+    return csv_response(
+        _EXPORT_HEADER,
+        (
+            (
+                r["full_name"], r["email"], r["role"], r["designation"], r["status"], r["mfa_enabled"],
+                r["last_login_at"], r["created_at"], " ".join(r["permissions"]), r["team_name"],
+            )
+            for r in rows
+        ),
+        "staff-accounts",
+        truncated=truncated,
     )
 
 
