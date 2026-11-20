@@ -923,7 +923,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   ]
 }
 ```
-* **Which engine answers (S2-06):** by default the rules baseline (`model` = `drch-triage-v1-rules`). When `TRIAGE_MODEL_DIR` holds a checked scenario model (`ai-workers/service/scenario_model.py`), `model` is that model's name, `scenario` and `confidence` come from it, its first factor is `{"name": "text_model", "detail": "<dataset label> (<probability>)"}` and the rules' `scenario_keywords` factor is dropped. `priority` and its factors always come from the written priority rules ([ai/triage-rules.md](ai/triage-rules.md)). Labels `earthquake`, `other_disaster` and `not_disaster` are returned as `OTHER`. A missing, unchecked or failing model leaves the rules answer in place. The backend guardrails (`backend/app/services/ai_provider.py`) treat both engines alike: confidence below `AI_LOW_CONFIDENCE_THRESHOLD` (default 0.6) is stored as `LOW_CONFIDENCE`, `OTHER` as out of scope.
+* **Which engine answers (S2-06):** by default the rules baseline (`model` = `drch-triage-v1-rules`). When `TRIAGE_MODEL_DIR` holds a checked scenario model (`ai-workers/service/scenario_model.py`), `model` is that model's name, `scenario` and `confidence` come from it, its first factor is `{"name": "text_model", "detail": "<dataset label> (<probability>)"}` and the rules' `scenario_keywords` factor is dropped. `priority` and its factors always come from the written priority rules ([ai/triage-rules.md](ai/triage-rules.md)). Labels `earthquake`, `other_disaster` and `not_disaster` are returned as `OTHER`. A missing, unchecked or failing model leaves the rules answer in place. Without a local artifact, `TRIAGE_TEXT_MODEL_URL` can name the hosted multilingual text classifier (8.2.1 contract): then `model` is `indicbert-disaster-api`, its classes map Cyclone → `CYCLONE`, Flood → `URBAN_FLOODING`, Fire → `INDUSTRIAL_FIRE` (with a note to confirm the fire is industrial), Earthquake and Non-Disaster → `OTHER`, and a slow (over 6 s), failed or malformed answer returns the rules result for that request. The backend guardrails (`backend/app/services/ai_provider.py`) treat both engines alike: confidence below `AI_LOW_CONFIDENCE_THRESHOLD` (default 0.6) is stored as `LOW_CONFIDENCE`, `OTHER` as out of scope.
 
 ### 8.2 English Text Analysis (Experimental Advisory Endpoint)
 * **Path:** `POST /analyze-text`
@@ -971,7 +971,7 @@ When `DISASTER_CLASSIFIER_URL` is configured, the ingestion worker sends each ne
 
 ### 8.3 AI Service Health
 * **Path:** `GET /health`
-* **Response (200 OK):** `{"status": "ok", "service": "drch-ai-triage", "triage_engine": "rules"}`. `triage_engine` is `rules`, or `model:<model name>` when a checked scenario model is loaded (8.1).
+* **Response (200 OK):** `{"status": "ok", "service": "drch-ai-triage", "triage_engine": "rules"}`. `triage_engine` is `rules`, or `model:<model name>` when a checked scenario model is loaded or the hosted text model is configured (8.1). The health check never calls the hosted model, so it does not show whether that host is awake.
 
 ### 8.4 Optional LLM Adapter (`ai-workers/service/llm.py`)
 * Not an HTTP endpoint: a library called by `/triage` (8.1). **Off by default** (`LLM_ENABLED`); the provider key is read from `LLM_API_KEY` only.

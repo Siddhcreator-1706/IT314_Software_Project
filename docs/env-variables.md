@@ -85,6 +85,7 @@ When `APP_ENV` is `staging` or `production` the backend refuses to start unless 
 |---|---|---|
 | `AI_TRIAGE_TOKEN` (S) | recommended | If set, `POST /triage` requires `Authorization: Bearer <token>`. |
 | `TRIAGE_MODEL_DIR` | no | Directory with a trained scenario model for `/triage` (`scenario_model.joblib` plus `metadata.json` holding its SHA-256; contract in `ai-workers/service/scenario_model.py`). Unset, missing or failing its checks = `/triage` uses the rules baseline; `GET /health` reports which (`triage_engine`). Never commit the artifact. |
+| `TRIAGE_TEXT_MODEL_URL` | no | Full URL of the hosted multilingual text classifier (`POST /predict`, `{"text": ...}`; the same service as the backend's `DISASTER_CLASSIFIER_URL`). Used only when no `TRIAGE_MODEL_DIR` artifact is loaded: its class gives the `/triage` scenario and confidence, priority still follows the rules, and `GET /health` reports `model:indicbert-disaster-api`. Each call waits at most 6 s; a slow, failed or malformed answer keeps the rules result for that request. Must be `http`/`https`. |
 | `LLM_ENABLED` | no | `true` turns on the optional LLM adapter (`service/llm.py`). Off by default. |
 | `LLM_PROVIDER` | if enabled | `groq`, `gemini` or `ollama`. |
 | `LLM_API_KEY` (S) | if enabled | Provider key (not needed for `ollama`). Set in the hosting environment only, never in git. |

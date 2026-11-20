@@ -62,6 +62,7 @@ def write_artifact(directory, labels=None, sha=None, version=None):
 @pytest.fixture(autouse=True)
 def fresh_cache(monkeypatch):
     monkeypatch.delenv("TRIAGE_MODEL_DIR", raising=False)
+    monkeypatch.delenv("TRIAGE_TEXT_MODEL_URL", raising=False)
     scenario_model.load_model.cache_clear()
     yield
     scenario_model.load_model.cache_clear()
@@ -128,3 +129,115 @@ def test_wrong_checksum_missing_metadata_old_version_or_missing_labels_fall_back
     assert scenario_model.load_model(str(artifact("part", labels={"flood", "fire", "not_disaster"}))) is None
 
     assert scenario_model.load_model(str(tmp_path / "missing")) is None
+
+
+# --------------------------------------------------------------------------- hosted text model (TRIAGE_TEXT_MODEL_URL)
+
+class FakeClassifier:
+    """A local HTTP server that answers like the hosted text classifier; no request leaves the machine."""
+
+    def __init__(self, answer, status=200, delay=0.0):
+        import http.server
+        import threading
+        import time
+
+        received = self.received = []
+
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_POST(self):
+                received.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+                time.sleep(delay)
+                body = (answer if isinstance(answer, str) else json.dumps(answer)).encode()
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, *args):
+                pass
+
+        self.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+        self.url = f"http://127.0.0.1:{self.server.server_address[1]}/predict"
+
+    def close(self):
+        self.server.shutdown()
+        self.server.server_close()
+
+
+@pytest.fixture
+def classifier():
+    servers = []
+
+    def start(answer, **kwargs):
+        server = FakeClassifier(answer, **kwargs)
+        servers.append(server)
+        return server
+
+    yield start
+    for server in servers:
+        server.close()
+
+
+def indicbert(prediction, confidence):
+    return {"prediction": prediction, "confidence": confidence,
+            "probabilities": {"Fire": 0.01, "Earthquake": 0.01, "Cyclone": 0.01, "Flood": 0.01, "Non-Disaster": 0.01}}
+
+
+@pytest.mark.parametrize("prediction,scenario", [
+    ("Flood", "URBAN_FLOODING"), ("Cyclone", "CYCLONE"), ("Fire", "INDUSTRIAL_FIRE"),
+    ("Earthquake", "OTHER"), ("Non-Disaster", "OTHER"),
+])
+def test_hosted_model_supplies_the_scenario_and_rules_keep_priority(classifier, monkeypatch, prediction, scenario):
+    server = classifier(indicbert(prediction, 0.97))
+    monkeypatch.setenv("TRIAGE_TEXT_MODEL_URL", server.url)
+    client = TestClient(app)
+    assert client.get("/health").json()["triage_engine"] == "model:indicbert-disaster-api"
+
+    body = client.post("/triage", json=PAYLOAD).json()
+    assert body["model"] == "indicbert-disaster-api"
+    assert body["scenario"] == scenario and body["confidence"] == 0.97
+    assert body["priority"] == triage(PAYLOAD)["priority"]
+    assert body["factors"][0]["name"] == "text_model"
+    assert server.received == [{"text": PAYLOAD["description"]}]  # only the description is sent
+
+
+def test_hosted_fire_answer_asks_staff_to_confirm_an_industrial_fire(classifier, monkeypatch):
+    monkeypatch.setenv("TRIAGE_TEXT_MODEL_URL", classifier(indicbert("Fire", 0.9)).url)
+    payload = {**PAYLOAD, "reported_scenario": "INDUSTRIAL_FIRE"}
+    body = TestClient(app).post("/triage", json=payload).json()
+    assert body["scenario"] == "INDUSTRIAL_FIRE"
+    assert "confirm it is an industrial fire" in body["uncertainty"]
+
+
+@pytest.mark.parametrize("answer,status", [
+    ({"detail": "boom"}, 500),
+    ("not json", 200),
+    (["Flood", 0.9], 200),
+    (indicbert("Tsunami", 0.9), 200),
+    (indicbert("Flood", 1.7), 200),
+    (indicbert("Flood", True), 200),
+    ({"prediction": "Flood"}, 200),
+])
+def test_hosted_model_failure_or_bad_answer_returns_the_rules_result(classifier, monkeypatch, answer, status):
+    monkeypatch.setenv("TRIAGE_TEXT_MODEL_URL", classifier(answer, status=status).url)
+    assert TestClient(app).post("/triage", json=PAYLOAD).json() == triage(PAYLOAD)
+
+
+def test_hosted_model_timeout_or_unreachable_host_returns_the_rules_result(classifier, monkeypatch):
+    monkeypatch.setattr(scenario_model, "REMOTE_TIMEOUT_SECONDS", 0.2)
+    monkeypatch.setenv("TRIAGE_TEXT_MODEL_URL", classifier(indicbert("Flood", 0.9), delay=1.0).url)
+    assert TestClient(app).post("/triage", json=PAYLOAD).json() == triage(PAYLOAD)
+
+    monkeypatch.setenv("TRIAGE_TEXT_MODEL_URL", "http://127.0.0.1:9/predict")
+    assert TestClient(app).post("/triage", json=PAYLOAD).json() == triage(PAYLOAD)
+
+
+def test_non_web_url_is_refused_and_a_local_artifact_wins(classifier, tmp_path, monkeypatch):
+    monkeypatch.setenv("TRIAGE_TEXT_MODEL_URL", "file:///etc/passwd")
+    assert scenario_model.configured_model() is None
+
+    monkeypatch.setenv("TRIAGE_TEXT_MODEL_URL", classifier(indicbert("Flood", 0.9)).url)
+    monkeypatch.setenv("TRIAGE_MODEL_DIR", str(write_artifact(tmp_path)))
+    assert scenario_model.configured_model().name == "test-scenario-tfidf"

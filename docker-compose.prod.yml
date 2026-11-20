@@ -76,6 +76,7 @@ services:
       - no-new-privileges:true
     environment:
       - AI_TRIAGE_TOKEN=${AI_TRIAGE_TOKEN:-}
+      - TRIAGE_TEXT_MODEL_URL=${TRIAGE_TEXT_MODEL_URL:-}
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:8001/health || exit 1"]
       interval: 30s

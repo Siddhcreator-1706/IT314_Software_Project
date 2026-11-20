@@ -10,7 +10,9 @@ Gujarati text. The LLM never replaces the rules result; S3-07 decides whether it
 
 With TRIAGE_MODEL_DIR pointing at a trained scenario model (S2-05/S2-06, service/scenario_model.py) the model's
 scenario and confidence replace the rules' ones; priority always follows the written rules
-(docs/ai/triage-rules.md). Without a usable artifact /triage stays on the rules; GET /health says which.
+(docs/ai/triage-rules.md). Without a usable artifact, TRIAGE_TEXT_MODEL_URL can point at the hosted multilingual
+text classifier (POST {"text": ...}) to supply the scenario the same way; if it is slow or fails, that request
+keeps the rules answer. With neither, /triage stays on the rules; GET /health says which.
 """
 
 import hmac

@@ -28,8 +28,9 @@ Each supported scenario has a keyword list; a keyword counts once if it appears 
    inferred.
 3. Otherwise the answer is `OTHER`: the backend marks it out of scope and staff triage it manually.
 
-When a trained scenario model is configured (`TRIAGE_MODEL_DIR`, see section 5), the model decides the scenario
-instead and these keyword rules only feed priority.
+When a trained scenario model is configured (`TRIAGE_MODEL_DIR`, or the hosted text model through
+`TRIAGE_TEXT_MODEL_URL`, see section 5), the model decides the scenario instead and these keyword rules only feed
+priority.
 
 ## 3. Priority
 
@@ -80,6 +81,13 @@ With a trained model (`ai-workers/service/scenario_model.py`), `model` is the mo
 `confidence` are the model's, the dataset labels map as cyclone → `CYCLONE`, flood → `URBAN_FLOODING`,
 fire → `INDUSTRIAL_FIRE`, and earthquake, other_disaster and not_disaster → `OTHER`. Priority still follows
 section 3. A note is added when the model disagrees with a supported reported scenario.
+
+Without a local artifact, `TRIAGE_TEXT_MODEL_URL` points `/triage` at the hosted multilingual text classifier
+(`indicbert-disaster-api`, the same service ingestion uses as `DISASTER_CLASSIFIER_URL`). Its classes map as
+Cyclone → `CYCLONE`, Flood → `URBAN_FLOODING`, Fire → `INDUSTRIAL_FIRE`, Earthquake and Non-Disaster → `OTHER`.
+Its Fire class covers any fire, so a fire answer adds a note asking staff to confirm it is industrial. The call
+waits at most 6 seconds; if the host is asleep, slow or returns something malformed, that request gets the plain
+rules answer (`model` = `drch-triage-v1-rules`), so the dispatcher can always see which engine answered.
 
 ## 6. Pre-labels on ingested signals (S2-09)
 

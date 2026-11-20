@@ -17,17 +17,39 @@ Artifact contract (written by the S2-05 training script, never committed to git)
 
 ``metadata.json`` is required: joblib unpickles, which can run code, so an artifact is loaded only when its
 SHA-256 matches. Class labels are the dataset labels of docs/ai/text-label-guideline.md.
+
+Hosted model: when no local artifact is loaded and ``TRIAGE_TEXT_MODEL_URL`` is set (for example
+``https://indicbert-disaster-api.onrender.com/predict``), the scenario comes from that multilingual text classifier
+instead (``RemoteScenarioModel``). It receives only the description the backend already PII-scrubbed. Its classes
+Fire, Earthquake, Cyclone, Flood and Non-Disaster map onto the dataset labels below. A slow, failed or malformed
+answer leaves the rules result in place, so a sleeping free-tier host never blocks triage.
 """
 
 from __future__ import annotations
 
+import json
 import logging
+import math
 import os
+import urllib.request
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
+
+REMOTE_MODEL_NAME = "indicbert-disaster-api"
+# Shorter than the backend's 10 s wait for /triage (backend/app/services/ai_provider.py), so a slow model still
+# leaves time to return the rules answer.
+REMOTE_TIMEOUT_SECONDS = 6
+REMOTE_MAX_TEXT_CHARS = 4000
+REMOTE_LABELS = {
+    "cyclone": "cyclone",
+    "flood": "flood",
+    "fire": "fire",
+    "earthquake": "earthquake",
+    "non_disaster": "not_disaster",
+}
 
 ARTIFACT_NAME = "scenario_model.joblib"
 LABEL_TO_SCENARIO = {
@@ -99,9 +121,56 @@ def load_model(model_dir: str) -> SklearnScenarioModel | None:
         return None
 
 
-def configured_model() -> SklearnScenarioModel | None:
+class RemoteScenarioModel:
+    """Calls a hosted text classifier: POST {"text": ...} -> {"prediction", "confidence", "probabilities"}."""
+
+    name = REMOTE_MODEL_NAME
+    # The hosted model's Fire class covers any fire, so a fire answer carries a note to confirm it is industrial.
+    generic_fire = True
+
+    def __init__(self, url: str):
+        # Only web URLs: the value comes from the environment, so refuse file: and other schemes.
+        if not url.lower().startswith(("https://", "http://")):
+            raise ValueError("TRIAGE_TEXT_MODEL_URL must be http or https")
+        self.url = url
+
+    def predict(self, text: str) -> tuple[str, float]:
+        request = urllib.request.Request(
+            self.url,
+            data=json.dumps({"text": text[:REMOTE_MAX_TEXT_CHARS]}).encode(),
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=REMOTE_TIMEOUT_SECONDS) as response:  # nosec B310 - scheme checked in __init__
+                raw = json.loads(response.read())
+        except (OSError, ValueError) as exc:  # URLError, HTTPError and timeouts are OSError
+            raise RuntimeError(f"text model request failed: {type(exc).__name__}") from exc
+        if not isinstance(raw, dict):
+            raise ValueError("text model answer was not an object")
+        key = str(raw.get("prediction", "")).strip().casefold().replace("-", "_").replace(" ", "_")
+        label = REMOTE_LABELS.get(key)
+        confidence = raw.get("confidence")
+        if label is None or isinstance(confidence, bool) or not isinstance(confidence, (int, float)):
+            raise ValueError("text model answer had an unknown class or no confidence")
+        if not math.isfinite(confidence) or not 0 <= confidence <= 1:
+            raise ValueError("text model confidence was outside [0, 1]")
+        return label, float(confidence)
+
+
+def configured_model() -> ScenarioModel | None:
+    """A checked local artifact wins; otherwise the hosted model when its URL is set; otherwise the rules."""
     model_dir = os.getenv("TRIAGE_MODEL_DIR")
-    return load_model(model_dir) if model_dir else None
+    local = load_model(model_dir) if model_dir else None
+    if local is not None:
+        return local
+    url = (os.getenv("TRIAGE_TEXT_MODEL_URL") or "").strip()
+    if not url:
+        return None
+    try:
+        return RemoteScenarioModel(url)
+    except ValueError as exc:
+        logger.warning("Hosted scenario model not used: %s", exc)
+        return None
 
 
 def engine_name(model: ScenarioModel | None) -> str:
@@ -127,6 +196,8 @@ def apply_model(result: dict, payload: dict, model: ScenarioModel | None) -> dic
         notes.append(f"The text model reads this as {scenario.lower()} rather than the reported {reported.lower()}.")
     if scenario == "OTHER":
         notes.append(f"The text model labelled it {label}, which is not one of the three supported scenarios.")
+    if label == "fire" and getattr(model, "generic_fire", False):
+        notes.append("The text model's fire class is generic; confirm it is an industrial fire.")
 
     factors = [f for f in result.get("factors", []) if f.get("name") != "scenario_keywords"]
     factors.insert(0, {"name": "text_model", "detail": f"{label} ({confidence:.2f})", "weight": confidence})
