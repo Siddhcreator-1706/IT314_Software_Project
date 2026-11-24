@@ -1,6 +1,6 @@
 ---
 trigger: model_decision
-description: Load when modifying FastAPI endpoints, backend services, database schemas, SQL queries, migrations, Redis, RabbitMQ or background workers.
+description: Load when modifying FastAPI endpoints, backend services, database schemas, SQL queries, migrations or background workers.
 ---
 
 # Backend & Database Engineering Rules

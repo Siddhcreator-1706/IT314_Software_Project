@@ -21,7 +21,7 @@
 
 <!-- One bullet per meaningful change, grouped by area (backend, frontend, database, ai-workers, docs, CI). -->
 
-- 
+-
 
 ## Verification
 
@@ -30,7 +30,7 @@
 - [ ] Database migrations / schema changes reviewed, if applicable
 - [ ] New behaviour is covered by a test, or the reason it is not is stated here
 
-## Before merge or deploy what needs to be done:
+## Before merge or deploy
 
 <!-- Everything that must be done before or while this reaches staging/production. Write "Nothing" if there is nothing. Examples:
 - Run migration `NN_name.sql` on Neon (take a backup branch first)
@@ -40,7 +40,7 @@
 - Merge or deploy another PR first
 -->
 
-- 
+-
 
 ## Screenshots
 
@@ -51,9 +51,11 @@
 <!-- Tick every item that applies. For an item that does not apply, leave it unticked and add "N/A" with a short reason. -->
 
 **Quality**
+
 - [ ] The PR title is a Conventional Commit and the PR contains only changes related to this task.
 - [ ] Relevant tests and lint pass locally (or CI covers them).
 - [ ] Relevant documentation is updated (`docs/`, `docs/architecture/api_contracts.md`, `docs/architecture/env-variables.md`).
 
 **Security and privacy**
+
 - [ ] No secrets, credentials, or real personal/emergency-report data are included.

@@ -8,6 +8,7 @@ description: Audit DRCH codebase for security, privacy, authentication, RBAC, an
 Perform a comprehensive security, privacy, and regulatory compliance audit:
 
 ## 1. Security Checklist
+
 - **Database Identity:** Verify zero Supabase Auth, `auth.users`, or Supabase client libraries exist.
 - **Authentication:** Check password hashing (Argon2id), TOTP verification timing, and account lockout thresholds.
 - **MFA Security:** Check that MFA challenge tokens are short-lived, purpose-bound, and cannot authenticate standard endpoints.
@@ -18,9 +19,9 @@ Perform a comprehensive security, privacy, and regulatory compliance audit:
 - **AI Safety:** Confirm AI outputs remain advisory and cannot automatically trigger dispatches or verification.
 
 ## 2. Findings Output
+
 Group findings by severity:
 - **[CRITICAL]** Authentication bypass, PII leaks, broken audit chains, direct SQL injection.
 - **[MAJOR]** Inadequate RBAC enforcement, unencrypted credentials, missing rate limits.
 - **[MINOR]** Verbose error messages, missing simulation flags.
 - **[COMPLIANT]** Verified secure implementations with file and line references.
-

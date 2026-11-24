@@ -20,7 +20,7 @@ description: Load when modifying authentication, authorization, user data, incid
   - Never return citizen phone numbers, full names, or internal reporter IDs on public endpoints (`/api/v1/public/*`).
   - Public coordinates must be rounded to 4 decimal places (~11 meters) to mask exact residential locations.
 - **Human-in-the-Loop AI Guardrails:**
-  - AI classification is purely advisory. AI suggestions stored in `triage_results` must never automatically modify incident state, adjust priorities, or trigger dispatches.
+  - AI classification is purely advisory. AI suggestions stored in `ai_recommendations` must never automatically modify incident state, adjust priorities, or trigger dispatches.
   - Verification, dispatch, escalation, and incident closure strictly require human dispatcher confirmation.
 - **Simulation Transparency:**
   - Simulated incidents (`is_simulated = TRUE`), fallback alerts (`is_fallback = TRUE`), and sandbox donations (`MockGateway`) must always be visibly marked in API responses and UI indicators.

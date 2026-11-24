@@ -15,7 +15,7 @@ description: Load when creating or modifying frontend pages, React components, h
   - Inspect `frontend/src/components/badges.tsx` for status and severity indicators.
   - Inspect `frontend/src/components/dm/LiveOperationsLayer.tsx` for Leaflet GIS maps.
 - **State Management & Context:**
-  - Consume global operational state, active user identity, and notifications via `ResQContext` (`frontend/src/context/ResQContext.tsx`).
+  - Read the signed-in state (`authenticated`, `role`, `name`) with `useSession()` from the shared `SessionProvider` (`frontend/src/components/auth/SessionProvider.tsx`); operational data always comes from guarded API calls, never from browser storage.
 - **API Integration & Security:**
   - Route all backend API requests through Next.js proxy handlers (`frontend/src/app/api/`) or the unified client wrapper in `frontend/src/lib/api.ts`.
   - Never hardcode backend URLs, API keys, or JWT secrets in client-side bundles.
