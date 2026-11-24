@@ -55,87 +55,107 @@ Proposed from each member's rehearsal role in the sprint plan; Siddh confirms be
 ## 3. Walkthrough
 
 ### Step 1 — Citizen signs up (Zalak)
+
 * **Screen:** `/signup` · **API:** `POST /api/v1/auth/register`
 * Show the password rules (a weak password is refused with 422), then register.
 * **Expect:** account created and signed in (session cookie only; no token in `localStorage`).
 
 ### Step 2 — Out-of-state report is refused (Zalak)
+
 * **Screen:** `/report` · **API:** `POST /api/v1/incidents` with an `Idempotency-Key`
 * Drop the pin in Jaipur (26.9124, 75.7873).
 * **Expect:** `422 OUTSIDE_GUJARAT`; nothing is stored.
 
 ### Step 3 — Valid cyclone report (Zalak)
+
 * **Screen:** `/report`, then `/my-reports`
 * Scenario **Cyclone**, Ahmedabad pin, urgency High, people affected 15, description of trapped residents.
 * **Expect:** `201` with an `INC-YYYY-NNNNNN` reference; `/my-reports` shows status **SUBMITTED** (refreshes every 15 s). A retry with the same idempotency key returns the same incident, not a second one.
 
 ### Step 4 — Not public yet (Tanishq narrates)
+
 * **Screen:** `/` public map · **API:** `GET /api/v1/public/incidents`
 * **Expect:** the new reference is **absent**. Unverified reports never reach the public map.
 
 ### Step 5 — Signals from outside sources (Rudra)
+
 * **Screen:** `/dm/ingestion` (source health, "Poll now" = `POST /api/v1/dm/ingestion/poll`), then `/dm/signals`
 * Show the SACHET alerts and replayed social posts in the queue, each with its source and AI pre-label marked as a suggestion. Say out loud that the social posts are a replay fixture (section 6).
 * Promote one signal (`POST /api/v1/dm/signals/{id}/promote`) and dismiss another with a rationale.
 * **Expect:** the promoted signal becomes a **SUBMITTED** incident (still not public); dismissal needs a reason.
 
 ### Step 6 — Dispatcher signs in with MFA (Tanishq)
+
 * **Screen:** `/login` · **API:** `POST /api/v1/auth/login` → `{"mfa_required": true, "mfa_token": …}` → `POST /api/v1/auth/mfa/verify`
 * **Expect:** the DM workspace opens only after the TOTP code.
 
 ### Step 7 — AI advisory, and what happens when it is down
+
 **7a. Triage (Neeti).** Open the citizen incident (`/dm/incidents/{id}`), press **Run AI triage** (`POST /api/v1/dm/incidents/{id}/ai-triage`).
+
 * **Expect:** a suggestion labelled "AI suggestion, not verified" with scenario, priority, confidence and factors, or **LOW_CONFIDENCE** below the threshold. The incident's status and priority have **not** changed.
 * Record the human decision: Accept, Modify or Reject with a rationale (`POST /api/v1/dm/incidents/{id}/ai-recommendations/{rec_id}/decision`, `action` = `ACCEPTED` / `MODIFIED` / `REJECTED`). Nothing changes on the incident unless the dispatcher explicitly applies it. A second decision on the same recommendation is refused (409).
 
 **7b. AI down (Dhruvil).** With the triage service stopped (or `AI_TRIAGE_URL` unset on a spare environment), run triage again.
+
 * **Expect:** `503 AI_UNAVAILABLE`, recorded as UNAVAILABLE; the dispatcher carries on manually. The rest of the console keeps working.
 
 **7c. Photo analysis (Dhruvil, optional).** Upload a JPEG/PNG/WebP on the incident (`POST /api/v1/dm/incidents/{id}/photo-analyse`).
+
 * **Expect:** an advisory label with confidence, never stored as verification. Without `AI_IMAGE_SERVICE_URL`: `503 AI_PHOTO_UNAVAILABLE` and a clear message.
 
 ### Step 8 — Verify, then see recommendations (Tanishq, Nisarg explains)
+
 * Verify the incident with priority **High** and a rationale (`POST /api/v1/dm/incidents/{id}/verification`, `decision: VERIFIED`, current `version`).
 * Show the public map (`/`): the incident now appears, coordinates rounded to 4 decimals, no reporter data.
 * Open **Create dispatch**: the panel lists recommended teams (`GET /api/v1/dm/incidents/{id}/team-recommendations`) with distance, matched and supporting capabilities and the reason; the label says it needs dispatcher confirmation.
 * **Expect:** recommendations never create a dispatch. Nisarg explains the ranking (capability groups first, then distance).
 
 ### Step 9 — Dispatcher assigns team 1 (Tanishq)
+
 * Choose the receiving agency, team 1 and instructions; submit (`POST /api/v1/dm/incidents/{id}/dispatches` with an `Idempotency-Key`).
 * **Expect:** dispatch `DISP-YYYY-NNNNNN` in **REQUESTED**; team 1 is reserved and disappears from the recommendations (no double booking). A double click does not create a second dispatch.
 
 ### Step 10 — Field team 1 works the assignment (Janvi, phone width)
+
 * **Screen:** `/field` (signed in with MFA; assignments refresh every 15 s)
 * Acknowledge → **ACKNOWLEDGED**; progress **EN_ROUTE** with a note → dispatch **DISPATCHED** and the incident **DISPATCHED**; then **ON_SCENE**.
 * Request backup: capability `boat`, note "water rising in the lane" (`POST /api/v1/field/dispatches/{id}/team-requests`).
 * **Expect:** each step appears on the dispatcher's dispatch timeline; progress before acknowledgement is refused (409).
 
 ### Step 11 — Another team cannot see it (Nisarg as team 2)
+
 * Team 2's `/field` does not list the dispatch. Calling team 1's dispatch id directly (for example `POST /api/v1/field/dispatches/{id}/acknowledgement`) answers **404**, not 403, so ids cannot be probed.
 
 ### Step 12 — Backup request decision (Tanishq)
+
 * **Screen:** `/dm/team-requests` · **API:** `POST /api/v1/dm/team-requests/{id}/decision`
 * Approve with a rationale.
 * **Expect:** status **APPROVED** and a **pre-filled dispatch draft** (suggested team with the boat capability). No dispatch is created until the dispatcher submits it. Declining requires a rationale.
 
 ### Step 13 — Field completion does not close the incident (Janvi → Tanishq)
+
 * Janvi completes the dispatch with a summary (`POST /api/v1/field/dispatches/{id}/completion`).
 * **Expect:** dispatch **COMPLETED**, team released; the incident stays open and the dispatcher is prompted to confirm resolution.
 
 ### Step 14 — Resolution and closure (Tanishq)
+
 * Resolve (`POST /api/v1/dm/incidents/{id}/resolution`). Resolution is refused while a dispatch is still active (`409 OPEN_DEPENDENCIES`).
 * Close with a reason and a public summary (`POST /api/v1/dm/incidents/{id}/closure`, needs the `CLOSURE` permission).
 * **Expect:** **CLOSED**; the incident leaves the public map (it lists VERIFIED, DISPATCHED and RESOLVED incidents only); every step is in the audit trail.
 
 ### Step 15 — The citizen sees the outcome (Zalak)
+
 * `/my-reports`: timeline SUBMITTED → VERIFIED → DISPATCHED → RESOLVED → CLOSED, and any information request the dispatcher sent (the citizen can answer it in the same view).
 
 ### Step 16 — Sandbox donation (Shlok)
+
 * **Screen:** `/donate` (SANDBOX banner visible) · **API:** `POST /api/v1/donations` (`Idempotency-Key`) → `POST /api/v1/donations/{id}/sandbox-payment` → `POST /api/v1/donations/{id}/verify`
 * **Expect:** a receipt `REC-YYYY-NNNNNN` only after the server checks the signature; repeating the verification returns the same receipt.
 * Show the ending screens. **Cancel & Abandon Order** is real: the server records the donation as `FAILED` (`ABANDONED`) and issues no receipt. **Preview Decline** and **Preview Timeout** are labelled "SANDBOX PREVIEW — nothing was sent to the gateway". Say that an unpaid order also ends on the server after 30 minutes, and that a payment the gateway still captures later confirms the donation.
 
 ### Closing (Siddh)
+
 * Run `python -m app.cli verify-audit` (or show its last CI result): the hash chain is intact.
 * One slide: what is real and what is simulated (section 6).
 

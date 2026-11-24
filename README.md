@@ -63,7 +63,7 @@ Staff, field and administrator accounts always sign in with a password **and** a
 
 These rules are enforced in code and covered by tests in `backend/tests/`.
 
-- **People decide; AI advises.** Verification, dispatch, escalation and closure always need a human. AI triage, duplicate detection and team recommendations are stored separately (`triage_results`) and are never applied automatically. (`backend/app/services/ai_provider.py`, `backend/app/routers/dm/ai.py`)
+- **People decide; AI advises.** Verification, dispatch, escalation and closure always need a human. AI triage results are stored separately (`ai_recommendations`), and duplicate candidates and team recommendations are only shown as suggestions; none of them is ever applied automatically. (`backend/app/services/ai_provider.py`, `backend/app/routers/dm/ai.py`)
 - **Every state change is audited.** Incident and dispatch transitions, sign-ins, access denials and administrative actions write to `audit_logs`. A PostgreSQL trigger chains each row to the previous one with SHA-256, and triggers block `UPDATE` and `DELETE` on the table. CI verifies the chain on every pull request (`python -m app.cli verify-audit`).
 - **Strict incident lifecycle.** `SUBMITTED → NEEDS_INFORMATION → VERIFIED → DISPATCHED → RESOLVED → CLOSED` (or `REJECTED`). Each transition is checked by a state machine and recorded in `incident_status_history`, and the reporting citizen is notified. Verifying needs a priority and a rationale. (`backend/app/routers/dm/incidents.py`)
 - **No over-allocation.** Resource rows are locked with `SELECT ... FOR UPDATE` before quantities change. A request that would over-allocate gets `409 RESOURCE_CONFLICT`, and nothing is written. Resources are released when an order is rejected or completed. (`backend/app/services/resources.py`, `backend/app/services/dispatch.py`)
@@ -163,7 +163,6 @@ flowchart LR
 
 Every arrow above is a human decision or a field report, and each one is written to the audit log.
 
-
 - The browser never calls the backend directly. Next.js route handlers under `frontend/src/app/api/` forward requests and keep the session in httpOnly cookies.
 - The backend applies database migrations on startup and refuses to start in staging or production when a required secret is missing.
 - AI services are optional. Without them the platform keeps working, and staff triage manually.
@@ -245,12 +244,14 @@ For day-to-day development, run each service on its own with hot reload. Step-by
 ## What is real and what is simulated
 
 **Real**
+
 - Citizen reporting, verification, dispatch, field execution and closure, end to end against PostgreSQL and PostGIS.
 - Official early warnings from the SACHET CAP feed when `SACHET_FEED_URL` is set.
 - Optional live news and Bluesky signal sources (off unless `NEWS_RSS_ENABLED` / `BLUESKY_SEARCH_ENABLED` is set).
 - AI triage and the model services, when their URLs are configured.
 
 **Simulated, and labelled as such**
+
 - **Demo data.** `backend/db/seeds/demo/` (sample incidents and signal clusters, flagged `is_simulated`) is applied only when `APP_ENV=development`. Staging and production receive only `backend/db/seeds/reference/` (roles, agencies, system accounts, safety content). Public endpoints hide simulated incidents outside development.
 - **Social replay.** The `REPLAY` signal source reads a team-authored, sanitised fixture. It is off unless `SOCIAL_REPLAY_ENABLED=true`, and its rows are always marked simulated.
 - **Sample alerts.** `python -m app.cli load-fallback-alerts` (development only) inserts three alerts flagged `is_fallback`. The UI marks them "Sample alert".
@@ -321,7 +322,8 @@ ResQ follows [Semantic Versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`). U
 
 | Version | What it is | Date |
 |---|---|---|
-| Sprints 1–3 | Core loop, response and AI, then hardening; continuous delivery from `main`, untagged | Sep – Nov 2026 |
+| Sprint 0 | Requirements, schema, CI/CD, staff MFA and the DM core | 11 Sep – 29 Oct 2026 |
+| Sprints 1–3 | Core loop, response and AI, then hardening (one-week sprints, each followed by a buffer); continuous delivery from `main`, untagged | 30 Oct – 22 Nov 2026 |
 | `v1.0.0-rc1` | Release candidate: final staging check of the release build | before 30 Nov 2026 (planned) |
 | **`v1.0.0`** | **First production release** | **30 Nov 2026 (planned)** |
 | `v1.0.x` | Bug and security fixes only | after 1.0.0, as needed |
@@ -350,6 +352,7 @@ Rollback means redeploying the previous version tag. The step-by-step process is
 | AI triage and models | [docs/ai/](docs/ai/) |
 | Releases and migrations | [docs/operations/](docs/operations/) |
 | Testing, load and security reviews | [docs/quality/](docs/quality/) |
+| IT314 final submission (requirements, stories, sprints, design, UML) | [docs/submission/](docs/submission/README.md) |
 
 The full index is in [docs/README.md](docs/README.md).
 

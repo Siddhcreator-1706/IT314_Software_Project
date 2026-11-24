@@ -28,6 +28,7 @@ A donation starts as `PENDING` when created. It ends in one of three terminal st
 | **FAILED (Expired)** | Order unpaid after `PENDING_TTL` (30 minutes) | `EXPIRED` | Marks order failed on next access; records `DONATION_EXPIRED`. |
 
 ### Lazy Expiry Architecture
+
 Unlike legacy background workers that sweep databases periodically, expiration is implemented **lazily** in [`backend/app/services/donation_endings.py`](../../backend/app/services/donation_endings.py):
 * `expire_stale_donations(conn)` is called automatically whenever donations are created, read, or summarized.
 * The timeout is governed by `PENDING_TTL = timedelta(minutes=30)` (accessible via `ttl_minutes()`).
@@ -35,6 +36,7 @@ Unlike legacy background workers that sweep databases periodically, expiration i
 * Schema constraints in [`backend/db/migrations/13_donation_endings.sql`](../../backend/db/migrations/13_donation_endings.sql) (`chk_donation_failure_reason`) enforce that only `FAILED` rows may hold a failure reason.
 
 ### Late Capture Guarantee
+
 If a donor closes the checkout window or experiences a network delay, the server may mark the order `ABANDONED` or `EXPIRED`. However, if the bank or gateway subsequently captures the money, refusing the webhook would leave the donor charged without a receipt. DRCH handles this gracefully:
 * A verified capture webhook or verify call on a `FAILED` order transitions it to `CONFIRMED`.
 * The `failure_reason` is cleared to `NULL`, `confirmed_at` is stamped, and an official receipt number is generated.
@@ -45,6 +47,7 @@ If a donor closes the checkout window or experiences a network delay, the server
 ## 3. Citizen & DM Interfaces
 
 ### Citizen Donation & Receipts View
+
 * **Donate Checkout:** [`frontend/src/app/donate/page.tsx`](../../frontend/src/app/donate/page.tsx) provides the contribution flow, allows cancellation, handles errors, and displays sandbox warnings.
 * **My Donations & Receipts:** [`frontend/src/app/my-donations/page.tsx`](../../frontend/src/app/my-donations/page.tsx) consumes `GET /api/v1/me/donations` via the Next.js citizen BFF proxy:
   * Lists paginated donation history with live status badges.
@@ -53,6 +56,7 @@ If a donor closes the checkout window or experiences a network delay, the server
   * For `FAILED`: translates backend enum reasons into clear, donor-friendly explanations (`ABANDONED` → *"You cancelled this donation"*, `GATEWAY_DECLINED` → *"Your payment was declined"*, `EXPIRED` → *"This donation expired before payment"*).
 
 ### DM Campaigns & Oversight
+
 Disaster management staff monitor campaigns and donation metrics at `/dm/campaigns` (`GET /api/v1/dm/oversight/donations`):
 * **Totals:** Live aggregates of `confirmed_amount`, `pending_amount`, and `failed_amount`.
 * **Failure Breakdown (`failed_by_reason`):** Displays real-time counts and amounts for `ABANDONED`, `GATEWAY_DECLINED`, `EXPIRED`, and legacy/unclassified `UNKNOWN` failures.

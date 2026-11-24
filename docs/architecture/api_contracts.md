@@ -1,7 +1,8 @@
-# 📑 ResQ — API Contracts Specification
+# ResQ — API Contracts Specification
 
 **Lead & Integration Architect:** Siddh (@Siddhcreator-1706)  
 **Standard Error Format:** Standardized according to SRS s.15.7 and `app.errors`:
+
 ```json
 {
   "error": {
@@ -17,6 +18,7 @@
 ## 1. Public Data Endpoints (Owner: Nisarg)
 
 ### 1.1 Verified Public Incidents
+
 * **Path:** `GET /api/v1/public/incidents`
 * **Auth:** None (Public)
 * **Query Parameters:**
@@ -24,6 +26,7 @@
   * `scenario` *(optional string)*: `cyclone`, `industrial_fire`, `urban_flooding`
   * `bbox` *(optional string)*: `min_lon,min_lat,max_lon,max_lat`
 * **Response (200 OK):**
+
 ```json
 [
   {
@@ -38,6 +41,7 @@
   }
 ]
 ```
+
 * **Security & Privacy Rules:**
   * Only incidents with status in `('VERIFIED', 'DISPATCHED', 'RESOLVED')` and `verified_by IS NOT NULL` are returned.
   * No reporter identity, citizen contact info, or raw free-text fields are exposed.
@@ -46,9 +50,11 @@
   * `422 VALIDATION_FAILED`: Invalid bounding box or parameter format.
 
 ### 1.2 Public Active Campaigns
+
 * **Path:** `GET /api/v1/public/campaigns`
 * **Auth:** None (Public)
 * **Response (200 OK):**
+
 ```json
 [
   {
@@ -64,9 +70,11 @@
 ```
 
 ### 1.3 Public Early Warnings & External Alerts
+
 * **Path:** `GET /api/v1/public/alerts`
 * **Auth:** None (Public)
 * **Response (200 OK):**
+
 ```json
 [
   {
@@ -83,12 +91,14 @@
 ```
 
 ### 1.4 Published Safety Guidance & Public Updates (NU-FR-08)
+
 * **Paths:** `GET /api/v1/public/safety-content` and `GET /api/v1/public/updates`. No authentication. Optional `scenario` filter (`cyclone`, `industrial_fire`, `urban_flooding`; anything else is `422`).
 * **safety-content:** only guidance a publisher has published. Fields: `content_id`, `scenario`, `title`, `body`, `source`, `version`, `published_at`. Drafts, approved-but-unpublished and superseded versions are never returned.
 * **updates:** only published broadcast updates. Fields: `update_id`, `scenario`, `title`, `body`, `area_label`, `published_at`; newest first, at most 50.
 * **Privacy:** no author or approver names, no linked incident, no internal notes. The `/safety` page shows these above its general guidance and falls back to the general guidance when the service is unreachable.
 
 ### 1.5 Relief Shelters
+
 * **Public path:** `GET /api/v1/public/shelters`. No authentication. Returns the shelters that are `OPERATIONAL` or `FULL` (closed ones are hidden), by name, at most 500. Fields: `id`, `name`, `type` (`SHELTER`, `RELIEF_CAMP` or `MEDICAL_POST`), `lat`, `lon` (rounded to 4 decimals), `address`, `district`, `total_capacity`, `current_occupancy`, `available_beds` (`null` unless both are known, never negative), `contact_number`, `status`, `notes`, `is_simulated`. An empty list means none are published; the citizen dashboard then says so. No internal ids, authors or timestamps are returned.
 * **Dispatcher paths:** `GET /api/v1/dm/shelters` (all shelters, closed included; `include_closed=false` hides them), `POST /api/v1/dm/shelters` (201) and `PUT /api/v1/dm/shelters/{id}` (replaces the whole record). They need the `DISPATCH` or `SUPERVISOR` permission (`403 PERMISSION_REQUIRED` otherwise).
 * **Body:** `name`, `type`, `address_text`, `district`, `latitude`, `longitude`, `total_capacity`, `current_occupancy`, `contact_number` (digits, spaces, `+ - ( )`), `status`, `notes` (max 500) and a required `reason` of 5 to 500 characters. `422` if `current_occupancy` exceeds `total_capacity`, a coordinate is out of range, or a value is not allowed; `404` for an unknown shelter on update.
@@ -100,11 +110,13 @@
 ## 2. Citizen Authentication & Reporting API (Owner: Zalak)
 
 ### 2.1 Citizen Registration
+
 * **Path:** `POST /api/v1/auth/register` (alias: `POST /api/v1/auth/signup`)
 * **Auth:** None (Public)
 * **Rate limit:** 10 requests per hour per client IP (`429 RATE_LIMITED`).
 * **Request Headers:** `Content-Type: application/json`
 * **Request Body:**
+
 ```json
 {
   "email": "citizen@example.in",
@@ -114,7 +126,9 @@
   "preferred_language": "gu"
 }
 ```
+
 * **Response (201 Created):** the account fields below plus the sign-in fields of 2.2 (`access_token`, `expires_in`, `user`, …), so the client can start a session immediately.
+
 ```json
 {
   "user_id": "7a35eb42-6362-47d3-8e41-0f7300c14b43",
@@ -127,23 +141,28 @@
   "expires_in": 3600
 }
 ```
+
 * **Errors:**
   * `409 DUPLICATE_EMAIL`: Email already exists (`{"error": {"code": "DUPLICATE_EMAIL", "message": "An account with this email already exists."}}`).
   * `422 WEAK_PASSWORD`: Password does not meet security policy (minimum 8 chars, 1 digit, 1 special symbol).
   * `429 RATE_LIMITED`: Rate limit exceeded on registration attempts.
 
 ### 2.2 Sign In (citizens and staff)
+
 * **Path:** `POST /api/v1/auth/login`
 * **Auth:** None (Public)
 * **Rate limit:** 20 requests per 5 minutes per client IP.
 * **Request Body:**
+
 ```json
 {
   "email": "citizen@example.in",
   "password": "StrongPassword123!"
 }
 ```
+
 * **Response (200 OK), citizen** — citizens do not use MFA, so the token is issued immediately:
+
 ```json
 {
   "mfa_required": false,
@@ -160,6 +179,7 @@
   }
 }
 ```
+
 * **Response (200 OK), staff** (`DISASTER_MGMT`, `FIELD_TEAM`, `APP_MGMT`): `{"mfa_required": true, "mfa_token": "eyJ..."}`. The client then calls `POST /api/v1/auth/mfa/verify` with `{"mfa_token", "code"}` (6-digit TOTP; 20 requests per 5 minutes) and receives the citizen-shaped response above with `"mfa_required": false`. The `mfa_token` is valid for `MFA_TOKEN_MINUTES` (default 5).
 * **Lifetimes:** access tokens last `ACCESS_TOKEN_MINUTES` (default 15; `expires_in` is in seconds) and are renewed with a refresh token (section 9). Repeated failures lock the account for `LOGIN_LOCKOUT_MINUTES` (default 15).
 * **Errors:**
@@ -171,12 +191,14 @@
 * **Password reset, invitations and Google sign-in:** see section 9. Replacing a password increments the user's `token_version`, which revokes every session issued before.
 
 ### 2.3 Submit Incident Report
+
 * **Path:** `POST /api/v1/incidents`
 * **Auth:** Bearer Token (`require_citizen`)
 * **Headers:**
   * `Authorization: Bearer <token>`
   * `Idempotency-Key: <unique-uuid-or-client-key>` — **required** (max 100 characters). Generate one key per report draft and reuse it on every retry of that draft.
 * **Request Body:**
+
 ```json
 {
   "scenario": "urban_flooding",
@@ -190,7 +212,9 @@
   "landmark": "Opposite Jain Temple"
 }
 ```
+
 * **Response (201 Created):**
+
 ```json
 {
   "incident_id": "3c0b05b3-3a1e-450e-a226-bcfe69d0d939",
@@ -200,17 +224,20 @@
   "created_at": "2026-10-24T15:00:00Z"
 }
 ```
+
 * **Validation & Security:**
   * Rejects locations outside Gujarat state boundaries with `422 OUTSIDE_GUJARAT`.
   * A missing or blank `Idempotency-Key` is rejected with `422 IDEMPOTENCY_KEY_REQUIRED` (same rule as `POST /api/v1/donations`); nothing is created.
   * Idempotent: a repeated call with the same `Idempotency-Key` returns `200 OK` with the same incident body instead of creating a duplicate.
 
 ### 2.4 My Incidents Listing & Timeline
+
 * **Path:** `GET /api/v1/me/incidents`
 * **Auth:** Bearer Token (`require_citizen`)
 * **Path:** `GET /api/v1/me/incidents/{id}`
 * **Auth:** Bearer Token (`require_citizen`)
 * **Response (200 OK):**
+
 ```json
 {
   "incident_id": "3c0b05b3-3a1e-450e-a226-bcfe69d0d939",
@@ -229,23 +256,28 @@
   ]
 }
 ```
+
 * **Isolation Rule:** Attempting to access another citizen's incident returns `404 NOT_FOUND` (no existence leak). Internal dispatcher notes and rationale are stripped.
 * **Readable labels:** the incident has `status_label` and every timeline entry has `label` (for example "Report submitted", "More information requested"); clients show these instead of raw status codes.
 
 ### 2.5 Information Response
+
 * **Path:** `POST /api/v1/me/incidents/{id}/information-response` (the earlier `/information` path still works)
 * **Auth:** Bearer Token (`require_citizen`); own incident only (others return `404`)
 * **When:** the incident is `NEEDS_INFORMATION` (a dispatcher asked with `POST /api/v1/dm/incidents/{id}/information-requests`). The question appears in the incident `timeline` (2.4) as the `message` of the `NEEDS_INFORMATION` entry.
 * **Request Body:** `message` (3-2000 characters) and/or a corrected `latitude` + `longitude` (given together, with optional `address_text`); at least one is required.
+
 ```json
 { "message": "It is next to the Jain temple, water is waist deep." }
 ```
+
 * **Response (201 Created):** `{"incident_id": "...", "status": "SUBMITTED", "status_label": "Report submitted"}`; the incident returns to `SUBMITTED` so it re-enters the verification queue. The reply is stored in the status history as `Reporter reply: <message>` (and "Reporter corrected the location" when a point is sent), visible to dispatchers, and an audit entry is written.
 * **Errors:** `404 NOT_FOUND` (not your incident); `409 NOT_AWAITING_INFORMATION` unless the incident is in `NEEDS_INFORMATION`; `422 VALIDATION_FAILED` (bad message length or coordinates); `422 OUTSIDE_GUJARAT` for a corrected point outside Gujarat; `429 RATE_LIMITED` (the response does not state the limit).
 
 ---
 
 ### 2.6 Photo Attachments (NU-FR-05)
+
 * **Upload:** `POST /api/v1/me/incidents/{id}/attachments`, citizen only, own open incident. The photo is the raw request body with `Content-Type: image/jpeg|image/png|image/webp` and an optional percent-encoded `X-Filename`. Returns `201` with `{evidence_id, file_name, mime_type, size_bytes, status, uploaded_at}`; the same photo again returns `200` with the first.
 * **List / download / remove:** `GET .../attachments` (`{items, max_attachments}`), `GET .../attachments/{evidence_id}` (the image, `nosniff`, not cached), `DELETE .../attachments/{evidence_id}` (deletes the file and keeps an audit record).
 * **Limits:** 5 MB per photo, 5 photos per report. The type is checked from the file's bytes, not the header. Before storage the server strips metadata without re-encoding: JPEG EXIF/XMP (APP1), IPTC (APP13) and comments (only the orientation tag is kept); PNG `eXIf`, `tEXt`, `zTXt`, `iTXt`, `tIME` chunks and any bytes after `IEND`; WebP `EXIF` and `XMP ` chunks. `size_bytes` and duplicate detection use the stripped file; a file whose structure cannot be read is `415 INVALID_IMAGE`. `status` is `Awaiting review` until a moderator decides (`Approved`, `Held for review`); removed photos are not listed.
@@ -254,6 +286,7 @@
 * **Dispatcher view:** `GET /api/v1/dm/incidents/{incident_id}/evidence/{evidence_id}/content` returns an approved (`CLEAN`) photo on that incident to any DM user (`nosniff`, `no-store`, restrictive CSP). Pending, quarantined, removed or other-incident photos are `404`; citizens get `403`. Each view writes an `EVIDENCE_VIEWED` audit entry.
 
 ### 2.7 Account: Profile, Password, Notifications
+
 * **Profile:** `GET /api/v1/me/profile` returns `{user_id, email, full_name, phone, preferred_language, alerts: {in_app, email, sms}, created_at, has_password}`; `has_password` is `false` for a Google sign-in account that never set one. `PATCH /api/v1/me/profile` accepts any of `full_name`, `phone`, `preferred_language` (`en`, `hi`, `gu`), `email_alerts`, `sms_alerts`. The email is the sign-in identity and is not editable; in-app notifications cannot be turned off; email and SMS are stored preferences only. Invalid values return `422`; changes are audited.
 * **Password:** `POST /api/v1/me/password` with `{current_password, new_password}`. The new password follows the registration policy and must differ from the current one (`422 WEAK_PASSWORD` / `PASSWORD_UNCHANGED`); a wrong current password is `400 INVALID_CURRENT_PASSWORD` and is audited. An account with no password (Google sign-in only) gets `409 NO_PASSWORD_SET` and sets one through `POST /api/v1/auth/forgot-password` first. On success every session, including this one, is ended and the response is `{"changed": true, "sign_in_required": true}`. Rate limited.
 * **Notifications:** `POST /api/v1/me/notifications/read-all` marks all of your in-app notifications read and returns `{"marked_read": n}`.
@@ -286,10 +319,12 @@
 ## 4. Ingestion & Signal Promotion API (Owners: Rudra & Shlok)
 
 ### 4.1 Ingestion Trigger Endpoint
+
 * **Path:** `POST /api/v1/internal/ingest/run`
 * **Auth:** Header `X-Ingest-Token` or `Authorization: Bearer <INGEST_TOKEN>`
 * **Query Parameters:** `source` *(optional string: `SACHET`, `REPLAY`, `GNEWS`, `BLUESKY`, `ALL`)*
 * **Response (200 OK):** a single run for a named source; an array of per-source runs for `ALL`.
+
 ```json
 {
   "run_id": "e2f0980c-61cb-4bc1-90a8-bcf6b45a6c02",
@@ -303,10 +338,12 @@
 The configured scheduler targets a 15-minute cadence. Local development uses the backend poller; staging uses the GitHub Actions trigger with the backend poller disabled. `POST /api/v1/dm/ingestion/poll` starts an immediate poll for staff with `DISPATCH` or `SUPERVISOR`; `GET /api/v1/dm/ingestion/health` returns the latest run, 24-hour counts and latest error for each source that is switched on (disabled sources are left out). Both require an MFA-verified staff session. `REPLAY` is off unless `SOCIAL_REPLAY_ENABLED` is set and its rows are always marked simulated; `GNEWS` and `BLUESKY` are live text sources, off unless `NEWS_RSS_ENABLED` / `BLUESKY_SEARCH_ENABLED` is set, and their rows are marked not simulated. New GNEWS/BLUESKY rows use `DISASTER_CLASSIFIER_URL` when configured (section 8.2.1); otherwise they retain the legacy `/triage` prelabel path (section 8.1). The public alerts API returns only unexpired SACHET, GDACS or IMD alerts and includes the source and fallback flag.
 
 ### 4.2 Raw Signals Queue (DM Workspace)
+
 * **Path:** `GET /api/v1/dm/signals`
 * **Auth:** Staff Session (`DISASTER_MGMT`)
 * **Query Parameters:** `status` (`PENDING`, `PROMOTED`, `DISMISSED`)
 * **Response (200 OK):**
+
 ```json
 [
   {
@@ -341,12 +378,15 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   }
 ]
 ```
+
 `ai_details.classification` contains the raw result from `DISASTER_CLASSIFIER_URL`; `is_disaster` is false only for `Non-Disaster`. The classification probabilities are the model output, while `ai_label` is only a compatible DRCH scenario suggestion.
 
 ### 4.3 Signal Promotion to Incident
+
 * **Path:** `POST /api/v1/dm/signals/{id}/promote`
 * **Auth:** Staff Session (`DISASTER_MGMT` with `PUBLISHER` or `SUPERVISOR`)
 * **Response (201 Created):**
+
 ```json
 {
   "signal_id": "4b684531-ec7b-40eb-bdff-6e94f1be9eb6",
@@ -355,15 +395,18 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   "incident_status": "SUBMITTED"
 }
 ```
+
 *(Promoted incidents start as `SUBMITTED` and are NOT publicly visible until verified by a dispatcher).*
 
 ### 4.3.1 Manual deletion of public social signals
+
 * **Path:** `DELETE /api/v1/dm/signals/{id}`
 * **Auth:** Staff Session (`DISASTER_MGMT` with `SUPERVISOR`)
 * **Body:** `{ "rationale": "Source deletion request" }`
 * Deletes an unpromoted `BLUESKY` or `GNEWS` signal and its stored text/link/location evidence. The hashed source ID remains as a tombstone so a later poll cannot reimport the same post. The action is written to the append-only audit log. Promoted signals cannot be deleted here because the content is part of an incident record; handle those through the incident-record process.
 
 ### 4.4 Related Signal Suggestions (advisory)
+
 * **Path:** `GET /api/v1/dm/signals/related`
 * **Auth:** Staff Session (`DISASTER_MGMT`)
 * **Query Parameters:** `signal_id` *(optional UUID)*, `limit` *(1-500, default 100)*
@@ -372,6 +415,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 * Read-only: it never promotes, dismisses, merges or dispatches. Full rules, thresholds, example and limitations: [signal-matching.md](signal-matching.md).
 
 ### 4.5 Incident Duplicate Candidates (advisory, S2-07)
+
 * **Path:** `GET /api/v1/dm/incidents/{id}/duplicates`
 * **Auth:** Staff Session (`DISASTER_MGMT`)
 * **Candidates:** found by the rules (same scenario, within `window_hours` of each other, within `radius_m` or the same address, not closed, not already linked, not dismissed), at most 20.
@@ -379,6 +423,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 * `weights` are reasoned defaults until they are tuned on labelled duplicate pairs. Nothing is linked or merged automatically; the dispatcher decides with `POST /api/v1/dm/incidents/{id}/duplicates/{candidate_id}/decision` (`LINK`, `MERGE` or `DISMISS`, unchanged).
 
 ### 4.6 Internal Incident Notes
+
 * **Paths:** `GET /api/v1/dm/incidents/{id}/notes` and `POST /api/v1/dm/incidents/{id}/notes`
 * **Auth:** Staff Session (`DISASTER_MGMT`), no extra permission. Notes are never returned to citizens or field teams.
 * **Purpose:** A shared log for the dispatch team on one incident (for example what was agreed on a call), so the next shift can pick up where the last stopped. Append-only: there is no edit or delete, a correction is a new note.
@@ -388,6 +433,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 * **Errors:** `404 NOT_FOUND` (unknown incident), `422` (empty, blank or over-long body), `401`/`403` for anyone who is not signed-in Disaster Management staff.
 
 ### 4.7 CSV Exports of the Incident and Dispatch Queues
+
 * **Paths:** `GET /api/v1/dm/incidents/export` and `GET /api/v1/dm/dispatches/export`
 * **Auth:** Staff Session (`DISASTER_MGMT`), no extra permission. Rate limited to 10 exports per hour per user.
 * **Filters:** the same query parameters as the list they come from. Incidents: `scenario`, `status`, `priority`, `from`, `to`, `q`, `near_lat`, `near_lon`, `radius_km`. Dispatches: `status`, `overdue`, `active`, `incident_id`. Both share the list's filter code, so an export always matches what the screen shows. Invalid values answer `422`.
@@ -399,11 +445,13 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 * **Errors:** `401`/`403` for anyone who is not signed-in Disaster Management staff with a verified second factor, `422` for invalid filters.
 
 ### 4.8 Reopening a Closed Incident
+
 * **Path:** `POST /api/v1/dm/incidents/{id}/reopen`. Body `{"reason": "...", "version": n}`. Requires the `CLOSURE` permission. Only a `CLOSED` incident can be reopened; the reason is audited.
 * **Where it goes:** back to where work can continue, based on the status it was closed from. `RESOLVED` returns as `VERIFIED` (it can be dispatched or resolved again) and `REJECTED` returns as `SUBMITTED` (it needs a fresh decision), because neither of those two statuses has a way forward. `SUBMITTED`, `NEEDS_INFORMATION`, `VERIFIED` and `DISPATCHED` return as they were. An incident with no priority never returns as `VERIFIED` or `DISPATCHED`; it returns as `SUBMITTED`, because verification requires a priority.
 * **Citizen view:** a report that was rejected, or closed without ever being resolved, is shown with a plain explanation instead of the four-stage progress bar (Submitted, Verified, Dispatched, Resolved). A closed report that was resolved still shows the finished path.
 
 ### 4.9 Agency Directory
+
 * **Read:** `GET /api/v1/dm/agency-contacts` (any `DISASTER_MGMT` staff). Returns `{"items": [{"agency_id", "name", "agency_type", "contact_email", "contact_phone", "is_active", "updated_at"}]}`, active agencies first.
 * **Write:** `POST /api/v1/dm/agencies` and `PUT /api/v1/dm/agencies/{agency_id}`. Both need the `SUPERVISOR` permission (`403 PERMISSION_REQUIRED` otherwise) and are rate limited to 30 changes per hour per user.
 * **Body (both):** `{"name": 2-200 chars, "agency_type": "FIRE"|"POLICE"|"NDRF"|"MEDICAL"|"MUNICIPAL"|"NGO", "contact_email": email|null, "contact_phone": digits, spaces, + - ( ) 3-20 chars|null, "is_active": bool, "reason": 5-500 chars}`. At least one of email and phone is required so the agency can be reached. `PUT` replaces the whole record. Text is trimmed. The reason is recorded in the audit log.
@@ -425,6 +473,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 * **Path:** `GET /api/v1/field/me`
 * **Auth:** Bearer Token (`FIELD_TEAM` role)
 * **Response (200 OK):**
+
 ```json
 {
   "user_id": "a1b2c3d4-0000-0000-0000-000000000001",
@@ -443,6 +492,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   "status": "AVAILABLE"
 }
 ```
+
 * **Errors:**
   * `401 UNAUTHORIZED`: Missing or expired token.
   * `403 FORBIDDEN`: Authenticated user does not have `FIELD_TEAM` role.
@@ -457,6 +507,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 * **Query Parameters:**
   * `active` *(optional boolean, default `false`)*: If `true`, returns only dispatches in statuses `REQUESTED`, `ACKNOWLEDGED`, or `DISPATCHED`.
 * **Response (200 OK):**
+
 ```json
 [
   {
@@ -479,6 +530,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   }
 ]
 ```
+
 * **Isolation Rule:** Only dispatches assigned to the authenticated responder's team are returned. No other team's data is ever included.
 
 ---
@@ -489,6 +541,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 * **Auth:** Bearer Token (`FIELD_TEAM` role)
 * **Request Body:** *(empty — no body required)*
 * **Response (200 OK):**
+
 ```json
 {
   "status": "ACKNOWLEDGED",
@@ -496,6 +549,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   "acknowledged_at": "2026-10-24T15:04:00Z"
 }
 ```
+
 * **State Transition:** `REQUESTED` → `ACKNOWLEDGED`
 * **Idempotency:** If the dispatch is already `ACKNOWLEDGED`, returns `200 OK` without error (safe for mobile network retries).
 * **Errors:**
@@ -509,12 +563,15 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 * **Path:** `POST /api/v1/field/dispatches/{dispatch_id}/rejection`
 * **Auth:** Bearer Token (`FIELD_TEAM` role)
 * **Request Body:**
+
 ```json
 {
   "reason": "Team currently engaged in active rescue; capacity unavailable for secondary deployment."
 }
 ```
+
 * **Response (200 OK):**
+
 ```json
 {
   "status": "REJECTED",
@@ -522,6 +579,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   "updated_at": "2026-10-24T15:06:00Z"
 }
 ```
+
 * **State Transition:** `REQUESTED` / `ACKNOWLEDGED` → `REJECTED`
 * **Side Effect:** All reserved resources (`resource_assignments`) for the dispatch are released back to `status = 'AVAILABLE'`.
 * **Errors:**
@@ -536,6 +594,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 * **Path:** `POST /api/v1/field/dispatches/{dispatch_id}/progress`
 * **Auth:** Bearer Token (`FIELD_TEAM` role)
 * **Request Body:**
+
 ```json
 {
   "status": "EN_ROUTE",
@@ -544,8 +603,10 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   "longitude": 72.5650
 }
 ```
+
 * **Valid `status` values:** `EN_ROUTE`, `ON_SCENE`, `UPDATE`, `DELAYED`
 * **Response (200 OK):**
+
 ```json
 {
   "progress_id": "e5f6a7b8-0000-0000-0000-000000000003",
@@ -555,6 +616,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   "recorded_at": "2026-10-24T15:08:00Z"
 }
 ```
+
 * **State Transitions (automatic):**
   * `EN_ROUTE` + dispatch is `ACKNOWLEDGED` → dispatch advances to `DISPATCHED`; parent incident advances from `VERIFIED` → `DISPATCHED`.
   * All other events record progress milestone only (no dispatch status change).
@@ -570,13 +632,16 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 * **Path:** `POST /api/v1/field/dispatches/{dispatch_id}/team-requests`
 * **Auth:** Bearer Token (`FIELD_TEAM` role)
 * **Request Body:**
+
 ```json
 {
   "required_capability": "hazmat",
   "note": "Chemical spill detected in basement — require hazmat decontamination unit urgently."
 }
 ```
+
 * **Response (201 Created):**
+
 ```json
 {
   "request_id": "f7a8b9c0-0000-0000-0000-000000000004",
@@ -587,6 +652,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   "created_at": "2026-10-24T15:12:00Z"
 }
 ```
+
 * **Side Effects:**
   * Inserts a record into `team_requests` with `status = 'OPEN'`.
   * Sends an in-app notification to all active dispatchers (`DISPATCH` permission) with the requesting team name and capability needed.
@@ -601,6 +667,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 * **Path:** `POST /api/v1/field/dispatches/{dispatch_id}/completion`
 * **Auth:** Bearer Token (`FIELD_TEAM` role)
 * **Request Body:**
+
 ```json
 {
   "summary": "All stranded residents evacuated. Area secured. No further immediate risk.",
@@ -609,7 +676,9 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   "notes": "Handoff to district relief camp. Structural damage assessment pending."
 }
 ```
+
 * **Response (200 OK):**
+
 ```json
 {
   "status": "COMPLETED",
@@ -619,6 +688,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   "updated_at": "2026-10-24T17:45:00Z"
 }
 ```
+
 * **State Transition:** `DISPATCHED` → `COMPLETED`
 * **Critical Rule:** The **parent incident remains open** (status is NOT changed to `RESOLVED`). The incident must be resolved separately by a dispatcher after all assigned teams report completion.
 * **Side Effect:** All assigned team resources (`resource_assignments`) are released back to `status = 'AVAILABLE'`.
@@ -644,6 +714,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 * **Query Parameters:**
   * `limit` *(optional integer, 1–20, default `5`)*: Maximum candidate teams to return.
 * **Response (200 OK):**
+
 ```json
 {
   "incident_id": "3c0b05b3-3a1e-450e-a226-bcfe69d0d939",
@@ -669,6 +740,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   "generated_at": "2026-11-05T15:00:00Z"
 }
 ```
+
 * **Field notes for the frontend:**
   * `scenario` is the database enum value (`URBAN_FLOODING`, `INDUSTRIAL_FIRE`, `CYCLONE`).
   * `agency` (not `agency_name`) carries the agency display name.
@@ -701,6 +773,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   * `limit` *(optional integer, 1–100, default `50`)*
   * `offset` *(optional integer, default `0`)*
 * **Response (200 OK):**
+
 ```json
 [
   {
@@ -730,6 +803,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 * **Path:** `POST /api/v1/dm/team-requests/{request_id}/decision`
 * **Auth:** Staff Session (`DISASTER_MGMT`) with the **`DISPATCH`** permission
 * **Request Body:**
+
 ```json
 {
   "action": "APPROVE",
@@ -737,9 +811,11 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   "rationale": "Hazmat unit dispatched from Vatva Industrial Zone depot."
 }
 ```
+
 * **`action` values:** `APPROVE` | `DECLINE`
 * **`rationale`:** Required for `DECLINE`; optional for `APPROVE`.
 * **Response (200 OK — APPROVE):**
+
 ```json
 {
   "request_id": "f7a8b9c0-0000-0000-0000-000000000004",
@@ -758,7 +834,9 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   }
 }
 ```
+
 * **Response (200 OK — DECLINE):**
+
 ```json
 {
   "request_id": "f7a8b9c0-0000-0000-0000-000000000004",
@@ -768,6 +846,7 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   "dispatch_draft": null
 }
 ```
+
 * **Concurrency:** Uses `SELECT ... FOR UPDATE` row lock; double-deciding a request returns `409 TEAM_REQUEST_ALREADY_DECIDED`.
 * **Side Effects:**
   * On `APPROVE`: Updates `team_requests.status = 'APPROVED'`; writes audit entry; notifies the requesting field user.
@@ -786,10 +865,12 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 ## 7. Payments & Donations Foundation API (Owner: Shlok)
 
 ### 7.1 Create Donation Order
+
 * **Path:** `POST /api/v1/donations`
 * **Auth:** Optional Citizen Bearer Token or Guest Email
 * **Headers:** `Idempotency-Key: <unique-key>`
 * **Request Body:**
+
 ```json
 {
   "campaign_id": "c0000000-0000-0000-0000-000000000001",
@@ -800,7 +881,9 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   "is_anonymous": false
 }
 ```
+
 * **Response (201 Created):**
+
 ```json
 {
   "donation_id": "a189f782-b7e1-45df-911b-3ca976ebff12",
@@ -814,22 +897,27 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   "checkout_key": null
 }
 ```
+
 * **`checkout_key`:** the public Razorpay key id the browser needs to open Razorpay Checkout; `null` for the mock gateway. It is never a secret. After checkout succeeds, the browser sends Razorpay's `razorpay_payment_id` and `razorpay_signature` to 7.2 as `gateway_payment_id` and `signature`.
 
 * **Gateway:** selected with `PAYMENT_GATEWAY` (`mock` or `razorpay`); `gateway_name` is `MOCK_GATEWAY` or `RAZORPAY`. `is_sandbox` comes from the gateway: always `true` for the mock gateway, `true` for Razorpay test keys, `false` only for `rzp_live` keys.
 * **Errors:** `422 IDEMPOTENCY_KEY_REQUIRED`, `409 IDEMPOTENCY_CONFLICT`, `409 CAMPAIGN_NOT_ACTIVE`, `502 GATEWAY_UNAVAILABLE` (the gateway refused or could not be reached; nothing is stored).
 
 ### 7.2 Verify Payment & Issue Receipt
+
 * **Path:** `POST /api/v1/donations/{id}/verify`
 * **Signature:** mock gateway: HMAC-SHA256 (`MOCK_GATEWAY_SECRET`) over `<order_id>|<payment_id>|<amount with 2 decimals>|<currency>`, so a signature for another amount or currency is rejected. Razorpay: Razorpay's checkout signature over `<order_id>|<payment_id>`; the amount is fixed by the server-created order.
 * **Request Body:**
+
 ```json
 {
   "gateway_payment_id": "pay_mock_12345678",
   "signature": "hmac_sha256_mock_signature"
 }
 ```
+
 * **Response (200 OK):**
+
 ```json
 {
   "donation_id": "a189f782-b7e1-45df-911b-3ca976ebff12",
@@ -838,11 +926,13 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   "receipt_issued_at": "2026-10-24T15:30:00Z"
 }
 ```
+
 * **Errors:** `400 INVALID_SIGNATURE` (audited; the donation is unchanged), `409 ALREADY_CONFIRMED` (confirmed with a different payment), `409 GATEWAY_MISMATCH` (created under another gateway).
 * **Idempotent:** if the webhook (7.3) confirmed the donation first, the same payment returns `200` with the same receipt.
 * **Late payment:** a `FAILED` donation (cancelled, expired or after a failed attempt, see 7.5) is still confirmed by a valid signature for its order, amount and currency, because the gateway captured the money; the receipt is issued as usual and the confirmation is audited with the earlier reason.
 
 ### 7.5 Donation Endings: Cancel and Expiry (S3-11)
+
 * **Path:** `POST /api/v1/donations/{id}/cancel` (no body)
 * **Auth:** the donor's Bearer Token for a signed-in donation; for a guest donation, whoever holds the id (same rule as 7.2). Another donor gets `404`.
 * **Response (200 OK):** `{"donation_id": "…", "status": "FAILED", "failure_reason": "ABANDONED"}`. Idempotent: cancelling a `FAILED` donation returns its current state and writes no second audit row.
@@ -851,23 +941,28 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 * An expired or cancelled order cannot use the sandbox payment step (`409 DONATION_NOT_PENDING`); the donor starts a new order. A real payment captured later still confirms it (7.2, 7.3).
 
 ### 7.3 Payment Webhook (server-to-server)
+
 * **Path:** `POST /api/v1/payments/webhook/{gateway}` — `{gateway}` is `mock` or `razorpay` and must match `PAYMENT_GATEWAY` (otherwise `404`).
 * **Auth:** none; authenticated by an HMAC-SHA256 signature over the raw body: `X-Mock-Signature` (`MOCK_GATEWAY_SECRET`) or `X-Razorpay-Signature` (`RAZORPAY_WEBHOOK_SECRET`).
 * **Event id:** `X-Razorpay-Event-Id` / `X-Mock-Event-Id` header (mock also accepts a top-level `id`); without one, a SHA-256 of the body is used. Each event id is processed once (`payment_webhook_events`, migration 11).
 * **Body:** Razorpay payment event shape for both gateways:
+
 ```json
 {
   "event": "payment.captured",
   "payload": {"payment": {"entity": {"id": "pay_123", "order_id": "order_123", "amount": 250000, "currency": "INR"}}}
 }
 ```
+
 * **Response (200 OK):** `{"received": true, "event_id": "evt_1", "outcome": "CONFIRMED", "donation_id": "…"}`. Every verified event answers 200 so the gateway stops retrying; `outcome` is one of `CONFIRMED` (also for a `FAILED` donation whose payment was captured later), `ALREADY_CONFIRMED`, `DUPLICATE_EVENT`, `AMOUNT_MISMATCH` (amount in paise or currency differs from the donation; nothing changes, audited), `PAYMENT_CONFLICT`, `FAILED` (`payment.failed` on a `PENDING` donation; `failure_reason` `GATEWAY_DECLINED`), `UNKNOWN_ORDER`, `IGNORED_EVENT_TYPE`, `IGNORED_NOT_PENDING`.
 * **Errors:** `400 INVALID_SIGNATURE` (audited, nothing changes).
 
 ### 7.4 My Donations & Receipts
+
 * **Path:** `GET /api/v1/me/donations?page=1&limit=25`
 * **Auth:** Bearer Token (`require_citizen`). Guest donations have no account and are not listed.
 * **Response (200 OK):**
+
 ```json
 {
   "items": [
@@ -896,8 +991,10 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 ## 8. AI Triage Service Contract (Owner: Rudra / Neeti)
 
 ### 8.1 Fast Triage Prediction
+
 * **Path:** `POST /triage`
 * **Request Body:**
+
 ```json
 {
   "incident_ref": "INC-GUJ-2026-001",
@@ -909,7 +1006,9 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   "details": {}
 }
 ```
+
 * **Response Contract (200 OK):**
+
 ```json
 {
   "model": "drch-triage-v1-rules",
@@ -923,13 +1022,16 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   ]
 }
 ```
+
 * **Which engine answers (S2-06):** by default the rules baseline (`model` = `drch-triage-v1-rules`). When `TRIAGE_MODEL_DIR` holds a checked scenario model (`ai-workers/service/scenario_model.py`), `model` is that model's name, `scenario` and `confidence` come from it, its first factor is `{"name": "text_model", "detail": "<dataset label> (<probability>)"}` and the rules' `scenario_keywords` factor is dropped. `priority` and its factors always come from the written priority rules ([ai/triage-rules.md](../ai/triage-rules.md)). Labels `earthquake`, `other_disaster` and `not_disaster` are returned as `OTHER`. A missing, unchecked or failing model leaves the rules answer in place. The backend guardrails (`backend/app/services/ai_provider.py`) treat both engines alike: confidence below `AI_LOW_CONFIDENCE_THRESHOLD` (default 0.6) is stored as `LOW_CONFIDENCE`, `OTHER` as out of scope.
 
 ### 8.2 English Text Analysis (Experimental Advisory Endpoint)
+
 * **Path:** `POST /analyze-text`
 * **Auth:** Optional `Authorization: Bearer <AI_TRIAGE_TOKEN>` when the worker token is configured.
 * **Purpose:** Run the separately trained English crisis-message model. This endpoint is additive and does not change `/triage` or the backend incident lifecycle.
 * **Request Body:**
+
 ```json
 {
   "description": "The underpass is flooded and several people need rescue.",
@@ -939,19 +1041,24 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
   "longitude": 72.57
 }
 ```
+
 * **Response (200 OK):** Includes advisory disaster relevance and probabilities for learned help intent, direct-report, and humanitarian information categories. Low-confidence relevance is returned as `REVIEW` with a candidate label. Text not confidently detected as English returns `LANGUAGE_UNCERTAIN` or `UNSUPPORTED_LANGUAGE` without classification. `source_metadata` is copied from the caller; it is not extracted from the text. The model explicitly returns `NOT_TRAINED` for the project's exact operational scenario and priority, location mentions, and event-time extraction.
 * **Availability:** Returns `503` when `TEXT_MODEL_DIR` does not point to a trained model artifact. Human review is required; this response must not trigger incident verification or dispatch.
 
 ### 8.2.1 Multilingual Disaster Classifier for Ingested Text
+
 When `DISASTER_CLASSIFIER_URL` is configured, the ingestion worker sends each new GNEWS/BLUESKY signal's sanitized text to the deployed IndicBERT disaster classifier. Source, timestamps, language hint, location, and verification link remain in the local signal record; the model API accepts text only. The worker sends PII-scrubbed original wording and does not translate it.
 
 * **Method:** `POST <DISASTER_CLASSIFIER_URL>` (for example `https://<classifier-host>/predict`; the real URL is set only in the local `.env` and the deployed service's environment).
 * **Request headers:** `Content-Type: application/json`, `Accept: application/json`; no authentication is currently required by this deployed endpoint.
 * **Request body:**
+
 ```json
 {"text": "Sanitized original signal text"}
 ```
+
 * **Response body:**
+
 ```json
 {
   "prediction": "Flood",
@@ -965,21 +1072,25 @@ When `DISASTER_CLASSIFIER_URL` is configured, the ingestion worker sends each ne
   }
 }
 ```
+
 * **Stored classifier result:** The signal API includes `ai_details.classification` with `prediction`, `is_disaster`, `confidence`, and `probabilities`. `is_disaster` is false only for `Non-Disaster`; all four disaster classes are retained as positive classifier results. The raw prediction is preserved even where it does not map exactly to a DRCH operational scenario. A compatible, confident `Flood` or `Cyclone` may also populate the existing `ai_label`; the `Fire` class remains generic and is not silently relabeled as industrial fire.
 * **Processing bounds:** At most 50 new or changed GNEWS/BLUESKY signals are sent per ingestion run. A failed request leaves the signal stored and available for review; the attempted signal is not automatically retried. The existing `/triage` service remains separate and is used only when `DISASTER_CLASSIFIER_URL` is unset.
 * **Scope:** This classifier stage determines the broad disaster class only. It does not assign priority, verify an incident, cluster signals, or dispatch resources. `Non-Disaster` remains stored with `is_disaster: false`; the field lets a later pipeline stage distinguish it from disaster candidates. All predictions are advisory.
 
 ### 8.3 AI Service Health
+
 * **Path:** `GET /health`
 * **Response (200 OK):** `{"status": "ok", "service": "drch-ai-triage", "triage_engine": "rules"}`. `triage_engine` is `rules`, or `model:<model name>` when a checked scenario model is loaded (8.1).
 
 ### 8.4 Optional LLM Adapter (`ai-workers/service/llm.py`)
+
 * Not an HTTP endpoint: a library called by `/triage` (8.1). **Off by default** (`LLM_ENABLED`); the provider key is read from `LLM_API_KEY` only.
 * When enabled, the `/triage` response is the unchanged rules result plus, only when they apply, `llm_second_opinion` (`{"scenario", "priority", "source": "llm"}`) and `english_summary` (a string). The backend's guardrails ignore both fields until the S3-07 evaluation decides whether the LLM stays on.
 * `second_opinion` runs only when the rules confidence is below 0.6 and returns `{"scenario", "priority", "source": "llm"}` limited to the allowed labels, otherwise nothing. `english_summary` summarises Hindi or Gujarati text. Replies that are not valid JSON or use other labels are rejected.
 * Only the report text is sent, with emails and phone numbers masked; no reporter identity. The result is advisory and never decides anything.
 
 ### 8.5 AI Versus Human Decisions (`GET /api/v1/dm/analytics`)
+
 * The `ai_by_decision` list counts AI suggestions by `scenario`, `human_action` and `confidence_band` (`n` per row). Filters: `scenario`, `from`, `to`.
 * **Definitions:** `human_action` is what the dispatcher recorded: `ACCEPTED` (suggestion used as given), `MODIFIED` (used with changes) or `REJECTED`; `UNDECIDED` means no decision yet. `confidence_band` is the AI confidence at suggestion time: `HIGH` 0.80 or more, `MEDIUM` 0.60 to 0.79, `LOW` below 0.60, `UNKNOWN` when none was recorded. The same wording is returned in `definitions.confidence_bands`.
 * Suggestions are advisory; this endpoint only counts what humans decided.
@@ -1005,11 +1116,13 @@ All endpoints below are under `/api/v1`, use the standard error format, and neve
 Rate limits are per client IP (sliding window, `429 RATE_LIMITED` with `details.retry_after_seconds`).
 
 ### 9.1 Password Reset
+
 1. **Request a link** — `POST /auth/forgot-password`, body `{"email": "user@example.in"}`. Rate limit 5 per 15 minutes. Always `200 OK` with `{"message": "If this email is registered and active, a password reset link has been sent."}`; an email (link `…/reset-password?token=…`) is sent only to an active, unlocked account.
 2. **Check the link** — `GET /auth/reset-password/verify?token=…` → `200 {"valid": true, "message": "Password reset token is valid"}` or `400 RESET_TOKEN_INVALID`.
 3. **Set the password** — `POST /auth/reset-password`, body `{"token": "…", "new_password": "…"}` (`new_password` 12–1024 characters). Rate limit 10 per 15 minutes. `200 {"message": "…"}`; the token is cleared and `token_version` is incremented, so all existing sessions are revoked. MFA enrolment is kept. Errors: `400 RESET_TOKEN_INVALID` (unknown, used or expired), `422 VALIDATION_FAILED`.
 
 ### 9.2 Staff Invitations
+
 Staff accounts (`DISASTER_MGMT`, `FIELD_TEAM`, `APP_MGMT`) are never created with a password chosen by someone else: they are invited and finish setup themselves.
 
 * **Invite** — `POST /auth/invitations`
@@ -1023,6 +1136,7 @@ Staff accounts (`DISASTER_MGMT`, `FIELD_TEAM`, `APP_MGMT`) are never created wit
 * Until setup is complete, `POST /auth/login` answers `403 ACCOUNT_NOT_SETUP`.
 
 ### 9.3 Google Sign-In (citizens only)
+
 * **Path:** `POST /auth/google`, body `{"credential": "<Google Identity Services ID token>"}`. Rate limit 20 per 5 minutes.
 * **Behaviour:** the ID token is verified with Google and its audience must equal `GOOGLE_CLIENT_ID`; the Google email must be verified. An existing **citizen** is signed in; an unknown email is registered as a new citizen (`NORMAL_USER`) and signed in. The response is the signed-in response of 2.2.
 * **Citizen-only rule:** a Google identity never yields a staff session, and an email that belongs to a staff account (dispatcher, field team or admin) can never be used as a citizen: emails are unique across all roles, so `POST /auth/register` also answers `409 DUPLICATE_EMAIL`. If the email belongs to a staff account, in any account state, the request is refused with `403 GOOGLE_STAFF_NOT_ALLOWED` and a `GOOGLE_LOGIN_DENIED` audit entry; staff sign in with password and TOTP (2.2). The web app answers that code with a dialog telling the person to use email, password and authenticator code.
@@ -1030,6 +1144,7 @@ Staff accounts (`DISASTER_MGMT`, `FIELD_TEAM`, `APP_MGMT`) are never created wit
 * **Errors:** `503 GOOGLE_AUTH_UNAVAILABLE` (`GOOGLE_CLIENT_ID` not configured), `401 GOOGLE_AUTH_FAILED` (invalid token, wrong audience or no email), `401 GOOGLE_EMAIL_NOT_VERIFIED`, `502 GOOGLE_SERVICE_UNAVAILABLE` (Google could not be reached), `401 INVALID_CREDENTIALS` (locked or inactive citizen), `403 GOOGLE_STAFF_NOT_ALLOWED`, `429 RATE_LIMITED`.
 
 ### 9.4 Auth Error Codes
+
 | Code | HTTP | Meaning |
 | :--- | :--- | :--- |
 | `INVALID_CREDENTIALS` | 401 | Sign-in failed (generic on purpose) |
@@ -1052,6 +1167,7 @@ Staff accounts (`DISASTER_MGMT`, `FIELD_TEAM`, `APP_MGMT`) are never created wit
 | `RATE_LIMITED` | 429 | Too many requests from this IP |
 
 ### 9.5 Administrator: Staff Account Directory
+
 * **Path:** `GET /api/v1/admin/accounts`
 * **Auth:** Bearer token of an `APP_MGMT` administrator with verified MFA. Dispatch supervisors, dispatchers, field teams and citizens get `403`; no token or no MFA gets `401`.
 * **Query:** `q` (part of a name or email, case-insensitive, `%` and `_` are literal; up to 100 characters), `role` (`DISASTER_MGMT`, `FIELD_TEAM` or `APP_MGMT`), `status` (`ACTIVE`, `PENDING_SETUP`, `DISABLED`, `LOCKED` or `PENDING_VERIFICATION`), `page`, `limit` (1–100, default 25). Anything else is `422`.
@@ -1059,12 +1175,14 @@ Staff accounts (`DISASTER_MGMT`, `FIELD_TEAM`, `APP_MGMT`) are never created wit
 * **Privacy:** only staff accounts are listed; citizens never appear. No phone number, password hash, MFA secret or session detail is returned.
 
 #### Export the directory
+
 * **Path:** `GET /api/v1/admin/accounts/export`, with the directory's `q`, `role` and `status` filters. Same authentication as the directory; rate limited (10 per hour per client).
 * **Response (200):** a UTF-8 CSV download (`Content-Disposition: attachment`, `Cache-Control: no-store`, byte-order mark for Excel), newest first, at most 5000 rows. Columns: Name, Email, Role, Designation, Status, Authenticator set up, Last sign-in, Created, Permissions (space separated), Team. Cells that a spreadsheet could run as a formula (starting with `=`, `+`, `-`, `@`, tab or carriage return) are prefixed with a quote.
 * **Privacy:** staff only, never citizens, and no phone number, password hash or MFA secret. Because it copies staff email addresses out of the system, every export is recorded as `ACCOUNTS_EXPORTED` with the actor, the row count and the filters used.
 * **Errors:** `422` for an invalid filter value.
 
 #### Disable and enable an account
+
 * **Paths:** `POST /api/v1/admin/accounts/{user_id}/disable` and `POST /api/v1/admin/accounts/{user_id}/enable`. Same authentication as the directory (`APP_MGMT` with verified MFA); rate limited (30 per hour per client).
 * **Body:** `{"reason": "..."}`, 5 to 500 characters, required and recorded in the audit log (`422` otherwise).
 * **Disable:** sets the account to `DISABLED` and bumps its session version. The person cannot sign in, and their current session ends on their next request. Nothing is deleted. Returns `{"user_id", "status": "DISABLED"}`. Audit action `ACCOUNT_DISABLED` with the actor, the reason and the before and after state.
@@ -1072,40 +1190,47 @@ Staff accounts (`DISASTER_MGMT`, `FIELD_TEAM`, `APP_MGMT`) are never created wit
 * **Errors:** `409 CANNOT_DISABLE_SELF`, `409 LAST_ADMIN` (the last active administrator cannot be disabled), `409 ALREADY_DISABLED`, `409 NOT_DISABLED`, `404` for a citizen or unknown account.
 
 #### Disable or sign out several accounts
+
 * **Path:** `POST /api/v1/admin/accounts/bulk`. Authentication as disable; rate limited to 10 calls per hour. Body `{"action": "disable" | "sign-out", "user_ids": ["..."], "reason": "..."}`: 1 to 25 distinct ids, reason 5 to 500 characters.
 * **Effect:** Each account is handled on its own, in its own transaction, with exactly the rules and audit entry (`ACCOUNT_DISABLED` or `ACCOUNT_SIGNED_OUT`, with the shared reason) of the single action. An account that cannot be changed (yourself, the last active administrator, already disabled, not active, a citizen or unknown id) is reported and skipped; the others still go through.
 * **Response (200):** `{"action", "done", "skipped", "results": [{"user_id", "ok", "code", "message"}]}`, in the order requested. `code` and `message` are null when `ok` is true, otherwise the error the single action would have returned (for example `CANNOT_DISABLE_SELF`, `ALREADY_DISABLED`, `NOT_ACTIVE`, `NOT_FOUND`, `LAST_ADMIN`).
 * **Errors:** `422` for an empty or oversized list, a repeated id, an unknown action or a short reason. Re-enabling and resetting a sign-in are not bulk actions.
 
 #### Edit a person's details
+
 * **Path:** `PUT /api/v1/admin/accounts/{user_id}/profile`. Same authentication and rate limit as disable. Body `{"full_name": "...", "designation": "..." | null, "reason": "..."}`: name 2 to 120 characters, designation up to 120 (blank clears it), reason 5 to 500. Audited as `PROFILE_UPDATED` with the old and new values.
 * **Effect:** Changes the display name and designation of any staff account, including your own and accounts that have not finished setup. The email address is the sign-in identity and cannot be changed here.
 * **Response:** `{"user_id": "...", "full_name": "...", "designation": "..." | null}`.
 * **Errors:** `409 NO_CHANGE` (nothing differs), `422` for an invalid name, designation or reason, `404` for a citizen or unknown account.
 
 #### Sign a person out everywhere
+
 * **Path:** `POST /api/v1/admin/accounts/{user_id}/sign-out`. Same authentication and rate limit as disable. Body `{"reason": "..."}`, 5 to 500 characters, audited as `ACCOUNT_SIGNED_OUT`.
 * **Effect:** For an account that has finished setup and is not disabled: bumps `token_version` (access tokens stop working on the next request) and revokes every refresh token (`ADMIN_SIGN_OUT`), so no session can renew. The account stays usable; the person signs in again with their password and authenticator. Use it after a lost or shared device; use disable to block the person, or reset sign-in when the password or authenticator is lost.
 * **Response:** `{"user_id": "...", "status": "ACTIVE", "signed_out": true}` (`status` is the account's unchanged status).
 * **Errors:** `409 CANNOT_SIGN_OUT_SELF`, `409 NOT_ACTIVE` (disabled or awaiting setup: no sessions to end), `404` for a citizen or unknown account.
 
 #### Reset a person's sign-in
+
 * **Path:** `POST /api/v1/admin/accounts/{user_id}/reset-credentials`. Same authentication and rate limit as disable. Body `{"reason": "..."}`, 5 to 500 characters, audited.
 * **Effect:** for an `ACTIVE` staff account whose person lost their phone or password. The account goes back to `PENDING_SETUP`, the password stays but the authenticator is removed, sessions end, lockout and any pending password reset are cleared, and a single-use setup link (same expiry as invitations) is emailed to them. They choose a new password and enrol a new authenticator on `/setup-account`. The administrator never sees the link, a password or an authenticator secret. Returns `{"user_id", "status": "PENDING_SETUP", "invitation_expires_at", "email_configured"}`; `email_configured` is false when no SMTP host is set, so no email left the server. Audit action `ACCOUNT_CREDENTIALS_RESET`.
 * **Errors:** `409 CANNOT_RESET_SELF`, `409 ACCOUNT_DISABLED` (enable it first), `409 ALREADY_PENDING` (resend its invitation instead), `409 LAST_ADMIN` (the only active administrator cannot be reset), `404` for a citizen or unknown account.
 
 #### Edit a staff member's permissions
+
 * **Path:** `PUT /api/v1/admin/accounts/{user_id}/permissions`. Same authentication and rate limit as disable.
 * **Body:** `{"permissions": ["DISPATCH", ...], "reason": "..."}`. `permissions` is the full new set (any of `PUBLISHER`, `MODERATOR`, `CLOSURE`, `DISPATCH`, `SUPERVISOR`; an empty list removes them all; duplicates are ignored); `reason` is 5 to 500 characters and audited.
 * **Effect:** only Disaster Management accounts have permissions. The change applies on the person's very next request; they are not signed out. Returns `{"user_id", "permissions"}` (sorted). Audit action `PERMISSIONS_CHANGED` with the actor, the reason, and the before and after sets.
 * **Errors:** `422 UNKNOWN_PERMISSION` (or a short reason), `409 NO_CHANGE` (the set is identical), `409 NO_PERMISSIONS_FOR_ROLE` (field team and administrator accounts), `404` for a citizen or unknown account.
 
 #### System status
+
 * **Path:** `GET /api/v1/admin/system`. Same authentication as the directory (`APP_MGMT` with verified MFA).
 * **Response (200):** `{"database": {"status", "latency_ms"}, "version", "email": {"configured", "simulated"}, "mfa_key_valid", "accounts": {"invitations_open", "invitations_expired", "locked", "active_without_mfa"}, "audit": {"last_entry_at", "last_verified_at", "last_verification_ok"}, "checked_at"}`. Staff accounts only are counted. `email.simulated` is true when no SMTP host is set, so invitation and reset links are not delivered.
 * **Privacy:** booleans, counts and timestamps only. No setting value, address, key, password or personal data is returned.
 
 #### Audit log
+
 * **Path:** `GET /api/v1/admin/audit`. Same authentication as the directory (`APP_MGMT` with verified MFA).
 * **Scope:** account and security entries only: entity `user` (account changes, sign-ins, registrations), `route` (denied requests) and `audit` (chain checks). Operational entries (incidents, dispatches, donations, evidence and so on) are never returned, because administrators have no operational access.
 * **Query:** `q` (part of a staff name or email, or of an action; it never matches a citizen), `action` (exact), `result` (`SUCCESS`, `FAILURE` or `DENIED`), `user_id` (entries made by or about one account), `from` and `to` (dates, inclusive; a start after the end is `422`), `page`, `limit` (1–100, default 25). Newest first.
@@ -1115,7 +1240,124 @@ Staff accounts (`DISASTER_MGMT`, `FIELD_TEAM`, `APP_MGMT`) are never created wit
 
 ---
 
-## 10. Owner Sign-Off Matrix
+## 10. Endpoint Index: Disaster Management Workspace, Account and Citizen Extras
+
+Sections 1–9 describe the payloads of the citizen, public, field, signal, recommendation, payment, AI and account-security endpoints. This section lists the **rest of the API**: the Disaster Management workspace and the smaller citizen and auth routes. It gives the access rule for each one and the main error codes. All paths are under `/api/v1`.
+
+**Access rules:**
+
+- **DM** means a `DISASTER_MGMT` account with verified MFA. The whole `/dm` router requires it.
+- A permission in brackets is required on top of that: `DISPATCH`, `CLOSURE`, `PUBLISHER`, `MODERATOR` or `SUPERVISOR`. A missing permission answers `403 PERMISSION_REQUIRED`.
+
+**Common behaviour:**
+
+- **Optimistic concurrency:** state-changing incident calls take the `version` the client last read; a stale version answers `409 VERSION_CONFLICT`.
+- **Invalid transitions** answer `409 INVALID_TRANSITION` (incidents) or `409 DISPATCH_STATE_CONFLICT` / `DISPATCH_NOT_ACKNOWLEDGED` (dispatches).
+- **Rationale fields** (`rationale` or `reason`) are 3–2000 characters.
+- **Lists** take `page` (from 1) and `limit` (1–100, default 25) and answer `{items, page, limit, total, pages}`.
+
+### 10.1 Incidents
+
+| Method and path | Access | Purpose and main errors |
+|---|---|---|
+| `GET /dm/incidents` | DM | Queue with filters (status, scenario, priority, district, search) |
+| `GET /dm/incidents/{id}` | DM | Detail: evidence list, timeline, AI recommendations, dispatches |
+| `GET /dm/incidents/{id}/evidence/{evidence_id}/content` | DM | Photo bytes (moderated evidence only) |
+| `POST /dm/incidents/{id}/verification` | DM | `{decision: VERIFIED\|REJECTED\|NEEDS_INFORMATION, rationale, priority?, version}`. A priority is required for VERIFIED and allowed only then |
+| `POST /dm/incidents/{id}/information-requests` | DM | Ask the reporter a question; the status becomes `NEEDS_INFORMATION`. The reporter's answer returns it to `SUBMITTED` (§2.5) |
+| `PUT /dm/incidents/{id}/priority` | DM | `{priority, rationale, version}` |
+| `POST /dm/incidents/{id}/resolution` | DM | `VERIFIED`/`DISPATCHED` → `RESOLVED` |
+| `POST /dm/incidents/{id}/closure` | DM (CLOSURE) | `{reason, public_summary?, override?, override_rationale?, version}`; `409 OPEN_DEPENDENCIES` when dispatches are open and no override is given |
+| `POST /dm/incidents/{id}/reopen` | DM (CLOSURE) | §4.8 |
+| `GET /dm/incidents/{id}/duplicates` | DM | §4.5 |
+| `POST /dm/incidents/{id}/duplicates/{candidate_id}/decision` | DM | Link, merge or dismiss; never automatic |
+| `GET`, `POST /dm/incidents/{id}/notes` | DM | §4.6 |
+| `GET /dm/incidents/export`, `GET /dm/dispatches/export` | DM | §4.7 (rate-limited, 10 per hour) |
+
+### 10.2 Dispatches, resources and agencies
+
+| Method and path | Access | Purpose and main errors |
+|---|---|---|
+| `POST /dm/incidents/{id}/dispatches` | DM (DISPATCH) | Create a dispatch. Header `Idempotency-Key`. `409 INCIDENT_NOT_VERIFIED`; `409 RESOURCE_CONFLICT` (not enough quantity); `409 RESOURCE_UNAVAILABLE` (resource unavailable or in maintenance) |
+| `GET /dm/dispatches`, `GET /dm/dispatches/{id}` | DM | List (with `overdue` and `escalated` flags) and detail |
+| `POST /dm/dispatches/{id}/acknowledgement` | DM (DISPATCH) | Staff records an agency's acknowledgement: `REQUESTED` → `ACKNOWLEDGED` |
+| `POST /dm/dispatches/{id}/rejection` | DM (DISPATCH) | Reason required; releases resources |
+| `POST /dm/dispatches/{id}/progress` | DM (DISPATCH) | `EN_ROUTE` (→ `DISPATCHED`), `ON_SCENE`, `UPDATE`; field teams can also report `DELAYED` (§5.5) |
+| `POST /dm/dispatches/{id}/completion` | DM (DISPATCH) | → `COMPLETED`; releases resources |
+| `POST /dm/dispatches/{id}/failure` | DM (DISPATCH) | → `FAILED`; releases resources |
+| `POST /dm/dispatches/{id}/escalation` | DM (SUPERVISOR) | Manual escalation; the backend also escalates overdue `REQUESTED` dispatches every 60 s |
+| `POST /dm/incidents/{id}/agency-messages` | DM | Record a coordination message to an agency (status `QUEUED`). Nothing is sent outside ResQ |
+| `GET /dm/agency-messages`, `GET /dm/agency-messages/{id}` | DM | List and detail |
+| `POST /dm/agency-messages/{id}/events` | DM | Record `SENT`, `DELIVERED`, `ACKNOWLEDGED` or `FAILED`; `409 MESSAGE_STATE_CONFLICT` once final |
+| `GET`, `POST /dm/resources`; `PATCH /dm/resources/{id}` | DM | Inventory (TEAM, VEHICLE, SUPPLY, SUPPORT) with `version` |
+| `GET /dm/resources/{id}/assignments` | DM | Current and past reservations |
+| `POST /dm/resources/{id}/reservations`; `DELETE /dm/resources/{id}/reservations/{assignment_id}` | DM | Reserve for a dispatch (row lock) and release |
+| `GET /dm/agency-contacts` | DM | Agency contact list for dispatch forms |
+| `POST /dm/agencies`; `PUT /dm/agencies/{id}` | DM (SUPERVISOR) | §4.9 |
+| `GET /dm/incidents/{id}/team-recommendations` | DM | §6.1 (advisory) |
+| `GET /dm/team-requests`; `POST /dm/team-requests/{id}/decision` | DM; decision needs DISPATCH | §6.2, §6.3 |
+
+### 10.3 Signals and ingestion
+
+| Method and path | Access | Purpose |
+|---|---|---|
+| `GET /dm/signals`, `GET /dm/signals/related` | DM | §4.2, §4.4 |
+| `POST /dm/signals/{id}/promote`, `POST /dm/signals/{id}/dismiss` | DM (PUBLISHER or SUPERVISOR) | §4.3 |
+| `DELETE /dm/signals/{id}` | DM | §4.3.1 |
+| `GET /dm/ingestion/health`; `POST /dm/ingestion/poll` | DM | Last run per source; on-demand poll (respects the run lock, `SKIPPED` when busy) |
+
+### 10.4 AI (advisory)
+
+| Method and path | Access | Purpose |
+|---|---|---|
+| `POST /dm/incidents/{id}/ai-triage` | DM | Calls the triage service through the guardrails; stores an `ai_recommendations` row with status `GENERATED`, `LOW_CONFIDENCE`, `UNAVAILABLE` or `UNSAFE_OUTPUT`. Never changes the incident |
+| `GET /dm/incidents/{id}/ai-recommendations` | DM | History of recommendations |
+| `POST /dm/incidents/{id}/ai-recommendations/{rec_id}/decision` | DM | `{action: ACCEPTED\|MODIFIED\|REJECTED, rationale}`, the human decision |
+| `POST /dm/incidents/{id}/photo-analyse` | DM | One JPEG, PNG or WebP image (up to 10 MB) to the image classifier. `503 AI_PHOTO_UNAVAILABLE` when `AI_IMAGE_SERVICE_URL` is not set |
+
+### 10.5 Contributions, content and moderation
+
+| Method and path | Access | Purpose |
+|---|---|---|
+| `GET`, `POST /dm/campaigns`; `PATCH /dm/campaigns/{id}`; `POST /dm/campaigns/{id}/closure` | DM | Campaigns (`DRAFT`, `ACTIVE`, `PAUSED`, `CLOSED`) for the three scenarios |
+| `GET /dm/oversight/donations`, `GET /dm/oversight/aid` | DM | Confirmed money and verified aid; expires stale donations first |
+| `GET /dm/aid-contributions`; `POST /dm/aid-contributions/{id}/verification` | DM | Verify or reject registered aid |
+| `GET`, `POST /dm/needs`; `PATCH /dm/needs/{id}` | DM | Operational needs; `409 OVER_ALLOCATED` when a requirement drops below what is in flight |
+| `GET`, `POST /dm/allocations`; `POST /dm/allocations/{id}/delivery-events` | DM | Allocate aid to a need; `IN_TRANSIT`, `DELIVERED` or failure events |
+| `GET`, `POST /dm/public-updates`; `PATCH /dm/public-updates/{id}` | DM | Draft public updates |
+| `POST /dm/public-updates/{id}/publish`, `/archive` | DM (PUBLISHER) | Publish or archive |
+| `GET`, `POST /dm/safety-content`; `PATCH /dm/safety-content/{id}`; `GET /dm/safety-content/{id}/versions` | DM | Draft and version safety guidance |
+| `POST /dm/safety-content/{id}/approval`, `/publish` | DM (PUBLISHER) | `409 NOT_A_DRAFT`, `ALREADY_APPROVED`; publishing supersedes (archives) the previous version |
+| `GET /dm/moderation/queue`; `GET /dm/moderation/{id}/content`; `POST /dm/moderation/{id}/decision` | DM (MODERATOR) | Approve, quarantine or remove evidence |
+| `GET`, `POST /dm/shelters`; `PUT /dm/shelters/{id}` | DM | Shelters, relief camps, medical posts; open ones appear in `GET /public/shelters` |
+
+### 10.6 Dashboard, map, analytics and staff
+
+| Method and path | Access | Purpose |
+|---|---|---|
+| `GET /dm/dashboard` | DM | Counts by status and priority, pending actions |
+| `GET /dm/map`, `GET /dm/map/layers` | DM | Operational map data (incidents, teams, shelters, alerts) |
+| `GET /dm/analytics` | DM | Operational and contribution metrics with definitions, AI-versus-human agreement (§8.5) |
+| `GET`, `POST /dm/staff`; `PUT /dm/staff/{id}/permissions`; `POST /dm/staff/{id}/reset-mfa` | DM (SUPERVISOR) | DM staff management inside the workspace |
+
+### 10.7 Auth and citizen routes not detailed above
+
+| Method and path | Access | Purpose |
+|---|---|---|
+| `POST /auth/logout` | Signed in | Revokes the session (204) |
+| `GET /me`, `GET /auth/me` | Signed in | Current user: role, name, permissions, MFA state |
+| `GET /auth/invitations`, `GET /auth/invitations/teams` | Inviter (APP_MGMT, or DM with SUPERVISOR) | Open invitations; field teams that can receive members |
+| `POST /auth/invitations/{user_id}/resend`; `DELETE /auth/invitations/{user_id}` | Inviter | §9.2 |
+| `GET /auth/invitation/verify`, `GET /auth/reset-password/verify` | Token in query | Check a link before showing the form (§9.1, §9.2) |
+| `GET /me/incidents/{id}/attachments`, `GET …/attachments/{evidence_id}`, `DELETE …/attachments/{evidence_id}` | Citizen (own report) | §2.6 |
+| `POST /me/incidents/{id}/information` | Citizen | Earlier path of `/information-response`, kept for existing clients |
+| `GET /me/notifications`; `POST /me/notifications/{id}/read`; `POST /me/notifications/read-all` | Citizen | In-app notifications (§2.7) |
+| `GET /me/donations` | Citizen | §7.4 |
+| `POST /donations/{id}/sandbox-payment` | Donor | Sandbox checkout of the mock gateway; refused when `APP_ENV=production` |
+
+---
+
+## 11. Owner Sign-Off Matrix
 
 | Endpoint Domain | Responsible Owner | Contract Status |
 | :--- | :--- | :--- |

@@ -23,7 +23,7 @@ while while the service wakes up and downloads its model. Docs are at `/docs`, h
 
 ## Repository layout
 
-```
+```text
 models/
 |
 ├── text_classifier/
@@ -48,15 +48,15 @@ folder is in [folder-scope.md](folder-scope.md).
 
 ---
 
-# Part 1: Text classifier
+## Part 1: Text classifier
 
 **Task.** Classify a short, tweet-style message into one of five classes:
 `Fire`, `Earthquake`, `Cyclone`, `Flood`, `Non-Disaster`.
 **Languages.** English (`en`), Hindi (`hi`), Gujarati (`gu`), Hinglish (`hinglish`), romanised Gujarati (`gu_roman`).
 
-## 1.1 Data collection
+### 1.1 Data collection
 
-### Training data is synthetic
+#### Training data is synthetic
 
 We could not collect real social-media posts for training. We applied for social-media
 API access (to pull real posts), but **our API key requests were rejected**, so no
@@ -74,7 +74,7 @@ real posts could be collected programmatically. The training data is therefore *
 * 340 `scenario_group` values, used to keep near-duplicate scenarios out of validation (see 1.2).
 * Columns used for training: `text`, `label`, `language`, `scenario_group`.
 
-### Test data is separate and was not used in training
+#### Test data is separate and was not used in training
 
 * File: `text_classifier/data/tweets_multilingual.csv`, 512 rows.
 * It was collected/assembled separately from the training data, and was **never used for
@@ -83,7 +83,7 @@ real posts could be collected programmatically. The training data is therefore *
 * Composition: Cyclone 144, Earthquake 112, Flood 112, Non-Disaster 112, Fire 32.
   Languages: `gu` 128, `hi` 128, `hinglish` 136, `gu_roman` 120. There are **no English test rows**.
 
-### Data and honesty notes
+#### Data and honesty notes
 
 * **Neither dataset is real social-media data.** The test set is more realistic than the
   training set, but we could not verify it against real platform data because API access was refused.
@@ -95,7 +95,7 @@ real posts could be collected programmatically. The training data is therefore *
 * Test rows are tweet-like (news, eyewitness, official, help, metaphor, hard negatives).
 * Real tweets are still needed for a fair measurement.
 
-## 1.2 Training
+### 1.2 Training
 
 * Base model: [`ai4bharat/indic-bert`](https://huggingface.co/ai4bharat/indic-bert); script `text_classifier/train/train_indicbert.py`.
 * Validation is split by `scenario_group` inside every class x language pair, so
@@ -118,7 +118,7 @@ Extra training notes:
   training history, validation and held-out confusion matrices, per-language metrics and prediction CSVs.
 * The `data/` columns used: training `text`, `label`, `language`, `scenario_group`; test `text`, `label`, `language`.
 
-## 1.3 Two models: why the deployed one is not the best one
+### 1.3 Two models: why the deployed one is not the best one
 
 We trained two models.
 
@@ -156,7 +156,7 @@ MuRIL details: max length 192, batch 8 with gradient accumulation, lr 2e-5, up t
 seed 42. Its weak spots: 39 of 112 Earthquake messages were predicted `Non-Disaster`, and 25 of 144 Cyclone
 messages were predicted `Earthquake`. Full report: [`docs/ai/reports/text_classifier/muril_local_test_report.txt`](reports/text_classifier/muril_local_test_report.txt).
 
-## 1.4 Export for deployment
+### 1.4 Export for deployment
 
 The API needs ONNX INT8 files, not the PyTorch checkpoint:
 
@@ -170,7 +170,7 @@ This writes `model_int8.onnx`, `spiece.model`, `tokenizer_config.json`, `special
 step that needs a token: set a write token in `HF_TOKEN` on your own machine for that one command, never in a
 deployed service.
 
-## 1.5 Deployment
+### 1.5 Deployment
 
 * Push `text_classifier/deployment/` to GitHub and create a Render web service from it. Model weights are **not** committed to Git.
 * Set `PYTHON_VERSION=3.11.11` (also pinned in `.python-version`), `HF_MODEL_REPO=Dhruvil-14/indicbert-disaster-api`,
@@ -189,7 +189,7 @@ deployed service.
   This setup reduces overhead but does not guarantee the model fits a 512 MB instance.
 * API routes: `GET /`, `GET /health`, `POST /predict`, `GET /docs`. Example body: `{"text": "તમારો સંદેશ અહીં લખો"}`.
 
-## 1.6 Testing the deployed API
+### 1.6 Testing the deployed API
 
 ```bash
 cd text_classifier/testing
@@ -215,13 +215,13 @@ Cyclone and Flood recall is low. Treat these as a prototype baseline.
 
 ---
 
-# Part 2: Image classifier
+## Part 2: Image classifier
 
 **Task.** Classify a disaster image into one of seven classes: `earthquake`, `fire`, `flood`,
 `hurricane`, `landslide`, `other_disaster`, `not_disaster`. The API also returns a confidence score,
 the top-3 predictions and a `needs_review` flag for low-confidence results.
 
-## 2.1 Data collection
+### 2.1 Data collection
 
 * Dataset: the [CrisisNLP / MEDIC "Disaster types" task set](https://crisisnlp.qcri.org/crisis-image-datasets-asonam20)
   (about 3.2 GB), real social-media images with crowd-sourced labels. It is **not included** in this package.
@@ -232,7 +232,7 @@ the top-3 predictions and a `needs_review` flag for low-confidence results.
 * The data is released for research use: read its terms and cite Alam et al., ASONAM 2020 (arXiv:2011.08916).
 * Limits: social-media images only (drone imagery untested) and noisy crowd-sourced labels.
 
-## 2.2 Training
+### 2.2 Training
 
 * Scripts: `image_classifier/train/train_disaster_types.py` and shared code in `disaster_common.py` (PyTorch + timm).
 * The best epoch is chosen by dev macro-F1. Outputs: `best_model.pt`, `classes.json`, `confusion_matrix.png`.
@@ -259,7 +259,7 @@ The deployed model is ConvNeXt-Tiny at 224 x 224. The checkpoint `best_model.pt`
 a copy was shared at https://drive.google.com/file/d/1h8_TlYqEoUh_M_RfgIbnNGz2qmAOqk9a/view?usp=sharing
 and the app downloads it from Hugging Face (`Dhruvil-14/disaster-classifier` by default).
 
-## 2.3 Evaluation
+### 2.3 Evaluation
 
 ```bash
 python check_model.py --data-root /path/to/data_disaster_types --ckpt outputs/best_model.pt --out-dir model_check
@@ -284,9 +284,9 @@ Weakest classes: `other_disaster`, then `hurricane`. Common confusions: `other_d
 for review; that threshold was explored on the test set and is not a tuned recommendation. A confident
 prediction is not verified evidence of an incident. Judge the model by per-class F1 and recall, not accuracy alone;
 rare or ambiguous classes (`landslide`, `earthquake`, `other_disaster`) need attention, which is what the review flag is for.
-Notes from the saved evaluation run are in [`docs/ai/image-classifier-model-check.md`](image-classifier-model-check.md).
+The figures above come from the saved evaluation run of the checkpoint on the full test split.
 
-## 2.4 Deployment
+### 2.4 Deployment
 
 * Push `image_classifier/deployment/` to GitHub; create a Render web service (Python, Free plan).
 * Build: `pip install -r requirements.txt`. Start: `uvicorn app:app --host 0.0.0.0 --port $PORT`. Health check: `/health`.
@@ -311,7 +311,7 @@ const result = await res.json();
 Example response (shortened):
 `{"prediction": "flood", "confidence": 0.91, "top3": [{"label": "flood", "confidence": 0.91}], "needs_review": false}`
 
-## 2.5 Testing the API
+### 2.5 Testing the API
 
 ```bash
 cd image_classifier/testing
@@ -328,17 +328,17 @@ shows the run against a local server (`http://127.0.0.1:8000`) rather than the R
 
 ---
 
-## 2.6 Planned follow-up (from the Sprint 1 notes)
+### 2.6 Class mapping and open items
 
-[`docs/ai/image-classifier-model-check.md`](image-classifier-model-check.md) lists these open items: confirm the checkpoint and `classes.json`;
-test at least 50 images through the prediction endpoint and compare with the reported accuracy; and implement a
-class mapping to incident types (`fire` to INDUSTRIAL_FIRE, `flood` to URBAN_FLOODING, `hurricane` to CYCLONE,
-`earthquake` to EARTHQUAKE; `landslide` and `other_disaster` out of scope; `not_disaster` no suggestion).
-Treat these as planned work, not done. The full-split API run above already covers the 50-image check.
+The backend maps image classes to the three supported scenarios in `backend/app/routers/dm/ai.py`:
+`fire` to `industrial_fire`, `flood` to `urban_flooding` and `hurricane` to `cyclone`. `earthquake`, `landslide` and
+`other_disaster` are marked out of scope, and `not_disaster` gives no suggestion. The full-split API run above covers
+the 50-image service check. Still open: hosting the service for production and setting `AI_IMAGE_SERVICE_URL`
+(see `docs/submission/08-requirements-not-implemented.md`).
 
 ---
 
-# Summary
+## Summary
 
 | | Text | Image |
 |---|---|---|
@@ -348,7 +348,7 @@ Treat these as planned work, not done. The full-split API run above already cove
 | Deployed model | IndicBERT ONNX INT8: acc 0.658, macro-F1 0.659 | ConvNeXt-Tiny (same as best) |
 | Main weakness | Romanised Gujarati and Hinglish; Flood/Cyclone recall | `other_disaster`, `hurricane` |
 
-## Known limitations and next steps
+### Known limitations and next steps
 
 * Our social-media API key applications were rejected, so no real posts were collected; the text training
   data is synthetic and the text test set is not real platform data.

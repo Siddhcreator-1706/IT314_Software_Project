@@ -2,27 +2,28 @@
 
 This document details the dynamic runtime interactions of the Disaster Response Coordination Hub (DRCH) for the State of Gujarat. The sequence diagrams trace the exact execution paths across the Next.js frontend, FastAPI routing layer, PostgreSQL/PostGIS persistence engine, in-process background consumers, and the advisory AI microservice.
 
-### Source files used
-- [citizen.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/routers/citizen.py) - Citizen report creation, location validation, and information-reply endpoints
-- [internal.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/routers/internal.py) - Ingestion execution endpoint protected by session advisory locks
-- [incidents.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/routers/dm/incidents.py) - Incident queue filtering, verification decisions, and closure
-- [dispatches.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/routers/dm/dispatches.py) - Dispatch order creation, idempotent submission, and resource allocation
-- [notes.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/routers/dm/notes.py) - Internal incident notes collaboration endpoint
-- [field.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/routers/field.py) - Field team mission polling, acknowledgement, progress, and completion
-- [auth.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/routers/auth.py) - Staff two-factor login, lockout counters, and citizen registration
-- [security.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/security.py) - Argon2id hashing, RFC 6238 TOTP verification, and AES-GCM encryption
-- [ingestion.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/services/ingestion.py) - Adapter execution, alert deduplication, and signal staging
-- [ai_provider.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/services/ai_provider.py) - PII redaction, confidence checks, and guardrails
-- [signal_matching.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/services/signal_matching.py) - Heuristic Jaccard and spatiotemporal signal clustering
-- [duplicate_similarity.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/services/duplicate_similarity.py) - Trigram cosine similarity for incident deduplication
-- [dispatch.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/services/dispatch.py) - Dispatch state transitions and automated background escalation
-- [resources.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/services/resources.py) - Atomic row-level inventory reservations (`SELECT ... FOR UPDATE`)
-- [geo.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/geo.py) - PostGIS Gujarat boundary containment checks
-- [audit.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/audit.py) - Append-only SHA-256 hash-chained event logger
-- [triage_service.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/ai-workers/triage_service.py) - Advisory AI FastAPI microservice
-- [main.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/main.py) - Lifespan background workers (`ai_workers_background_consumer`, `ingestion_background_worker`)
-- [actions.ts](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/frontend/src/app/login/actions.ts) - Next.js server actions handling login and MFA handshake
-- [page.tsx](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/frontend/src/app/field/page.tsx) - Frontline responder tactical interface and 15s auto-refresh polling
+## Source files used
+
+- [citizen.py](../../backend/app/routers/citizen.py) - Citizen report creation, location validation, and information-reply endpoints
+- [internal.py](../../backend/app/routers/internal.py) - Ingestion execution endpoint protected by session advisory locks
+- [incidents.py](../../backend/app/routers/dm/incidents.py) - Incident queue filtering, verification decisions, and closure
+- [dispatches.py](../../backend/app/routers/dm/dispatches.py) - Dispatch order creation, idempotent submission, and resource allocation
+- [notes.py](../../backend/app/routers/dm/notes.py) - Internal incident notes collaboration endpoint
+- [field.py](../../backend/app/routers/field.py) - Field team mission polling, acknowledgement, progress, and completion
+- [auth.py](../../backend/app/routers/auth.py) - Staff two-factor login, lockout counters, and citizen registration
+- [security.py](../../backend/app/security.py) - Argon2id hashing, RFC 6238 TOTP verification, and AES-GCM encryption
+- [ingestion.py](../../backend/app/services/ingestion.py) - Adapter execution, alert deduplication, and signal staging
+- [ai_provider.py](../../backend/app/services/ai_provider.py) - PII redaction, confidence checks, and guardrails
+- [signal_matching.py](../../backend/app/services/signal_matching.py) - Heuristic Jaccard and spatiotemporal signal clustering
+- [duplicate_similarity.py](../../backend/app/services/duplicate_similarity.py) - Trigram cosine similarity for incident deduplication
+- [dispatch.py](../../backend/app/services/dispatch.py) - Dispatch state transitions and automated background escalation
+- [resources.py](../../backend/app/services/resources.py) - Atomic row-level inventory reservations (`SELECT ... FOR UPDATE`)
+- [geo.py](../../backend/app/geo.py) - PostGIS Gujarat boundary containment checks
+- [audit.py](../../backend/app/audit.py) - Append-only SHA-256 hash-chained event logger
+- [triage_service.py](../../ai-workers/triage_service.py) - Advisory AI FastAPI microservice
+- [main.py](../../backend/main.py) - Lifespan background workers (`ai_workers_background_consumer`, `ingestion_background_worker`)
+- [actions.ts](../../frontend/src/app/login/actions.ts) - Next.js server actions handling login and MFA handshake
+- [page.tsx](../../frontend/src/app/field/page.tsx) - Frontline responder tactical interface and 15s auto-refresh polling
 
 ---
 

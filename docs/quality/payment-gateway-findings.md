@@ -47,7 +47,7 @@ Start with **Razorpay** for integration:
 
 When Siddh opens the account and the adapter is wired into the donation routes, the only env vars needed are below (commented out in `.env.example`, documented in `docs/architecture/env-variables.md`):
 
-```
+```dotenv
 PAYMENT_GATEWAY=RAZORPAY
 RAZORPAY_KEY_ID=rzp_test_...
 RAZORPAY_KEY_SECRET=...

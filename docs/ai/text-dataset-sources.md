@@ -62,7 +62,7 @@ Use A1–A3 first: they already carry class-like labels, so they need the least 
 
 | # | Source | What | Use |
 |---|---|---|---|
-| D1 | **Times of India headlines** (2001–2023) | ~3.8M headlines with dates | Filter `gujarat|ahmedabad|surat|vadodara|kutch|bharuch|dahej|GIDC` × disaster keywords. Gives real Gujarat **cyclone, flood and factory-fire / blast / gas-leak** headlines, each with a date for `event_id`. CC0 on Harvard Dataverse ("Times of India News Headlines") and [HF](https://huggingface.co/datasets/times_of_india_news_headlines); Kaggle copy by Rohit Kulkarni (check its licence separately) |
+| D1 | **Times of India headlines** (2001–2023) | ~3.8M headlines with dates | Filter `gujarat\|ahmedabad\|surat\|vadodara\|kutch\|bharuch\|dahej\|GIDC` × disaster keywords. Gives real Gujarat **cyclone, flood and factory-fire / blast / gas-leak** headlines, each with a date for `event_id`. CC0 on Harvard Dataverse ("Times of India News Headlines") and [HF](https://huggingface.co/datasets/times_of_india_news_headlines); Kaggle copy by Rohit Kulkarni (check its licence separately) |
 | D2 | **GDELT** | Global news event index with source URLs | Pull URLs for Indian industrial-accident events, then copy headlines only — [gdeltproject.org](https://www.gdeltproject.org) |
 
 ## E. Augmentation (train split only)

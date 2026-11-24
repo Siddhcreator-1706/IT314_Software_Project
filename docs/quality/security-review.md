@@ -30,7 +30,7 @@ them, and the `main` ruleset requires that check.
 | Gitleaks secret scan | `security-secrets-scan` | Yes | the gate requires it to succeed |
 | Ruff, ESLint, TypeScript build | `python-check`, `frontend-check` | Yes | deterministic |
 | Bandit | `python-check` | Yes | `-ll -ii` (medium and above, both severity and confidence) |
-| `pip-audit` | `python-check` | Yes | `backend` and `ai-workers` requirements; no `|| true` |
+| `pip-audit` | `python-check` | Yes | `backend` and `ai-workers` requirements; no `\|\| true` |
 | `npm audit` | `frontend-check` | Yes | `--audit-level=high` |
 | Trivy image scan | `container-validation` | Yes | `CRITICAL,HIGH`, `exit-code: 1`, `ignore-unfixed: true` (findings that have no fix yet do not block) |
 | CodeQL (python, javascript-typescript) | `codeql.yml` | Reports to GitHub code scanning on pull requests, pushes to `main` and weekly; it is a separate workflow, not part of the gate job | review its alerts at the freeze |

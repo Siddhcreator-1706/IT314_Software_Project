@@ -48,6 +48,7 @@ flowchart TD
 ```
 
 ### 3.1 Geographic Locking & Privacy Safeguards
+
 1. **Gujarat Bounding Invariant:** Map viewport is locked via `setMaxBounds` to Gujarat coordinates ($20.1^\circ\text{N} - 24.7^\circ\text{N}, 68.1^\circ\text{E} - 74.5^\circ\text{E}$). Panning outside Gujarat is strictly prevented in both client and server.
 2. **Reporter Confidentiality:** The public API and map components never expose citizen names, phone numbers, email addresses, or uncurated free-text descriptions. Only canonical incident references, verified scenario types, districts, urgency ratings, and timestamps are displayed.
 3. **Coordinate Truncation:** Incident coordinates displayed on the public map are rounded to 4 decimal places (~11 meters), preventing tactical reconnaissance of individual residences while ensuring accurate neighborhood-level community warnings.
@@ -99,11 +100,13 @@ sequenceDiagram
 ```
 
 ### 4.1 Strict Human-in-the-Loop Governance
+
 - **No Autonomous State Transitions:** Machine learning models (both text triage and image classification) are strictly advisory. AI systems cannot change an incident's status, verify an emergency, or trigger resource dispatch autonomously.
 - **Separate Audit Recording:** When a dispatcher accepts, modifies, or rejects an AI recommendation, the human decision, rationale, timestamp, and operator ID are recorded in `ai_recommendations` and chained into the immutable SHA-256 audit log.
 - **Photo Analysis (S3-08):** A dispatcher can upload one JPEG, PNG or WebP scene photo (up to 10 MB) from the AI panel. The backend checks the file's real type from its first bytes, sends it to the image classifier and returns the top class with a confidence. `fire`, `flood` and `hurricane` map to the supported scenarios `industrial_fire`, `urban_flooding` and `cyclone`; `earthquake`, `landslide` and `other_disaster` are shown as out of scope, and `not_disaster` as "no disaster detected". The photo is never stored on the incident, the result is never a verification, and each analysis writes an `AI_PHOTO_ANALYSED` audit entry. If the model is not configured or does not answer, the panel shows "Photo analysis model is currently unavailable" and manual triage carries on. Set `AI_IMAGE_SERVICE_URL` to enable it. When the frontend is hosted on a platform that caps request bodies (for example about 4.5 MB on Vercel), larger photos are rejected before they reach the backend.
 
 ### 4.2 Team Recommendation & Dispatch Integration
+
 - **Multi-Factor Scoring:** Available response teams (`NDRF`, `SDRF`, Municipal Fire Brigades) are scored by:
   $$\text{Score} = (\text{Primary Capability Groups} \times 10) + (\text{Secondary Matches} \times 3) - (\text{Distance km} \times 0.08)$$
 - **Advisory Labeling:** Recommendations are clearly marked with: *"Advisory — you confirm the dispatch"*.

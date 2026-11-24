@@ -2,37 +2,38 @@
 
 This document specifies the structural software architecture of the Disaster Response Coordination Hub (DRCH) for the State of Gujarat. The diagrams reflect the actual implementation across the FastAPI backend, PostgreSQL/PostGIS database schemas, domain service layer, and the advisory AI triage workers.
 
-### Source files used
-- [common.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/common.py) - Shared enumerations and system types
-- [01_schema.sql](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/db/migrations/01_schema.sql) - Core PostgreSQL relational tables, PostGIS geometries, and hash-chain audit triggers
-- [02_dm_module.sql](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/db/migrations/02_dm_module.sql) - Staff permissions and incident status tracking tables
-- [03_core_extensions.sql](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/db/migrations/03_core_extensions.sql) - Ingestion runs, source signals, and field team extensions
-- [09_account_invitations_and_passwords.sql](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/db/migrations/09_account_invitations_and_passwords.sql) - Account invitations, token hashes, and password reset expirations
-- [10_signal_matching.sql](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/db/migrations/10_signal_matching.sql) - Signal spatial synchronization trigger and pending indexes
-- [11_evidence_blobs.sql](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/db/migrations/11_evidence_blobs.sql) - Citizen photo binary content persistence
-- [12_payment_webhook_events.sql](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/db/migrations/12_payment_webhook_events.sql) - Payment webhook idempotency event ledger
-- [15_refresh_tokens.sql](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/db/migrations/15_refresh_tokens.sql) - Rotating refresh token session limits and revocation tracking
-- [16_shelters.sql](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/db/migrations/16_shelters.sql) - Relief shelters and medical posts capacity management
-- [17_incident_notes.sql](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/db/migrations/17_incident_notes.sql) - Internal incident notes schema for shift handovers
-- [19_drop_unused_schema.sql](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/db/migrations/19_drop_unused_schema.sql) - Clean schema removal of unused legacy views and configurations
-- [citizen.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/schemas/citizen.py) - Pydantic models for citizen incident reporting and timeline
-- [field.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/schemas/field.py) - Pydantic models for responder missions, progress milestones, and backup requests
-- [recommendations.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/schemas/recommendations.py) - Schemas for team capability ranking
-- [incidents.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/services/incidents.py) - Incident lifecycle validation, version locking, and history logging
-- [dispatch.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/services/dispatch.py) - Dispatch state transitions, progress tracking, and automated escalation
-- [resources.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/services/resources.py) - Row-level locking (`SELECT ... FOR UPDATE`) resource reservation and release
-- [recommendations.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/services/recommendations.py) - PostGIS spatial distance scoring and capability matching
-- [signal_matching.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/services/signal_matching.py) - Advisory spatiotemporal signal clustering and Jaccard text similarity
-- [duplicate_similarity.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/services/duplicate_similarity.py) - Character trigram cosine similarity for incident deduplication
-- [ai_provider.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/services/ai_provider.py) - AI triage boundary, PII scrub, and guardrail validation
-- [ingestion.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/services/ingestion.py) - Feed polling engine, advisory lock management, and external signal ingestion
-- [audit.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/audit.py) - Append-only SHA-256 hash-chained event logger
-- [auth.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/auth.py) - Security principal dependencies and staff role enforcement
-- [geo.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/backend/app/geo.py) - Gujarat boundary validation and PostGIS containment
-- [triage_service.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/ai-workers/triage_service.py) - Advisory AI FastAPI microservice
-- [rules.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/ai-workers/rules.py) - Deterministic keyword and points triage rule engine
-- [scenario_model.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/ai-workers/service/scenario_model.py) - Trained scenario ML model loader and inference
-- [llm.py](file:///c:/Users/Dhruv/.gemini/antigravity-ide/scratch/IT314_Software_Project/ai-workers/service/llm.py) - Advisory second-opinion LLM adapter
+## Source files used
+
+- [common.py](../../backend/app/common.py) - Shared enumerations and system types
+- [01_schema.sql](../../backend/db/migrations/01_schema.sql) - Core PostgreSQL relational tables, PostGIS geometries, and hash-chain audit triggers
+- [02_dm_module.sql](../../backend/db/migrations/02_dm_module.sql) - Staff permissions and incident status tracking tables
+- [03_core_extensions.sql](../../backend/db/migrations/03_core_extensions.sql) - Ingestion runs, source signals, and field team extensions
+- [09_account_invitations_and_passwords.sql](../../backend/db/migrations/09_account_invitations_and_passwords.sql) - Account invitations, token hashes, and password reset expirations
+- [10_signal_matching.sql](../../backend/db/migrations/10_signal_matching.sql) - Signal spatial synchronization trigger and pending indexes
+- [11_evidence_blobs.sql](../../backend/db/migrations/11_evidence_blobs.sql) - Citizen photo binary content persistence
+- [12_payment_webhook_events.sql](../../backend/db/migrations/12_payment_webhook_events.sql) - Payment webhook idempotency event ledger
+- [15_refresh_tokens.sql](../../backend/db/migrations/15_refresh_tokens.sql) - Rotating refresh token session limits and revocation tracking
+- [16_shelters.sql](../../backend/db/migrations/16_shelters.sql) - Relief shelters and medical posts capacity management
+- [17_incident_notes.sql](../../backend/db/migrations/17_incident_notes.sql) - Internal incident notes schema for shift handovers
+- [19_drop_unused_schema.sql](../../backend/db/migrations/19_drop_unused_schema.sql) - Clean schema removal of unused legacy views and configurations
+- [citizen.py](../../backend/app/routers/citizen.py) - Pydantic models for citizen incident reporting and timeline (defined next to the citizen router)
+- [field.py](../../backend/app/schemas/field.py) - Pydantic models for responder missions, progress milestones, and backup requests
+- [recommendations.py](../../backend/app/schemas/recommendations.py) - Schemas for team capability ranking
+- [incidents.py](../../backend/app/services/incidents.py) - Incident lifecycle validation, version locking, and history logging
+- [dispatch.py](../../backend/app/services/dispatch.py) - Dispatch state transitions, progress tracking, and automated escalation
+- [resources.py](../../backend/app/services/resources.py) - Row-level locking (`SELECT ... FOR UPDATE`) resource reservation and release
+- [recommendations.py](../../backend/app/services/recommendations.py) - PostGIS spatial distance scoring and capability matching
+- [signal_matching.py](../../backend/app/services/signal_matching.py) - Advisory spatiotemporal signal clustering and Jaccard text similarity
+- [duplicate_similarity.py](../../backend/app/services/duplicate_similarity.py) - Character trigram cosine similarity for incident deduplication
+- [ai_provider.py](../../backend/app/services/ai_provider.py) - AI triage boundary, PII scrub, and guardrail validation
+- [ingestion.py](../../backend/app/services/ingestion.py) - Feed polling engine, advisory lock management, and external signal ingestion
+- [audit.py](../../backend/app/audit.py) - Append-only SHA-256 hash-chained event logger
+- [auth.py](../../backend/app/auth.py) - Security principal dependencies and staff role enforcement
+- [geo.py](../../backend/app/geo.py) - Gujarat boundary validation and PostGIS containment
+- [triage_service.py](../../ai-workers/triage_service.py) - Advisory AI FastAPI microservice
+- [rules.py](../../ai-workers/rules.py) - Deterministic keyword and points triage rule engine
+- [scenario_model.py](../../ai-workers/service/scenario_model.py) - Trained scenario ML model loader and inference
+- [llm.py](../../ai-workers/service/llm.py) - Advisory second-opinion LLM adapter
 
 ---
 

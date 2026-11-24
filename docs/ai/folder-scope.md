@@ -66,7 +66,6 @@ There are no Python packages under `models/`: every script runs from its own fol
 |---|---|
 | [models.md](models.md) | Multilingual text and image classifiers: data, training, export, deployment, testing, results |
 | [text-model.md](text-model.md) | English text model: data, training, evaluation, HumAID experiment, limits |
-| [image-classifier-model-check.md](image-classifier-model-check.md) | Image classifier checkpoint evaluation notes and open items |
 | [model-card.md](model-card.md), [triage-rules.md](triage-rules.md) | Triage model card and written rules |
 | [evaluation-report.md](evaluation-report.md) | Summary of model results |
 | [text-dataset-sources.md](text-dataset-sources.md), [text-label-guideline.md](text-label-guideline.md) | Dataset sources and labelling rules |

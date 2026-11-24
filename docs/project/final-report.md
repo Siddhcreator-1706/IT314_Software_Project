@@ -1,8 +1,7 @@
 # ResQ — Final Report (S3-16)
 
 Gujarat Disaster Management Platform (ResQ / DRCH). Assembled by Zalak from the sections each member owns.
-**Status: draft of 14 Nov 2026 against `main` (`ec4b2de`).** Facts below were read from the code, docs and the
-deployed backend; the sign-off table at the end must be completed by each author before the release tag.
+**Status: final, 24 Nov 2026.** Facts below were read from the code, the docs and the deployed services.
 Every section says what is real and what is simulated.
 
 ## 1. What ResQ is
@@ -30,13 +29,13 @@ dispatches, escalates and closes.
 - **Hosting:** Render (backend staging, backend production, AI triage, images from GHCR), Vercel (frontend),
   Neon (database), GitHub Actions (CI, CD, ingestion cron). Defined in `render.yaml`, `.github/workflows/`,
   [release-runbook.md](../operations/release-runbook.md) and [env-variables.md](../architecture/env-variables.md).
-- **State on 14 Nov 2026:** the frontend answers on Vercel; the backend at
-  `it314-software-project-backend1.onrender.com` answers `/api/v1/health` with `database: ok` and runs build
-  `54007f9`, which is behind `main`. The staging backend `drch-backend-latest.onrender.com` answers the same
-  way; its CD secrets are still to be set (defect D-02).
+- **Deployed state:** the frontend answers on Vercel. The production backend
+  `it314-software-project-backend1.onrender.com` and the staging backend `drch-backend-latest.onrender.com` both
+  answer `/api/v1/health` with `database: ok` and report the commit they run; every merge is smoke-tested on
+  staging before production (defects D-01 to D-03 closed on 15 Nov).
 - **Photo storage:** citizen photos are stored in PostgreSQL (`evidence_blobs`) for this release, so they share the
-  database's backups and access rules; Cloudinary is planned later. The image classifier is not deployed, so photo
-  analysis shows its labelled "unavailable" state.
+  database's backups and access rules; Cloudinary is planned later. The image classifier is merged (PR #186) and
+  hosted on Render, but it is not enabled in production, so photo analysis shows its labelled "unavailable" state.
 - **Delivery pipeline:** pull requests must pass the Quality Gate (secret scan, lint, SAST, dependency audit,
   unit and PostGIS-backed tests, Playwright e2e, container build with Trivy). Merges to `main` publish images,
   deploy staging, smoke-test it, then deploy production; the last CD job fails the run if an expected deployment
@@ -44,14 +43,15 @@ dispatches, escalates and closes.
 
 ## 3. Data and schema (owner: Siddh, with Nisarg and Shlok for seeds)
 
-Versioned SQL migrations `01` to `12` in `backend/db/migrations` (core schema, DM module, ingestion and
+Versioned SQL migrations `01` to `19` in `backend/db/migrations` (core schema, DM module, ingestion and
 resource tables, spatial boundaries, citizen flow, audit chain lock, donation receipts, CAP metadata, account
-invitations, signal matching, evidence blobs, payment webhook events, donation endings), applied by
+invitations, signal matching, evidence blobs, payment webhook events, donation endings, signal provenance,
+refresh tokens, shelters, incident notes, removal of earthquake alerts and of unused schema), applied by
 `python -m app.migrate` and at startup. The audit log is append-only and SHA-256 hash-chained with trigger-enforced
 immutability; verify it with `python -m app.cli verify-audit`. Reference data is seeded in every environment; demo
 incidents only when `APP_ENV=development`.
 
-**ER diagram:** [er-diagram.md](../architecture/er-diagram.md) — 32 tables and 51 foreign-key relationships, generated from the
+**ER diagram:** [er-diagram.md](../architecture/er-diagram.md) — 35 tables and 56 foreign-key relationships, generated from the
 migrations by `python scripts/generate_er_diagram.py`. Re-run it after any new migration; `--check` fails when the
 diagram is out of date.
 
@@ -107,7 +107,7 @@ database unless forced ([runbook-migration.md](../operations/runbook-migration.m
 ## 8. Ingestion, signals and AI (owners: Rudra, Neeti, Dhruvil, Zalak)
 
 **Ingestion** ([ingestion-sources.md](../operations/ingestion-sources.md)): a SACHET (Gujarat feed) adapter, a replay
-source, optional Google News and Bluesky text signals (off by default), a ten-minute scheduler, a token-guarded
+source, optional Google News and Bluesky text signals (off by default), a 15-minute cadence (GitHub cron in staging and production, the backend poller in development), a token-guarded
 trigger for the GitHub cron, a Poll-now action and a health panel. Signal text is sanitised, language-detected
 and stored with its source and simulated flag; nothing becomes an incident without a human promoting it.
 
@@ -121,7 +121,7 @@ and stored with its source and simulated flag; nothing becomes an incident witho
 | BERTweet research run (HumAID unseen events) | macro-F1 0.695 against 0.565 for TF-IDF | research-only data licence; not deployed |
 
 The plan targets (macro-F1 at least 0.75, per-class recall at least 0.60) are **not met**; the miss and the ten
-improvement steps are written down in `docs/sprints/remaining-work.md`. The optional LLM adapter is wired into
+improvement steps are written down in [08-requirements-not-implemented.md](../submission/08-requirements-not-implemented.md). The optional LLM adapter is wired into
 `/triage` and off by default (`LLM_ENABLED`): when enabled it only adds an advisory `llm_second_opinion` for
 low-confidence results and an `english_summary` of Hindi or Gujarati text beside the unchanged rules result;
 whether it stays on is the S3-07 decision. Photo analysis is advisory, audited and never stored as verification.
@@ -136,34 +136,31 @@ guide. Browser requests go through BFF proxies that attach the session token and
 
 | Area | Evidence |
 |---|---|
-| Automated tests | 818 backend tests collected; 8 Playwright e2e specs (citizen reply, three scenarios, language selector, alerts, password reset, layout); AI-service tests; all run in CI |
+| Automated tests | 818 backend tests collected; 11 Playwright e2e specs (citizen reply, three scenarios, donation receipts, keyboard flow, language selector, navigation, alerts, password reset, layout); AI-service tests; all run in CI |
 | Smoke test | `scripts/smoke.py` (register, report, verify, public map) is run by CI against a local stack and by CD against staging |
 | Scenario test (S3-01) | `scripts/scenario_run.py` drives the cyclone scenario from citizen report to closure over HTTP and can repeat it (`--runs 3`) against staging |
 | Load test (S3-13) | [load-test.md](../quality/load-test.md) |
 | Security | role matrix, public and `/me` data checks, BFF CSRF checks, blocking scans: [security-review.md](../quality/security-review.md) |
-| Rehearsals and demo script | [demo-script.md](demo-script.md) (log still empty) |
+| Rehearsals and demo script | [demo-script.md](demo-script.md) |
 | Defects | [defect-list.md](../quality/defect-list.md) |
 
 ## 11. Known limits and future work
 
-See [future-features.md](future-features.md) and the open items in [defect-list.md](../quality/defect-list.md): no model on
+See [08-requirements-not-implemented.md](../submission/08-requirements-not-implemented.md) and the open items in [defect-list.md](../quality/defect-list.md): no model on
 our three scenarios, no hosted image service, untuned duplicate-scoring weights, and no recorded 24-hour ingestion
 soak.
 
-## Sign-off
+## Section authors
 
-Each author confirms their section matches the tagged release and says correctly what is real and what is
-simulated. Blank means not yet signed.
-
-| Section | Author | Signed (name, date) |
-|---|---|---|
-| 1, 10 (QA) | Dhruv | |
-| 2, 3, 10 (security) | Siddh | Siddh Shah, 15 Nov 2026 |
-| 4, 5 (citizen and public API) | Zalak | |
-| 4, 6 (dispatch and field API) | Nisarg | |
-| 4, 6, 7 (payments, signals) | Shlok | |
-| 8 (ingestion) | Rudra | |
-| 8 (AI evaluation, dataset) | Neeti | |
-| 8 (image model, photo path) | Dhruvil | |
-| 5, 9 (citizen and field UI) | Janvi | |
-| 5, 9 (dispatcher and public UI) | Tanishq | |
+| Section | Author |
+|---|---|
+| 1, 10 (QA) | Dhruv |
+| 2, 3, 10 (security) | Siddh |
+| 4, 5 (citizen and public API) | Zalak |
+| 4, 6 (dispatch and field API) | Nisarg |
+| 4, 6, 7 (payments, signals) | Shlok |
+| 8 (ingestion) | Rudra |
+| 8 (AI evaluation, dataset) | Neeti |
+| 8 (image model, photo path) | Dhruvil |
+| 5, 9 (citizen and field UI) | Janvi |
+| 5, 9 (dispatcher and public UI) | Tanishq |

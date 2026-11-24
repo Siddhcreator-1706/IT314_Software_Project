@@ -28,6 +28,7 @@ it could not log in to.
 To run both unit tests and PostGIS-backed integration tests, configure `TEST_DATABASE_URL`:
 
 **Linux / macOS / Git Bash:**
+
 ```bash
 cd backend
 export TEST_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/drch_test"
@@ -35,6 +36,7 @@ python -m pytest tests/ -v --tb=short
 ```
 
 **Windows PowerShell:**
+
 ```powershell
 cd backend
 $env:TEST_DATABASE_URL="postgresql://postgres:postgres@localhost:5432/drch_test"
@@ -112,27 +114,32 @@ The seed reset utility safely cleans dynamic operational data and reapplies the 
 ### Running Seed Reset
 
 **Using Make (Linux / macOS / Git Bash):**
+
 ```bash
 make seed-reset
 ```
 
 **Using PowerShell (Windows without Make):**
+
 ```powershell
 python scripts/seed_reset.py
 ```
 
 **Custom Seed Files:**
 By default the reference and demo seeds are used. To override, set `SEED_FILES` (the root `Makefile` passes it through when set) or use `--seed-files`. In PowerShell:
+
 ```powershell
 $env:SEED_FILES="backend/db/seeds/reference/10_reference_data.sql"; python scripts/seed_reset.py
 ```
 
 ### Safety Guard
+
 To prevent accidental data loss on external cloud environments (e.g. Neon, Render, AWS RDS), `seed_reset.py` refuses execution unless:
 1. The host is `localhost`, `127.0.0.1`, `::1`, or a docker-compose service name (`postgres-postgis`, `postgres`, `db`), OR
 2. The database name ends with `_test` or contains `dev`.
 
 To override the guard on cloud staging databases, supply `FORCE=1`:
+
 ```bash
 FORCE=1 make seed-reset
 # Windows PowerShell:
@@ -140,6 +147,7 @@ $env:FORCE="1"; python scripts/seed_reset.py
 ```
 
 ### Post-Reset Verification Row Counts
+
 After applying seeds, the script prints verified row counts:
 - `users`: 3 (System Administrator, Automated Ingestion System, Dispatch Supervisor)
 - `incidents`: 4 (Ahmedabad, Surat, Anjar, Veraval)
@@ -231,5 +239,3 @@ The DRCH backend includes an automated Role-Based Access Control (RBAC) matrix t
    - Field responders (`FIELD_TEAM`) calling `/api/v1/dm/*` receive HTTP 403 `ROLE_REQUIRED`.
    - DM staff (`DISASTER_MGMT`) calling citizen-only endpoints (`/api/v1/me/*`, `/api/v1/incidents`) receive HTTP 403.
 4. **Staff Permission Boundaries:** For each permission-gated DM route (`DISPATCH`, `CLOSURE`, `PUBLISHER`, `MODERATOR`, `SUPERVISOR`), tests systematically verify that staff accounts lacking that specific permission receive HTTP 403 `PERMISSION_DENIED` and an immutable audit log record is created.
-
-

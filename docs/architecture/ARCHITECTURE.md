@@ -2,18 +2,19 @@
 
 ## 1. System Overview
 
-The **ResQ** platform is an operational incident coordination platform built specifically for the State of Gujarat. The system coordinates three distinct user groups:
+The **ResQ** platform is an operational incident coordination platform built specifically for the State of Gujarat. The system coordinates three operational user groups; a fourth role, Application Management (`APP_MGMT`), administers accounts, permissions and the audit log from `/admin` and has no operational access:
 1. **Citizens:** Submit geolocated disaster reports with media attachments, receive safety bulletins, track report status, and locate relief shelters.
 2. **Disaster Management (DM) Staff & Dispatchers:** Triage and verify incoming citizen reports, inspect AI suggestions, monitor district operational heatmaps, and dispatch response teams and equipment with concurrency-safe resource locking.
 3. **Field Teams & Responders:** Receive assignments, acknowledge dispatches, log progress timestamps (`EN_ROUTE`, `ON_SCENE`, `COMPLETED`), and provide ground situation updates.
 
 ### Scope & Supported Scenarios
+
 The platform enforces a strict three-scenario operational scope:
 - `cyclone` (Coastal inundation, severe windstorm damage)
 - `industrial_fire` (Chemical, petrochemical, or urban major factory fires)
 - `urban_flooding` (Monsoon waterlogging and urban gridlock across Gujarat municipal zones)
 
-Any unsupported or out-of-scope events (e.g., earthquakes) are strictly categorized as `other_disaster` without automated triage escalation.
+The report form offers only these three values and the API accepts nothing else: any other scenario (for example an earthquake) is rejected with `422 UNSUPPORTED_SCENARIO`. Reports must also lie inside Gujarat (`422 OUTSIDE_GUJARAT`). Where an AI classifier sees an out-of-scope event it is labelled `OTHER` and triaged by a person.
 
 ---
 
@@ -94,6 +95,7 @@ IT314_Software_Project/
 │   ├── workflows/
 │   │   ├── ci.yml              # PR validation (Lint, SAST, PostGIS DB tests, Quality Gate)
 │   │   ├── cd.yml              # CD pipeline (GHCR container publish, Vercel/Render deploy, smoke gate)
+│   │   ├── codeql.yml          # CodeQL code scanning
 │   │   └── ingest-cron.yml     # 15-minute staging ingestion trigger
 │   ├── CODEOWNERS              # Pull request review assignment rules
 │   └── PULL_REQUEST_TEMPLATE.md# Team PR template with verification checklist
@@ -125,8 +127,9 @@ IT314_Software_Project/
 │   │   │       ├── incidents.py    # Incident lifecycle transitions (VERIFY, RESOLVE, etc.)
 │   │   │       ├── resources.py    # Resource inventory & warehouse supplies
 │   │   │       └── staff.py        # Staff user and role administration
-│   │   ├── schemas/            # Pydantic data transfer models
-│   │   │   └── citizen.py      # Citizen report, incident, and alert schemas
+│   │   ├── schemas/            # Shared Pydantic data transfer models (others live next to their router)
+│   │   │   ├── field.py        # Field assignment and progress schemas
+│   │   │   └── recommendations.py # Ranked team and team-request schemas
 │   │   ├── services/           # Reusable domain business logic
 │   │   │   ├── ai_provider.py      # Triage provider boundary: HTTP call, PII scrub, guardrails
 │   │   │   ├── dispatch.py         # Shared dispatch transitions & overdue escalation
@@ -210,29 +213,29 @@ IT314_Software_Project/
 
 ### 4.1 Backend Architecture
 
-- **Application Lifespan & Startup ([`backend/main.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/backend/main.py)):**
+- **Application Lifespan & Startup ([`backend/main.py`](../../backend/main.py)):**
   - Instantiates the FastAPI application, mounts error handlers, and configures CORS.
-  - Controls lifecycle initialization via `lifespan(app)`: executes schema migrations ([`backend/app/migrate.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/backend/app/migrate.py)), preloads Gujarat PostGIS boundary polygons into RAM cache, and starts background workers.
+  - Controls lifecycle initialization via `lifespan(app)`: executes schema migrations ([`backend/app/migrate.py`](../../backend/app/migrate.py)), preloads Gujarat PostGIS boundary polygons into RAM cache, and starts background workers.
   - Mounts routes under `/api/v1` namespaces (`/api/v1/auth`, `/api/v1/dm`, `/api/v1/public`, `/api/v1/internal`) alongside `/health` and `/api/v1/health`.
 
-- **Authentication & Security ([`backend/app/auth.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/backend/app/auth.py), [`backend/app/security.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/backend/app/security.py)):**
+- **Authentication & Security ([`backend/app/auth.py`](../../backend/app/auth.py), [`backend/app/security.py`](../../backend/app/security.py)):**
   - **Zero Supabase:** Strictly application-managed authentication.
   - Staff authentication enforces a two-step handshake: Argon2id password verification followed by RFC 6238 TOTP validation using encrypted secrets (AES-GCM / Fernet).
   - Failed logins are tracked; five consecutive failed attempts lock the account for 15 minutes and invalidate active sessions by bumping `token_version`.
 
-- **Database & Concurrency Management ([`backend/app/db.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/backend/app/db.py)):**
+- **Database & Concurrency Management ([`backend/app/db.py`](../../backend/app/db.py)):**
   - Manages PostgreSQL connection pools using `psycopg_pool.ConnectionPool`.
   - Exposes atomic context-managed transactions (`with db.transaction() as conn:`) and `db.read_only()`, an autocommit connection for read-only handlers (a single query is one network round trip instead of three; each statement is its own transaction, so never use it for writes or locking reads).
   - Pings a pooled connection before reuse only when it sat idle for 30 seconds (Neon closes idle connections); a connection used a moment ago is not pinged, because every ping is a full round trip.
   - Round trips, not CPU, dominate request time against a remote database (measured about 0.5 s each from a laptop to Neon). The authenticated principal (user, role, status, lock, `token_version` and staff permissions) is loaded in one statement on every request and is deliberately never cached, so a role change, disable, lock or logout takes effect on the next request. Independent statements are pipelined (`conn.pipeline()`) in the dashboard, analytics and sign-in. Redis is not used: after removing the extra round trips every hot path is 1 to 3 round trips, and an external cache would add a network hop plus an invalidation problem for authorisation data.
   - Handles row-level resource allocation locks (`SELECT ... FOR UPDATE`) and PostgreSQL advisory session locks (`pg_try_advisory_xact_lock`).
 
-- **Geospatial & Boundary Engine ([`backend/app/geo.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/backend/app/geo.py)):**
+- **Geospatial & Boundary Engine ([`backend/app/geo.py`](../../backend/app/geo.py)):**
   - Enforces Gujarat jurisdiction for incoming incident coordinates via PostGIS `ST_Contains` spatial queries against `administrative_boundaries`.
   - Provides a 2-tier geocoding fallback when coordinates are missing: Google Maps Geocoding API (if key configured) falling back to OpenStreetMap Nominatim.
   - Preloads boundary polygons into RAM for sub-millisecond in-process containment checks.
 
-- **Hash-Chained Audit Trail ([`backend/app/audit.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/backend/app/audit.py)):**
+- **Hash-Chained Audit Trail ([`backend/app/audit.py`](../../backend/app/audit.py)):**
   - Implements an immutable audit log table (`audit_logs`) governed by a database trigger (`fn_audit_log_hash_chain`).
   - Each entry stores a SHA-256 hash chaining the current row contents with the preceding row's `row_hash`.
   - Table triggers explicitly block `UPDATE` and `DELETE` operations.
@@ -240,7 +243,7 @@ IT314_Software_Project/
 
 ### 4.2 Frontend Architecture
 
-- **Next.js App Router Structure ([`frontend/src/app/`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/frontend/src/app/)):**
+- **Next.js App Router Structure ([`frontend/src/app/`](../../frontend/src/app/)):**
   - Unified codebase serving Citizen, Dispatcher, Administrator, and Responder views through role-guarded routes and views.
   - Each role has its own area: Disaster Management (`DISASTER_MGMT`) works in `/dm`, with navigation filtered by permission; Application Management (`APP_MGMT`) uses the administration console at `/admin` (account directory, invitations, audit log and system status); field responders use `/field`; citizens use `/citizen/dashboard`. A signed-in visitor of another role is redirected to their own area (`homeFor(role)` in `lib/session.ts`), and `/dashboard` sends each role there too. Administrators still have no operational access: the backend answers 403 on every `/api/v1/dm`, `/api/v1/field`, `/api/v1/me` and `/api/v1/incidents` route (`test_admin_has_no_operational_access`).
   - Route protection has three layers. `proxy.ts` sends visitors with no session cookie to `/login` before anything is rendered; each workspace layout (`/dm`, `/field`) asks the backend who the user is (`currentUser()`), redirects to `/login` when nobody is signed in and to the user's own home (`homeFor(role)`) when the role is wrong; the backend re-checks role, MFA and permission on every API call. The BFF proxies (`/api/dm`, `/api/field`, `/api/invitations`, `/api/citizen`) answer 401 JSON without a session and forward nothing else. Static JavaScript bundles of staff pages are public like any Next.js asset but contain no data; all data comes from guarded API calls.
@@ -277,41 +280,43 @@ IT314_Software_Project/
 Before introducing new components or functions, developers must inspect and reuse the following established modules:
 
 ### Reusable Backend Services & Utilities
+
 | Module / Symbol | Location | Reusable Capabilities |
 | :--- | :--- | :--- |
-| `dispatch` service | [`backend/app/services/dispatch.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/backend/app/services/dispatch.py) | `transition_dispatch()`, `escalate_overdue()`, shared state machine validation |
-| `resources` service | [`backend/app/services/resources.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/backend/app/services/resources.py) | Atomic row-locked resource allocation, `release_all_for_dispatch()` |
-| `recommendations` engine | [`backend/app/services/recommendations.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/backend/app/services/recommendations.py) | PostGIS distance calculation, team suitability ranking, workload scoring |
-| `geo` module | [`backend/app/geo.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/backend/app/geo.py) | `validate_coordinates_in_gujarat()`, `reverse_geocode_district()`, boundary cache |
-| `audit` logger & verifier | [`backend/app/audit.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/backend/app/audit.py) | `log_audit_event()`, `verify_audit_log_hash_chain()` |
-| `db` transaction context | [`backend/app/db.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/backend/app/db.py) | `with db.transaction() as conn:`, connection pool access |
-| `errors` framework | [`backend/app/errors.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/backend/app/errors.py) | `AppError`, standardized error response formatting conforming to SRS s.15.7 |
-| `common` enums | [`backend/app/common.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/backend/app/common.py) | `IncidentStatus`, `DispatchStatus`, `PriorityLevel`, `ScenarioType`, `Role` |
+| `dispatch` service | [`backend/app/services/dispatch.py`](../../backend/app/services/dispatch.py) | `transition_dispatch()`, `escalate_overdue()`, shared state machine validation |
+| `resources` service | [`backend/app/services/resources.py`](../../backend/app/services/resources.py) | Atomic row-locked resource allocation, `release_all_for_dispatch()` |
+| `recommendations` engine | [`backend/app/services/recommendations.py`](../../backend/app/services/recommendations.py) | PostGIS distance calculation, team suitability ranking, workload scoring |
+| `geo` module | [`backend/app/geo.py`](../../backend/app/geo.py) | `validate_coordinates_in_gujarat()`, `reverse_geocode_district()`, boundary cache |
+| `audit` logger & verifier | [`backend/app/audit.py`](../../backend/app/audit.py) | `log_audit_event()`, `verify_audit_log_hash_chain()` |
+| `db` transaction context | [`backend/app/db.py`](../../backend/app/db.py) | `with db.transaction() as conn:`, connection pool access |
+| `errors` framework | [`backend/app/errors.py`](../../backend/app/errors.py) | `AppError`, standardized error response formatting conforming to SRS s.15.7 |
+| `common` enums | [`backend/app/common.py`](../../backend/app/common.py) | `IncidentStatus`, `DispatchStatus`, `PriorityLevel`, `ScenarioType`, `Role` |
 
 ### Reusable Frontend Components & Libraries
+
 | Component / Module | Location | Reusable Capabilities |
 | :--- | :--- | :--- |
-| `Brand.tsx` (Logo, LogoMark, Brand, SiteHeader, NavLink) | [`frontend/src/components/Brand.tsx`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/frontend/src/components/Brand.tsx) | Final Q-Radar logo (light/dark lockup, symbol) and the single shared top bar (56px, navy) used by every page; assets in `frontend/public/logo*.svg` and `frontend/src/app/icon.svg` |
-| `ui.tsx` Primitives | [`frontend/src/components/ui.tsx`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/frontend/src/components/ui.tsx) | Base buttons, cards, modals, dialogs, form inputs, badges |
-| `badges.tsx` | [`frontend/src/components/badges.tsx`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/frontend/src/components/badges.tsx) | Color-coded status badges for incidents, dispatches, and priority levels |
-| `LiveOperationsLayer` | [`frontend/src/components/dm/LiveOperationsLayer.tsx`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/frontend/src/components/dm/LiveOperationsLayer.tsx) | Interactive Leaflet tactical map with incidents, teams, and shelter markers |
-| `AlertsDrawer` | [`frontend/src/components/AlertsDrawer.tsx`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/frontend/src/components/AlertsDrawer.tsx) | Sliding tray displaying official emergency bulletins and warning alerts |
-| `api.ts` Client Wrapper | [`frontend/src/lib/api.ts`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/frontend/src/lib/api.ts) | Unified HTTP client handling JWT headers, base URL resolution, and error parsing |
-| `geo.ts` Helpers | [`frontend/src/lib/geo.ts`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/frontend/src/lib/geo.ts) | Haversine distance, Gujarat coordinate bounding box verification |
+| `Brand.tsx` (Logo, LogoMark, Brand, SiteHeader, NavLink) | [`frontend/src/components/Brand.tsx`](../../frontend/src/components/Brand.tsx) | Final Q-Radar logo (light/dark lockup, symbol) and the single shared top bar (56px, navy) used by every page; assets in `frontend/public/logo*.svg` and `frontend/src/app/icon.svg` |
+| `ui.tsx` Primitives | [`frontend/src/components/ui.tsx`](../../frontend/src/components/ui.tsx) | Base buttons, cards, modals, dialogs, form inputs, badges |
+| `badges.tsx` | [`frontend/src/components/badges.tsx`](../../frontend/src/components/badges.tsx) | Color-coded status badges for incidents, dispatches, and priority levels |
+| `LiveOperationsLayer` | [`frontend/src/components/dm/LiveOperationsLayer.tsx`](../../frontend/src/components/dm/LiveOperationsLayer.tsx) | Interactive Leaflet tactical map with incidents, teams, and shelter markers |
+| `AlertsDrawer` | [`frontend/src/components/dm/AlertsDrawer.tsx`](../../frontend/src/components/dm/AlertsDrawer.tsx) | Sliding tray displaying official emergency bulletins and warning alerts |
+| `api.ts` Client Wrapper | [`frontend/src/lib/api.ts`](../../frontend/src/lib/api.ts) | Unified HTTP client handling JWT headers, base URL resolution, and error parsing |
+| `geo.ts` Helpers | [`frontend/src/lib/geo.ts`](../../frontend/src/lib/geo.ts) | Haversine distance, Gujarat coordinate bounding box verification |
 
 ---
 
 ## 6. Architectural Principles & Operational Conventions
 
 1. **Human-in-the-Loop Dispatcher Decisions:**
-   - AI recommendations must never automatically verify incidents, modify incident priorities, or execute dispatch orders. All algorithmic outputs are purely advisory and stored in dedicated `triage_results` records. Human dispatcher action is strictly required.
+   - AI recommendations must never automatically verify incidents, modify incident priorities, or execute dispatch orders. All algorithmic outputs are purely advisory and stored in dedicated `ai_recommendations` records. Human dispatcher action is strictly required.
 
 2. **Strict Concurrency & Allocation Safety:**
    - Resource quantities must be allocated atomically using PostgreSQL `SELECT ... FOR UPDATE` row locks within a single transaction to prevent race conditions or over-allocation.
    - External ingestion loops use PostgreSQL transactional advisory locks (`pg_try_advisory_xact_lock`) to eliminate duplicate runs between webhooks and cron triggers.
 
 3. **Public Privacy Protection (PII Scrubbing):**
-   - The public incident feed ([`backend/app/routers/public.py`](file:///c:/Users/shahs/OneDrive/Desktop/My%20Folder/DAIICT/Sem5/Software/IT314_Software_Project/backend/app/routers/public.py)) strictly excludes reporter names, phone numbers, and citizen identifiers.
+   - The public incident feed ([`backend/app/routers/public.py`](../../backend/app/routers/public.py)) strictly excludes reporter names, phone numbers, and citizen identifiers.
    - Coordinates on public feeds are truncated to 4 decimal places (~11m precision) to obscure exact private residential addresses.
 
 4. **Cryptographic Auditability:**
@@ -319,6 +324,7 @@ Before introducing new components or functions, developers must inspect and reus
 
 5. **Standardized API Error Envelope:**
    - Every non-2xx API error conforms strictly to the schema:
+
      ```json
      {
        "error": {
@@ -348,7 +354,7 @@ To maintain factual engineering clarity, capabilities in the repository are cata
 | **English Crisis Text Model** | **Experimental / Optional** | Real-data event-held-out baseline trained in `models/text_model`, served by `ai-workers/service/text_analysis.py`; separate `/analyze-text` endpoint, not connected to ingestion |
 | **Image Disaster Classifier** | **Prototype / Isolated** | PyTorch service in `models/image_classifier/deployment/app.py`, evaluated offline on split data; not deployed for this release, so photo analysis answers `503 AI_PHOTO_UNAVAILABLE` |
 | **Citizen Photo Storage** | **Implemented (Real), database** | Bytes in PostgreSQL `evidence_blobs` (migration 11), metadata and moderation in `evidence_files`; Cloudinary is planned later (see "Photo storage" in section 8) |
-| **Payment Gateway Integration** | **Simulated (Sandbox)** | Sandbox `MockGateway` only; live Razorpay/Stripe integration is planned |
+| **Payment Gateway Integration** | **Simulated (Sandbox / test mode)** | `PaymentGateway` interface with the sandbox `MockGateway` (default) and a Razorpay test-mode adapter (`razorpay_gateway.py`); signed webhook, receipts and server-side endings. No real money moves; a live gateway is not planned for this release |
 | **External Alert & Signal Ingestion** | **Implemented (Real feeds) + Replay** | SACHET CAP adapters (`app/services/ingest/`) run on the scheduler and the `ingest-cron.yml` workflow; the Bluesky and GNEWS text sources remain opt-in (`BLUESKY_SEARCH_ENABLED`, `NEWS_RSS_ENABLED`); new social/news text is sent to the configured multilingual disaster classifier, bounded to 50 signals per run; fallback alerts stay labelled `is_fallback = TRUE` |
 | **Simulated Demo Incidents** | **Simulated** | 4 seeded Gujarat demo incidents flagged with `is_simulated = TRUE` |
 

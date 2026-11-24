@@ -42,12 +42,16 @@ Do **not** move `seed_demo_incidents.sql` into `backend/db/seeds/reference/` or 
 
 1. **`backend/tests/test_seed_reset.py`**:
    `test_seed_reset_lifecycle_and_idempotency` asserts a hardcoded incident count:
+
    ```python
    assert counts1["incidents"] == 4  # increases to 24 when this seed is applied
    ```
+
 2. **`backend/tests/test_phase5_public_geo_integration.py`**:
    `test_public_api_query_filters` queries a bounding box around South Gujarat (`[20.0, 22.0] x [71.0, 74.0]`) and asserts:
+
    ```python
    assert inc["district"] == "Surat"
    ```
+
    Because `seed_demo_incidents.sql` includes incidents in Bharuch (`lat 21.7285, lon 72.5334`) and Amreli (`lat 20.8605, lon 71.3758`) which naturally fall within these coordinates, that assertion will fail unless updated to allow other districts in that bounding box.

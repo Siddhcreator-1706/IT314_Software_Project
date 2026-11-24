@@ -25,6 +25,7 @@ AI tools never run `git commit`, `git push`, `git merge`, `git reset`, `git clea
 Use Google Antigravity directly for feature development, bug fixes, refactoring, and interactive pairing without requiring Claude Code or external scripts.
 
 ### Configuration Structure
+
 ```text
 ├── AGENTS.md                  # Shared rules for every agent, loaded on every turn
 └── .agents/
@@ -36,6 +37,7 @@ Use Google Antigravity directly for feature development, bug fixes, refactoring,
 ```
 
 ### Usage
+
 - Antigravity automatically detects the appropriate rules using dynamic `model_decision` triggers based on your prompt and modified files.
 - You can work iteratively, asking Antigravity to run tests, inspect diffs, and generate changes.
 
@@ -46,6 +48,7 @@ Use Google Antigravity directly for feature development, bug fixes, refactoring,
 Use Anthropic's Claude Code CLI directly in your terminal, authenticated via your Claude Pro / Team subscription.
 
 ### Configuration Structure
+
 ```text
 ├── CLAUDE.md                  # Imports @AGENTS.md; adds Claude Code specific rules only
 └── .claude/
@@ -61,12 +64,15 @@ Use Anthropic's Claude Code CLI directly in your terminal, authenticated via you
 ```
 
 ### Usage
+
 Run Claude Code in your terminal from the repository root:
+
 ```powershell
 claude
 ```
 
 Use the pre-configured skills inside the Claude Code session:
+
 ```text
 /implement-feature "Add PostGIS spatial query for active cyclone incidents"
 /code-review
@@ -85,11 +91,12 @@ The Local AI Orchestrator coordinates multi-stage planning, implementation, veri
 **Optional Reviewer:** Claude Code CLI operates as an optional independent reviewer (`--agent claude` or independent reviewer role). The orchestrator never requires Claude Code availability or subscription quota to execute Antigravity tasks.
 
 ### Pipeline Architecture (9 Stages)
+
 1. **Stage 1: Initialization (`INITIALIZED`)** — Generates a unique task ID, initializes state in `.ai/tasks/<task_id>.json`, and acquires an exclusive filesystem lock (`.ai/tasks/<task_id>.lock`).
 2. **Stage 2: Context Scan** — Scans the repository structure, filtering out binaries, caches, and `.env` files.
 3. **Stage 3: Plan Generation (`PLANNING` → `PLAN_READY`)** — Generates an architecture-compliant implementation plan in `.ai/reports/<task_id>_plan.md` enforcing all DRCH constraints.
 4. **Stage 4: Human Plan Approval Gate (`HUMAN_PLAN_APPROVAL`)** — Prompts the developer to approve the plan, revise it, or generate an Antigravity handoff instruction.
-5. **Stage 5: Implementation Execution (`IMPLEMENTING`)** — 
+5. **Stage 5: Implementation Execution (`IMPLEMENTING`)** —
    - **Antigravity Mode (Default):** Prepares workspace instructions at `.ai/handoffs/<task_id>_antigravity_handoff.md`, records handoff, and transitions to `HANDED_OFF_TO_ANTIGRAVITY`. Antigravity applies changes directly to the codebase.
    - **Claude Mode:** Non-interactively invokes `claude -p` using the developer's local Claude CLI subscription.
 6. **Stage 6: Automated Verification (`VALIDATING`)** — Runs automated test suites and linters (`pytest`, `ruff`), capturing output in `.ai/reports/<task_id>_validation.md`.
@@ -104,6 +111,7 @@ The Local AI Orchestrator coordinates multi-stage planning, implementation, veri
    A task can **never** become `COMPLETED` automatically or without human acknowledgment.
 
 ### Explicit Failure & Pause States
+
 - `PLAN_FAILED`: Plan generation failed or was aborted.
 - `IMPLEMENTATION_FAILED`: Code changes failed to apply.
 - `VALIDATION_FAILED`: Any test, lint, or safety check failed or was skipped.
@@ -116,53 +124,65 @@ The Local AI Orchestrator coordinates multi-stage planning, implementation, veri
 ### CLI Usage
 
 #### Check Environment Health
+
 ```powershell
 python scripts/ai-dev.py --doctor
 ```
 
 #### Safe Static Model Inspection (Zero Quota Spent)
+
 ```powershell
 python scripts/ai-dev.py --check-models
 ```
 
 #### Start a Task with Antigravity (Default)
+
 ```powershell
 python scripts/ai-dev.py --task "Implement cyclone alert endpoint" --agent antigravity
 ```
 
 #### Start a Task in Dry-Run Mode (Simulation)
+
 ```powershell
 python scripts/ai-dev.py --task "Implement cyclone alert endpoint" --dry-run
 ```
 
 #### Resume a Task after Antigravity Implementation
+
 After editing code in Antigravity, resume verification and review:
+
 ```powershell
 python scripts/ai-dev.py --resume <task_id> --step validate
 ```
 
 #### Acknowledge Review and Complete Task
+
 ```powershell
 python scripts/ai-dev.py --ack-review <task_id>
 ```
+
 *(Requires interactive terminal and exact confirmation phrase).*
 
 #### Generate Antigravity Handoff on Resumed Task
+
 ```powershell
 python scripts/ai-dev.py --resume <task_id> --handoff
 ```
 
 #### Record Antigravity Execution Record
+
 ```powershell
 python scripts/ai-dev.py --record-impl <task_id>
 ```
 
 #### List All Registered Tasks
+
 ```powershell
 python scripts/ai-dev.py --list-tasks
 ```
 
 #### Run Pipeline Unit & Regression Tests
+
 ```powershell
 python -m pytest .ai/pipeline/tests/ -v
 ```
@@ -174,4 +194,3 @@ python -m pytest .ai/pipeline/tests/ -v
 - Runtime output directories (`.ai/tasks/`, `.ai/reports/`, `.ai/handoffs/`) are ignored by `.gitignore` and created on demand.
 - Local developer settings (`.claude/settings.local.json`, `.agents/settings.local.json`) are ignored.
 - Repository configuration files (`AGENTS.md`, `CLAUDE.md`, `.claude/settings.json`, `.claude/skills/`, `.agents/rules/`, `.github/` templates, `scripts/ai-dev.py`) remain tracked in Git for team-wide use.
-

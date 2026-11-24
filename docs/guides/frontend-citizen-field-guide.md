@@ -53,6 +53,7 @@ flowchart TD
 ## 4. Live Polling & Citizen Status Timeline (`/my-reports`)
 
 ### 4.1 15-Second Background Polling Architecture
+
 - Both `/my-reports` and `/field` refresh in the background every 15,000 ms with `setInterval`. The interval is cleared on unmount, and `/field` ignores a response that arrives after the page has unmounted.
 - `/my-reports` shows the time of the last successful refresh in an `aria-live="polite"` region (visible from the `md` breakpoint up). The time is rendered only after the first load: a time rendered on the server uses a different format than the browser and causes a hydration error, so the server renders a placeholder (`…`).
 
@@ -66,6 +67,7 @@ flowchart TD
 | **4** | `RESOLVED` / `CLOSED` | Emerald / Slate Badge | Emergency cleared, casualties assisted, incident closed. |
 
 ### 4.3 Citizen Information Reply
+
 When dispatchers flag an incident as `NEEDS_INFORMATION`, the report card dynamically surfaces a high-visibility orange response banner. Citizens can provide additional details (e.g., landmark directions, stranded counts), instantly pushing data back into the dispatcher's triage view.
 
 ---
@@ -73,6 +75,7 @@ When dispatchers flag an incident as `NEEDS_INFORMATION`, the report card dynami
 ## 5. Frontline Field Responder Operations (`/field`)
 
 ### 5.1 Glove-Friendly Touch Philosophy
+
 Field teams operate in severe weather (rain, cyclone winds, low-visibility nighttime conditions). UI controls adhere to:
 - **Minimum 48px Touch Height:** Main tactical action buttons use `min-h-12` (48px) with wide tap radiuses.
 - **High-Contrast Sunlight Visibility:** High-contrast text palettes against dark slate backgrounds prevent screen glare washout under direct Gujarat sunlight.

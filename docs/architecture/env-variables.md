@@ -106,8 +106,8 @@ Both services read their configuration from the environment. Both model reposito
 | `HF_MODEL_REPO_ID` | image classifier | **yes** | - | Public Hugging Face repository with the checkpoint. The service refuses to start without it. |
 | `HF_MODEL_FILENAME` | image classifier | no | `best_model.pt` | Checkpoint file name in that repository. |
 | `HF_MODEL_REVISION` | image classifier | no | default branch | Repository revision to download. |
-| `HF_TOKEN` (S) | `models/text_classifier/train/export_onnx_int8.py --upload-repo` only | - | Write token for uploading an exported model. Set it locally for that command only, never on a deployed service. |
-| `DISASTER_DATA_ROOT` | image classifier training | `data_disaster_types` | Local dataset folder for `train/`. |
+| `HF_TOKEN` (S) | `models/text_classifier/train/export_onnx_int8.py --upload-repo` only | no | - | Write token for uploading an exported model. Set it locally for that command only, never on a deployed service. |
+| `DISASTER_DATA_ROOT` | image classifier training | no | `data_disaster_types` | Local dataset folder for `train/`. |
 
 ## Database container
 

@@ -115,7 +115,7 @@ uvicorn triage_service:app --reload --port 8001
 
 Then add this to the root `.env` and restart the backend:
 
-```
+```dotenv
 AI_TRIAGE_URL=http://localhost:8001/triage
 ```
 
@@ -239,16 +239,21 @@ If you read a new environment variable in code, document it in `docs/architectur
 
 1. Fork the repository on GitHub and clone your fork.
 2. Add the main repository as `upstream`:
+
    ```bash
    git remote add upstream https://github.com/Siddhcreator-1706/IT314_Software_Project.git
    ```
+
 3. Start every change from an up-to-date `main` on its own branch. Never commit to `main`.
+
    ```bash
    git fetch upstream
    git switch -c feat/citizen-offline-drafts upstream/main
    ```
+
    Name branches `<type>/<short-topic>`, for example `feat/…`, `fix/…`, `docs/…` or `chore/…`.
 4. Before opening or updating a pull request, rebase on the latest `main`:
+
    ```bash
    git fetch upstream
    git rebase upstream/main
@@ -259,6 +264,7 @@ If you read a new environment variable in code, document it in `docs/architectur
 ### Commit messages
 
 Use [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/): `type(scope): imperative summary`.
+
 - The subject is lowercase with no trailing period, for example `fix(field): attach device location to on-scene reports`.
 - Types: `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci`, `chore`, `revert`.
 - The scope is the module, for example `citizen`, `dm`, `field`, `security`, `ai-workers` or `frontend`.
