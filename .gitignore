@@ -1,110 +1,60 @@
 # ==============================================================================
-# Disaster Response Coordination Hub (DRCH) - Master .gitignore
+# ResQ (Disaster Response Coordination Hub) - .gitignore
+# A pattern without a leading "/" matches at every directory level, so
+# "node_modules/" also covers frontend/node_modules/ and any nested copy.
 # ==============================================================================
 
 # ------------------------------------------------------------------------------
-# 1. Environment Variables, Credentials & Secrets (NEVER COMMIT)
+# 1. Secrets and environment files (never commit)
 # ------------------------------------------------------------------------------
 .env
 .env.*
 *.env
-**/.env
-**/.env.*
-**/*.env
-.env.local
-**/.env.local
-.env.development.local
-.env.test.local
-.env.production.local
 env/
-**/env/
+!.env.example
+!frontend/.env.example
 *.pem
 *.key
 *.crt
 *.cert
 *.pfx
 *.p12
-*.pdf
-Sprint-Member-Wise.pdf
 docker-compose.override.yml
-!.env.example
-!frontend/.env.example
 
 # ------------------------------------------------------------------------------
-# 2. Frontend (Next.js / React / TypeScript / Node.js)
+# 2. Frontend (Next.js, Node.js, TypeScript)
 # ------------------------------------------------------------------------------
 node_modules/
-**/node_modules/
-frontend/node_modules/
-
-# Next.js Build Output & Cache
 .next/
-**/.next/
-frontend/.next/
 out/
-**/out/
-frontend/out/
 build/
-**/build/
-frontend/build/
 dist/
-**/dist/
-
-# Package manager files & caches
+*.tsbuildinfo
+next-env.d.ts
+.vercel/
+.turbo/
 .pnp
-.pnp.js
 .pnp.*
 .yarn/*
 !.yarn/patches
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-.yarn/cache
-.yarn/unplugged
-.yarn/build-state.yml
 .pnpm-store/
 
-# TypeScript & Vercel / Turbopack
-*.tsbuildinfo
-next-env.d.ts
-.vercel/
-**/.vercel/
-.turbo/
-**/.turbo/
-
 # ------------------------------------------------------------------------------
-# 3. Backend, Python & AI Workers
+# 3. Python backend, AI workers and models
 # ------------------------------------------------------------------------------
-# Byte-compiled / optimized / DLL files
 __pycache__/
-**/__pycache__/
 *.py[cod]
 *$py.class
-*.pyo
-*.pyd
 *.so
 .Python
-
-# Virtual Environments (CRITICAL - Keeps repository lightweight)
 .venv/
-**/.venv/
 venv/
-**/venv/
-env/
-**/env/
 ENV/
 env.bak/
 venv.bak/
-.env/
-backend/.venv/
-backend/venv/
-ai-workers/.venv/
-ai-workers/venv/
-models/text_model/data/external/
-models/text_model/artifacts/
-ai-workers/artifacts/
-
-# Python packaging & distribution
 develop-eggs/
 .eggs/
 *.egg-info/
@@ -115,13 +65,9 @@ wheels/
 share/python-wheels/
 *.manifest
 *.spec
-
-# Jupyter Notebook Checkpoints & Outputs
 .ipynb_checkpoints/
-**/.ipynb_checkpoints/
-*/.ipynb_checkpoints/*
 
-# Machine Learning Large Artifacts & Model Checkpoints
+# Model weights, checkpoints and generated artifacts (published on Hugging Face instead)
 *.pt
 *.pth
 *.onnx
@@ -129,64 +75,61 @@ share/python-wheels/
 *.safetensors
 *.ckpt
 *.h5
+ai-workers/artifacts/
+models/text_model/artifacts/
+models/text_model/data/external/
+models/**/outputs/
+models/image_classifier/train/model_check/
+models/text_classifier/MuRIL/muril_local_test_results/
 
 # ------------------------------------------------------------------------------
-# 4. Databases, Local Storage & State Files
+# 4. Databases, backups and local state
 # ------------------------------------------------------------------------------
 *.db
 *.db-journal
 *.sqlite
 *.sqlite3
 *.rdb
-backend/db/*.db
 local_data/
+# Database dumps from scripts/db_backup.py contain personal data: never commit them
+backups/
+*.dump
 
 # ------------------------------------------------------------------------------
-# 5. Logs, Diagnostics & Temp Files
+# 5. Logs, test and coverage output, scratch files
 # ------------------------------------------------------------------------------
 *.log
 logs/
-**/logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 pip-log.txt
 pip-delete-this-directory.txt
-celerybeat-schedule
-celerybeat.pid
-
-# Testing & Coverage
 coverage/
-**/coverage/
-frontend/coverage/
 htmlcov/
-.tox/
-.nox/
+cover/
 .coverage
 .coverage.*
-.cache
-nosetests.xml
 coverage.xml
 *.cover
+nosetests.xml
+.cache
+.tox/
+.nox/
 .hypothesis/
 .pytest_cache/
 .ruff_cache/
-cover/
-
-# Scratch, Patch & Audit files
 scratch/
 scratch_*.*
 audit.json
-frontend/audit.json
 *.patch
 *.diff
 docs/perf/explain-local.md
 
 # ------------------------------------------------------------------------------
-# 6. Operating System Artifacts
+# 6. Operating system files
 # ------------------------------------------------------------------------------
-# Windows
 Thumbs.db
 Thumbs.db:encryptable
 ehthumbs.db
@@ -194,35 +137,21 @@ ehthumbs_vista.db
 [Dd]esktop.ini
 $RECYCLE.BIN/
 *.stackdump
-*.cab
-*.msi
-*.msix
 *.lnk
-
-# macOS
 .DS_Store
 .AppleDouble
 .LSOverride
-Icon
 ._*
-.DocumentRevisions-V100
-.fseventsd
 .Spotlight-V100
-.TemporaryItems
 .Trashes
-.VolumeIcon.icns
-.com.apple.timemachine.donotpresent
-
-# Linux
 *~
 .fuse_hidden*
 .directory
 .Trash-*
 
 # ------------------------------------------------------------------------------
-# 7. IDEs & Code Editors
+# 7. Editors and IDEs (team VS Code settings stay shared)
 # ------------------------------------------------------------------------------
-# Visual Studio Code (keeps team recommended configs, ignores workspace state)
 .vscode/*
 !.vscode/settings.json
 !.vscode/tasks.json
@@ -230,13 +159,9 @@ Icon
 !.vscode/extensions.json
 .history/
 *.code-workspace
-
-# JetBrains (PyCharm, WebStorm, IntelliJ)
 .idea/
 *.iws
 *.iml
-
-# Vim / Emacs / Sublime
 *.swp
 *.swo
 *.sublime-project
@@ -244,28 +169,13 @@ Icon
 .jupyter/
 
 # ------------------------------------------------------------------------------
-# 8. Binary Documents (Host externally, not in git)
+# 8. Personal working notes and local AI-assistant state
 # ------------------------------------------------------------------------------
-documents/
-
-# ------------------------------------------------------------------------------
-# 9. Personal / Local AI Assistant Settings & Runtime Outputs
-# ------------------------------------------------------------------------------
+/remaining-work.md
+/instructions.md
 .claude/settings.local.json
 .claude/worktrees/
 .agents/settings.local.json
 .ai/tasks/
 .ai/reports/
 .ai/handoffs/
-
-# 10. Certain Personal files to keep ignored
-docs/project/sprints/remaining-work.md
-
-# 11. Database backups (scripts/db_backup.py): they contain personal data, never commit them
-backups/
-*.dump
-
-# Local outputs of the models/ training and evaluation scripts (weights, checkpoints, run results)
-models/**/outputs/
-models/image_classifier/train/model_check/
-models/text_classifier/MuRIL/muril_local_test_results/
