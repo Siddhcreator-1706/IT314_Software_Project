@@ -1,0 +1,36 @@
+@startuml state-incident
+!include _style.iuml
+title State machine — Incident (services/incidents.py TRANSITIONS)
+
+[*] --> Open
+
+state Open {
+  [*] --> SUBMITTED
+  SUBMITTED --> VERIFIED : verify(priority, rationale)\n/ notify reporter
+  SUBMITTED --> REJECTED : reject(rationale)
+  SUBMITTED --> NEEDS_INFORMATION : requestInformation(question)\n/ notify reporter
+  NEEDS_INFORMATION --> NEEDS_INFORMATION : requestInformation(question)
+  NEEDS_INFORMATION --> SUBMITTED : citizenReply(text, location?)
+  NEEDS_INFORMATION --> VERIFIED : verify(priority, rationale)
+  NEEDS_INFORMATION --> REJECTED : reject(rationale)
+  VERIFIED --> DISPATCHED : dispatchCreated
+  VERIFIED --> RESOLVED : resolve(rationale)
+  DISPATCHED --> RESOLVED : resolve(rationale)
+}
+
+Open --> CLOSED : close(reason)\n[CLOSURE permission and\n(no open dispatch or override)]
+CLOSED --> Open[H] : reopen(reason)\n[CLOSURE permission]
+
+note right of Open
+  Every transition: optimistic version check,
+  incident_status_history row, audit_logs row.
+  Invariant: VERIFIED, DISPATCHED and RESOLVED
+  require verified_priority (database CHECK).
+end note
+note bottom of CLOSED
+  Not a final state: reopen returns through the shallow
+  history state H to the state the incident was closed
+  from, except RESOLVED → VERIFIED, REJECTED → SUBMITTED,
+  and SUBMITTED when no priority was ever set.
+end note
+@enduml

@@ -1,0 +1,61 @@
+@startuml component
+!include _style.iuml
+title ResQ — Component diagram (logical; hosting is shown in the deployment diagram)
+
+component "Web client\n(Next.js pages)" as UI
+component "Backend-for-frontend\n(Next.js route handlers)" as BFF
+interface "Session cookie\n(httpOnly)" as ICookie
+
+component "ResQ API (FastAPI)" as API {
+  portin "REST /api/v1" as pREST
+  portin "Webhook" as pHook
+  portin "Ingest trigger" as pIngest
+  component "Routers\n«boundary»" as R
+  component "Domain services\n«control»" as S
+  component "Auth, RBAC, audit,\nerrors, rate limit\n«utility»" as CORE
+  component "Payment adapters\n(Mock, Razorpay)" as PAY
+  component "Ingest adapters\n(SACHET, replay,\nnews, Bluesky)" as ING
+  component "AI provider\n(PII scrub, guardrails)" as AIP
+  component "Background timer\n(escalation; dev poller)" as TIMER
+}
+
+database "PostgreSQL 16 + PostGIS" as DB
+interface "SQL (psycopg pool)" as ISQL
+
+component "AI triage service" as TRI
+interface "POST /triage" as ITRI
+component "Image / text classifiers\n(optional)" as CLS
+interface "POST /predict" as IPRED
+
+component "Payment gateway" as PG
+component "SACHET CAP feed" as FEED
+component "SMTP server" as SMTP
+component "GitHub Actions cron" as CRON
+
+UI -- ICookie
+ICookie )-- BFF
+BFF --> pREST : HTTPS JSON\n(bearer token)
+pREST --> R
+pHook --> R
+pIngest --> R
+R --> S
+R --> CORE
+S --> CORE
+S --> PAY
+S --> ING
+S --> AIP
+TIMER --> S
+CORE -- ISQL
+S -- ISQL
+ISQL )-- DB
+
+TRI -- ITRI
+AIP --( ITRI
+CLS -- IPRED
+S ..( IPRED : optional
+PAY --> PG : HTTPS
+PG --> pHook : signed webhook
+ING --> FEED : HTTPS (CAP XML)
+CORE ..> SMTP : email copies
+CRON --> pIngest : HTTPS + INGEST_TOKEN
+@enduml

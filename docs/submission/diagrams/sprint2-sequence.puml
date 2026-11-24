@@ -1,0 +1,74 @@
+@startuml sprint2-sequence
+!include _style.iuml
+title Sprint 2 — Sequence: recommend, dispatch under a row lock, field acknowledgement and completion
+autonumber
+
+actor Dispatcher as D
+boundary "RecommendationsRouter" as RR
+control "RecommendationService" as RS
+boundary "DispatchesRouter" as DR
+control "DispatchService" as DS
+control "ResourceService" as RES
+database "PostgreSQL + PostGIS" as DB
+boundary "FieldRouter" as FR
+actor "Field Responder" as F
+
+== Recommend ==
+D -> RR : GET /dm/incidents/{id}/team-recommendations
+activate RR
+RR -> RS : recommendedTeams(incident)
+activate RS
+RS -> DB : available TEAM resources,\ncapabilities, ST_Distance
+RS --> RR : ranked teams with reasons
+deactivate RS
+RR --> D : RecommendedTeam[] (advisory only)
+deactivate RR
+
+== Dispatch ==
+D -> DR : POST /dm/incidents/{id}/dispatches\n(team, instructions, Idempotency-Key)
+activate DR
+DR -> DB : incident status ∈ {VERIFIED, DISPATCHED}?
+alt not verified
+  DR --> D : 409 INCIDENT_NOT_VERIFIED
+else verified
+  DR -> DB : insert dispatch_orders (REQUESTED)
+  DR -> RES : reserve(resourceId, dispatch, qty)
+  activate RES
+  RES -> DB : SELECT … FROM resources … FOR UPDATE
+  alt quantity_available < qty
+    RES --> DR : 409 RESOURCE_CONFLICT
+    DR --> D : 409 (transaction rolled back)
+  else enough quantity
+    RES -> DB : quantity_available -= qty;\ninsert resource_assignments
+    RES --> DR : assignment
+    DR -> DB : incident → DISPATCHED; audit
+    DR --> D : 201 dispatch
+  end
+  deactivate RES
+end
+deactivate DR
+
+== Field execution ==
+F -> FR : POST /field/dispatches/{id}/acknowledgement
+activate FR
+FR -> DS : runTransition(id, acknowledge)
+activate DS
+DS -> DB : lock dispatch; REQUESTED → ACKNOWLEDGED;\ninsert dispatch_progress; audit
+DS --> FR : dispatch
+deactivate DS
+FR --> F : 200
+deactivate FR
+F -> FR : POST …/progress (EN_ROUTE)
+FR -> DS : runTransition(id, progress)
+note right of DS : EN_ROUTE moves ACKNOWLEDGED → DISPATCHED
+F -> FR : POST …/completion
+activate FR
+FR -> DS : runTransition(id, complete)
+activate DS
+DS -> RES : releaseAllForDispatch(id)
+DS -> DB : → COMPLETED; notify dispatcher; audit
+DS --> FR : dispatch
+deactivate DS
+FR --> F : 200
+deactivate FR
+@enduml

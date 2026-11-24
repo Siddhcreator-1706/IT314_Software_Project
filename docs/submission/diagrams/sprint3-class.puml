@@ -1,0 +1,100 @@
+@startuml sprint3-class
+!include _style.iuml
+title Sprint 3 — Class diagram: payment hardening, sessions, administration, operations
+
+package "Boundary" {
+  class DonationsRouter <<boundary>> {
+    +create(campaignId, amount, idempotencyKey) : Donation
+    +verify(donationId, paymentId, signature) : Donation
+    +cancel(donationId) : Donation
+    +webhook(slug, rawBody, headers) : WebhookAck
+  }
+  class AdminRouter <<boundary>> {
+    +listAccounts(filters) : Page
+    +disable(userId, reason) : void
+    +signOutEverywhere(userId, reason) : void
+    +setPermissions(userId, permissions, reason) : void
+    +verifyAudit() : ChainReport
+    +systemStatus() : SystemStatus
+  }
+}
+
+package "Control" {
+  abstract class PaymentGateway <<control>> {
+    +{abstract} createOrder(amount, currency, reference) : Order
+    +{abstract} verifyPayment(orderId, paymentId, signature) : Verification
+    +{abstract} parseWebhook(rawBody, headers) : WebhookEvent
+  }
+  class MockGateway <<control>> {
+    {sandbox; refused when APP_ENV = production}
+  }
+  class RazorpayGateway <<control>> {
+    {HMAC-SHA256 signatures; test mode}
+  }
+  class DonationEndings <<utility>> {
+    +ttlMinutes() : Integer
+    +expireStaleDonations() : Integer
+    +markFailed(donation, reason : FailureReason) : Donation
+  }
+  class SessionService <<control>> {
+    +startSession(account, mfa : Boolean) : Session
+    +rotate(rawToken) : Rotation
+    +revokeAll(userId, reason) : void
+  }
+  class WebhookEvent {
+    +eventId : String
+    +eventType : String
+    +amount : Decimal [0..1]
+    +currency : String [0..1]
+    +isCapture() : Boolean
+    +isFailure() : Boolean
+  }
+}
+
+package "Entity" {
+  class Donation <<entity>> {
+    +status : TxnStatus
+    +failureReason : FailureReason [0..1]
+    +receiptNo : String [0..1]
+  }
+  class PaymentWebhookEvent <<entity>> {
+    +gatewayName : String {id}
+    +eventId : String {id}
+    +outcome : String
+  }
+  class RefreshToken <<entity>> {
+    +familyId : UUID
+    -tokenHash : String
+    +idleExpiresAt : DateTime
+    +absoluteExpiresAt : DateTime
+    +revokedAt : DateTime [0..1]
+  }
+  class Shelter <<entity>> {
+    +type : ShelterType
+    +totalCapacity : Integer [0..1]
+    +currentOccupancy : Integer [0..1]
+    +status : ShelterStatus
+  }
+  class IncidentNote <<entity>> {
+    +body : String
+    +createdAt : DateTime
+  }
+  enum FailureReason <<enumeration>> {
+    ABANDONED
+    GATEWAY_DECLINED
+    EXPIRED
+  }
+}
+
+PaymentGateway <|-- MockGateway
+PaymentGateway <|-- RazorpayGateway
+DonationsRouter --> "1" PaymentGateway : gateway
+DonationsRouter ..> DonationEndings : <<use>>
+DonationsRouter ..> PaymentWebhookEvent : <<create>>\n(at most once per event)
+PaymentGateway ..> WebhookEvent : <<create>>
+DonationEndings ..> Donation : <<use>>
+Donation "1" -- "0..*" PaymentWebhookEvent
+Donation --> FailureReason
+AdminRouter ..> SessionService : <<use>>
+SessionService "1" --> "0..*" RefreshToken : manages
+@enduml

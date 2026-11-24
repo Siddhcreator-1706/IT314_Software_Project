@@ -1,0 +1,40 @@
+@startuml activity-ingestion
+!include _style.iuml
+title Activity diagram — External alert and signal ingestion run
+
+|Scheduler|
+start
+:Trigger run (GitHub ingest-cron every 15 min in staging and production,\nbackend poller in development, or dispatcher "Poll now");
+|System|
+if () then ([advisory lock acquired])
+else ([another run active])
+  :Return SKIPPED;
+  stop
+endif
+:Load enabled adapters\n(SACHET when SACHET_FEED_URL is set;\nreplay, Google News, Bluesky only when enabled);
+repeat
+  :Record ingest run (RUNNING);
+  :Fetch source (size cap, timeout);
+  if () then ([fetch failed])
+    :Mark run FAILED (safe error message);
+  else ([fetched])
+    :Sanitise text and detect language;
+    :Keep news and social items only if they\nmention a hazard located in Gujarat;
+    :Store alerts and signals\n(de-duplicated by stable uid);
+    if () then ([text classifier configured])
+      :Pre-label new signals (advisory, ≤ 50 per run);
+    else ([no])
+    endif
+    :Mark run SUCCESS with counts;
+  endif
+repeat while () is ([more adapters])
+->[all adapters done];
+|Dispatcher|
+:Review PENDING signals;
+if () then ([genuine, has coordinates])
+  :Promote (creates SUBMITTED incident);
+else ([otherwise])
+  :Dismiss with reason;
+endif
+stop
+@enduml

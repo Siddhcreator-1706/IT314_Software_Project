@@ -1,0 +1,54 @@
+@startuml sprint1-sequence
+!include _style.iuml
+title Sprint 1 — Sequence: core loop (citizen report → verification → public map)
+autonumber
+
+actor Citizen as C
+boundary "Report page\n+ BFF" as FE
+boundary "CitizenRouter" as CR
+control "Geo" as GEO
+boundary "DmIncidentsRouter" as IR
+boundary "PublicRouter" as PR
+database "PostgreSQL + PostGIS" as DB
+actor Dispatcher as D
+actor "Public visitor" as P
+
+== Report ==
+C -> FE : choose scenario, describe, set location
+activate FE
+FE -> CR : POST /incidents\nIdempotency-Key: k
+activate CR
+CR -> CR : validate IncidentCreate
+alt scenario not supported
+  CR --> FE : 422 UNSUPPORTED_SCENARIO
+else key k already used by this reporter
+  CR -> DB : select by (reporter, k)
+  CR --> FE : 200 original incident
+else new report
+  CR -> GEO : isInGujarat(lat, lon)
+  alt outside Gujarat
+    CR --> FE : 422 OUTSIDE_GUJARAT
+  else inside
+    CR -> GEO : districtFor(lat, lon)
+    CR -> DB : insert incident (SUBMITTED),\nstatus history, audit
+    CR --> FE : 201 {incident_ref, status}
+  end
+end
+deactivate CR
+FE --> C : My reports shows "Submitted"
+deactivate FE
+
+== Verification ==
+D -> IR : POST /dm/incidents/{id}/verification
+activate IR
+IR -> DB : row lock, version check,\nSUBMITTED → VERIFIED, notify reporter
+IR --> D : 200
+deactivate IR
+
+== Public map ==
+P -> PR : GET /public/incidents
+activate PR
+PR -> DB : status ∈ {VERIFIED, DISPATCHED, RESOLVED}\nand not simulated
+PR --> P : PublicIncident[] (no reporter data,\ncoordinates rounded to 4 dp)
+deactivate PR
+@enduml

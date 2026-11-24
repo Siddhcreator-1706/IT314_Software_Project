@@ -1,0 +1,67 @@
+@startuml sprint3-sequence
+!include _style.iuml
+title Sprint 3 — Sequence: donation with signed webhook, replay protection and server-side endings
+autonumber
+
+actor Donor as U
+boundary "Donate page" as FE
+boundary "DonationsRouter" as DR
+participant "PaymentGateway\n(Mock / Razorpay test)" as GW
+control "DonationEndings" as DE
+database "PostgreSQL" as DB
+
+== Create order ==
+U -> FE : choose ACTIVE campaign and amount
+activate FE
+FE -> DR : POST /donations (Idempotency-Key)
+activate DR
+DR -> GW : createOrder(amount, INR, reference)
+DR -> DB : insert donation (PENDING)
+DR --> FE : 201 order
+deactivate DR
+FE -> GW : donor pays in the gateway checkout\n(card data never reaches ResQ)
+deactivate FE
+
+== Confirmation (either path may arrive first) ==
+par browser return
+  FE -> DR : POST /donations/{id}/verify\n(payment_id, signature)
+  activate DR
+  DR -> GW : verifyPayment(…)
+  DR -> DB : lock donation; PENDING → CONFIRMED;\nreceipt REC-YYYY-NNNNNN; audit
+  DR --> FE : 200 receipt
+  deactivate DR
+else signed webhook
+  GW ->> DR : POST /payments/webhook/{slug} (asynchronous)
+  activate DR
+  DR -> GW : parseWebhook(rawBody, headers)
+  alt signature invalid
+    DR --> GW : 400 INVALID_SIGNATURE (nothing changes)
+  else signature valid
+    DR -> DB : insert payment_webhook_events\nON CONFLICT DO NOTHING
+    alt event already processed
+      DR --> GW : 200 (replay ignored)
+    else capture with exact amount and currency
+      DR -> DB : CONFIRMED (no second receipt)
+      DR --> GW : 200
+    else payment failed
+      DR -> DE : markFailed(GATEWAY_DECLINED)
+      DR --> GW : 200
+    end
+  end
+  deactivate DR
+end
+
+== Endings without payment ==
+alt donor cancels
+  FE -> DR : POST /donations/{id}/cancel
+  DR -> DE : markFailed(ABANDONED)
+else no payment after 30 minutes
+  DR -> DE : expireStaleDonations()\n(run on the next donation request)
+  DE -> DB : PENDING → FAILED (EXPIRED)
+end
+note over DR, DB
+  A later verified capture of the right amount still
+  confirms a FAILED donation: captured money is never
+  lost, and nothing is confirmed without verification.
+end note
+@enduml

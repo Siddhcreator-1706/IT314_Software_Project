@@ -1,0 +1,126 @@
+@startuml sprint0-class
+!include _style.iuml
+title Sprint 0 — Class diagram: staff identity, audit and the incident core
+
+package "Boundary (routers)" {
+  class AuthRouter <<boundary>> {
+    +login(email, password) : MfaChallenge
+    +verifyMfa(mfaToken, code) : Session
+    +logout() : void
+  }
+  class DmIncidentsRouter <<boundary>> {
+    +listIncidents(filters, page) : Page
+    +recordVerification(id, decision, priority, rationale, version) : Incident
+    +setPriority(id, priority, rationale, version) : Incident
+    +close(id, reason, version) : Incident
+  }
+}
+
+package "Control (services)" {
+  class IncidentService <<control>> {
+    -TRANSITIONS : Map<Status, Set<Status>>
+    +lockIncident(id) : Incident
+    +checkVersion(incident, expected) : void
+    +updateIncident(incident, action, toStatus, rationale) : Incident
+  }
+  abstract class TriageProvider <<control>> {
+    +{abstract} triage(payload) : TriageOutcome
+  }
+  class HttpTriageProvider <<control>>
+  class UnavailableProvider <<control>>
+  class AuditLogger <<utility>> {
+    +record(actor, action, entityType, entityId, result) : void
+    +verifyChain() : Boolean
+  }
+  class Security <<utility>> {
+    +hashPassword(password) : String
+    +verifyPassword(hash, password) : Boolean
+    +verifyTotp(secret, code) : Boolean
+    +issueToken(user, purpose) : String
+  }
+  class Principal {
+    +userId : UUID
+    +role : RoleCode
+    +permissions : Set<DmPermission>
+    +mfaVerified : Boolean
+    +has(permission : DmPermission) : Boolean
+  }
+}
+
+package "Entity (persistent)" {
+  class User <<entity>> {
+    +userId : UUID
+    +email : String
+    +fullName : String
+    +status : AccountStatus
+  }
+  class UserAuth <<entity>> {
+    -passwordHash : String
+    -mfaSecret : Bytes
+    +mfaEnabled : Boolean
+    +failedLoginCount : Integer
+    +lockedUntil : DateTime [0..1]
+    +tokenVersion : Integer
+  }
+  class Incident <<entity>> {
+    +incidentId : UUID
+    +incidentRef : String
+    +scenario : Scenario
+    +status : IncidentStatus
+    +verifiedPriority : Priority [0..1]
+    +latitude : Decimal
+    +longitude : Decimal
+    +version : Integer
+  }
+  class IncidentStatusHistory <<entity>> {
+    +fromStatus : IncidentStatus
+    +toStatus : IncidentStatus
+    +reason : String
+    +changedAt : DateTime
+  }
+  class AIRecommendation <<entity>> {
+    +status : AiRecStatus
+    +suggestedScenario : Scenario [0..1]
+    +confidence : Decimal [0..1]
+    +humanAction : AiDecision [0..1]
+  }
+  class AuditLog <<entity>> {
+    +auditId : Long
+    +action : String
+    +result : AuditResult
+    +prevHash : String
+    +rowHash : String
+  }
+  enum RoleCode <<enumeration>> {
+    NORMAL_USER
+    DISASTER_MGMT
+    APP_MGMT
+    FIELD_TEAM
+  }
+  enum DmPermission <<enumeration>> {
+    PUBLISHER
+    MODERATOR
+    CLOSURE
+    DISPATCH
+    SUPERVISOR
+  }
+}
+
+User "1" *-- "1" UserAuth
+User "1" --> "0..*" DmPermission : permissions
+User "1" -- "0..*" Incident : reports >
+Incident "1" *-- "0..*" IncidentStatusHistory
+Incident "1" *-- "0..*" AIRecommendation
+AuditLog "0..1" <-- "1" AuditLog : previous
+
+AuthRouter ..> Security : <<use>>
+AuthRouter ..> AuditLogger : <<use>>
+DmIncidentsRouter ..> Principal : <<use>>
+DmIncidentsRouter ..> IncidentService : <<use>>
+IncidentService ..> Incident : <<use>>
+IncidentService ..> AuditLogger : <<use>>
+TriageProvider <|-- HttpTriageProvider
+TriageProvider <|-- UnavailableProvider
+AuditLogger ..> AuditLog : <<create>>
+Principal ..> RoleCode
+@enduml

@@ -1,0 +1,26 @@
+@startuml state-dispatch
+!include _style.iuml
+title State machine — Dispatch order (services/dispatch.py DISPATCH_TRANSITIONS)
+
+[*] --> REQUESTED : create(team, instructions)\n/ reserve resources (row lock)
+
+REQUESTED : after(DISPATCH_ACK_TIMEOUT) / record DISPATCH_ESCALATED
+REQUESTED --> ACKNOWLEDGED : acknowledge
+REQUESTED --> REJECTED : reject(reason)\n/ release resources
+ACKNOWLEDGED --> DISPATCHED : progress(EN_ROUTE)
+ACKNOWLEDGED --> FAILED : fail(reason)\n/ release resources
+DISPATCHED : progress(ON_SCENE | DELAYED | UPDATE) / record progress
+DISPATCHED : teamRequest(capability) / open team request
+DISPATCHED --> COMPLETED : complete\n/ release resources, notify dispatcher
+DISPATCHED --> FAILED : fail(reason)\n/ release resources
+
+REJECTED --> [*]
+FAILED --> [*]
+COMPLETED --> [*]
+
+note bottom of COMPLETED
+  An event that does not match the current state
+  (for example a late acknowledgement) is answered
+  409, audited and never applied.
+end note
+@enduml

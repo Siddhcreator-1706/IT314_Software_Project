@@ -1,0 +1,72 @@
+@startuml activity-incident-response
+!include _style.iuml
+title Activity diagram — End-to-end incident response (human in the loop)
+
+|Citizen|
+start
+:Sign in;
+:Choose scenario and describe the incident;
+:Set location (GPS, map pin or address)\nand optionally attach photos (≤ 5);
+:Submit report (Idempotency-Key);
+|System|
+if () then ([scenario supported and inside Gujarat])
+  :Create incident (SUBMITTED);\nresolve district; write history and audit;
+else ([otherwise])
+  :Reject (422) and show emergency numbers;
+  stop
+endif
+|Dispatcher|
+repeat
+  :Review incident (evidence, timeline, map);
+  if () then ([AI advice wanted])
+    :Request AI triage (advisory);
+  else ([no])
+  endif
+  if () then ([possible duplicate])
+    :Review duplicate candidates (advisory);
+  else ([no])
+  endif
+  if () then ([evidence insufficient])
+    :Request information;
+    |Citizen|
+    :Reply (text, corrected location, photo);
+    |System|
+    :Return incident to SUBMITTED;
+    |Dispatcher|
+  else ([sufficient])
+  endif
+repeat while () is ([information was requested])
+->[decision possible];
+if () then ([genuine])
+  :Verify (priority and rationale);
+  :Read ranked team recommendations;
+  :Create dispatch (resources reserved under row lock);
+  |Field Responder|
+  if () then ([team can respond])
+    :Acknowledge dispatch;
+    :Report EN_ROUTE and ON_SCENE;
+    if () then ([backup needed])
+      :Raise team request;
+      |Dispatcher|
+      :Approve or decline (rationale);
+      |Field Responder|
+    else ([no])
+    endif
+    :Complete dispatch (resources released);
+    |Dispatcher|
+    :Record resolution;
+  else ([cannot respond])
+    |Field Responder|
+    :Reject dispatch (reason; resources released);
+    |Dispatcher|
+    :Dispatch another team or resolve;
+  endif
+else ([not genuine])
+  :Reject incident (rationale);
+endif
+:Close incident (CLOSURE permission, reason);
+|System|
+:Update public map (verified only, no PII,\ncoordinates rounded to 4 dp);
+:Notify citizen (in-app, optional email);
+stop
+@enduml

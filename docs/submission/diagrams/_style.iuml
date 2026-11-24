@@ -1,0 +1,41 @@
+' Shared look for every ResQ submission diagram. Notation: UML 2.5.1 (OMG).
+' Stereotypes follow the Entity-Control-Boundary convention (Jacobson):
+'   «boundary» HTTP routers and pages, «control» domain services, «entity» persistent domain classes,
+'   «utility» modules of functions (UML standard profile), «enumeration» value sets.
+' Smetana is PlantUML's built-in layout engine, so Graphviz is not needed to render.
+!pragma layout smetana
+skinparam style strictuml
+skinparam classAttributeIconSize 0
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam defaultFontSize 12
+skinparam roundCorner 6
+skinparam ArrowColor #34495E
+skinparam ClassBorderColor #34495E
+skinparam ClassBackgroundColor #FDFEFE
+skinparam ClassHeaderBackgroundColor #D6EAF8
+skinparam ClassStereotypeFontStyle italic
+skinparam PackageBorderColor #7F8C8D
+skinparam PackageBackgroundColor #FBFCFC
+skinparam ParticipantBackgroundColor #D6EAF8
+skinparam ParticipantBorderColor #34495E
+skinparam ActorBorderColor #34495E
+skinparam DatabaseBackgroundColor #FCF3CF
+skinparam NoteBackgroundColor #FEF9E7
+skinparam NoteBorderColor #B7950B
+skinparam StateBackgroundColor #EBF5FB
+skinparam StateBorderColor #34495E
+skinparam ActivityBackgroundColor #EBF5FB
+skinparam ActivityBorderColor #34495E
+skinparam ActivityDiamondBackgroundColor #FDFEFE
+skinparam UsecaseBackgroundColor #EBF5FB
+skinparam UsecaseBorderColor #34495E
+skinparam ComponentBackgroundColor #EBF5FB
+skinparam NodeBackgroundColor #F4F6F6
+skinparam ArtifactBackgroundColor #FDFEFE
+skinparam InterfaceBackgroundColor #FDFEFE
+skinparam SequenceLifeLineBorderColor #85929E
+skinparam SequenceGroupBackgroundColor #F2F3F4
+skinparam SequenceDividerBackgroundColor #EAECEE
+hide circle
+hide empty members

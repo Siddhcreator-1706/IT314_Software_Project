@@ -1,0 +1,130 @@
+@startuml sprint2-class
+!include _style.iuml
+title Sprint 2 — Class diagram: dispatch, field teams, recommendations, AI integration, ingestion
+
+package "Boundary" {
+  class FieldRouter <<boundary>> {
+    +assignments() : FieldAssignment [*]
+    +acknowledge(dispatchId) : Dispatch
+    +reject(dispatchId, reason) : Dispatch
+    +reportProgress(dispatchId, status) : Dispatch
+    +requestTeam(dispatchId, capability, note) : TeamRequest
+    +complete(dispatchId) : Dispatch
+  }
+  class RecommendationsRouter <<boundary>> {
+    +teamRecommendations(incidentId) : RecommendedTeam [*]
+    +decideTeamRequest(requestId, decision, rationale) : TeamRequest
+  }
+}
+
+package "Control" {
+  class DispatchService <<control>> {
+    -DISPATCH_TRANSITIONS : Map<DispatchStatus, Set<DispatchStatus>>
+    +lockDispatch(id) : DispatchOrder
+    +runTransition(id, handler) : DispatchOrder
+    +escalateOverdue() : Integer
+  }
+  class ResourceService <<control>> {
+    +reserve(resourceId, dispatch, quantity) : ResourceAssignment
+    +release(assignment, reason) : void
+    +releaseAllForDispatch(dispatchId, reason) : Integer
+  }
+  class RecommendationService <<control>> {
+    +recommendedTeams(incident) : RecommendedTeam [*]
+  }
+  class IngestionService <<control>> {
+    +runIngestion(source : String = "ALL") : IngestRunResult [*]
+  }
+  abstract class Adapter <<control>> {
+    +name : String
+    +{abstract} fetch() : Item [*]
+  }
+  class SachetAdapter <<control>>
+  class ReplaySignalAdapter <<control>>
+  class TriageOutcome {
+    +status : AiRecStatus
+    +suggestedScenario : Scenario [0..1]
+    +suggestedPriority : Priority [0..1]
+    +confidence : Decimal [0..1]
+    +uncertaintyNote : String [0..1]
+  }
+  class RecommendedTeam {
+    +resourceId : UUID
+    +distanceKm : Decimal
+    +matchPercentage : Decimal
+    +rank : Integer
+    +reasons : String [*]
+  }
+}
+
+package "Entity" {
+  class DispatchOrder <<entity>> {
+    +dispatchRef : String
+    +status : DispatchStatus
+    +priority : Priority
+    +idempotencyKey : String [0..1]
+    +acknowledgedAt : DateTime [0..1]
+  }
+  class Resource <<entity>> {
+    +type : ResourceType
+    +status : ResourceStatus
+    +quantityAvailable : Decimal
+    +version : Integer
+  }
+  class ResourceAssignment <<entity>> {
+    +quantity : Decimal
+    +assignedAt : DateTime
+    +releasedAt : DateTime [0..1]
+  }
+  class FieldTeamMember <<entity>> {
+    +callsign : String
+    +isLeader : Boolean
+  }
+  class DispatchProgress <<entity>> {
+    +status : String
+    +recordedAt : DateTime
+  }
+  class TeamRequest <<entity>> {
+    +requiredCapability : String
+    +status : String
+  }
+  class SourceSignal <<entity>> {
+    +source : String
+    +language : String
+    +status : String
+    +isSimulated : Boolean
+  }
+  class Donation <<entity>> {
+    +amount : Decimal
+    +status : TxnStatus
+    +receiptNo : String [0..1]
+  }
+  enum DispatchStatus <<enumeration>> {
+    REQUESTED
+    ACKNOWLEDGED
+    DISPATCHED
+    COMPLETED
+    REJECTED
+    FAILED
+  }
+}
+
+DispatchOrder "1" *-- "0..*" ResourceAssignment
+Resource "1" -- "0..*" ResourceAssignment
+Resource "1" -- "0..*" FieldTeamMember : team >
+DispatchOrder "1" *-- "0..*" DispatchProgress
+DispatchOrder "1" *-- "0..*" TeamRequest
+DispatchOrder --> DispatchStatus
+
+FieldRouter ..> DispatchService : <<use>>
+RecommendationsRouter ..> RecommendationService : <<use>>
+DispatchService ..> ResourceService : <<use>>
+DispatchService ..> DispatchOrder : <<use>>
+ResourceService ..> Resource : <<use>>\nSELECT … FOR UPDATE
+RecommendationService ..> RecommendedTeam : <<create>>
+RecommendationService ..> Resource : <<use>>
+Adapter <|-- SachetAdapter
+Adapter <|-- ReplaySignalAdapter
+IngestionService "1" o-- "1..*" Adapter
+IngestionService ..> SourceSignal : <<create>>
+@enduml

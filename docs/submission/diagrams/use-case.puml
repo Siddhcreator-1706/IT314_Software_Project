@@ -1,0 +1,96 @@
+@startuml use-case
+!include _style.iuml
+left to right direction
+title ResQ — Use-case diagram (as built, v1.0)
+
+actor "Public visitor" as P
+actor "Citizen" as C
+actor "Staff member" as STAFF
+actor "Dispatcher\n(Disaster Management)" as D
+actor "Field Responder" as F
+actor "Administrator\n(Application Management)" as A
+
+actor "Payment gateway" as PG <<system>>
+actor "Alert feed\n(SACHET CAP)" as AF <<system>>
+actor "AI triage service" as AI <<system>>
+actor "Time" as T <<system>>
+
+' Generalizations: a citizen can do everything a public visitor can;
+' every staff role signs in the same way.
+P <|-- C
+STAFF <|-- D
+STAFF <|-- F
+STAFF <|-- A
+
+rectangle "ResQ" {
+  usecase "View public map, alerts,\nshelters and safety guidance" as UC07
+  usecase "Donate to a campaign" as UC06
+  usecase "Register / sign in" as UC01
+  usecase "Report incident" as UC02
+  usecase "Track own reports" as UC03
+  usecase "Answer information request" as UC04
+  usecase "Request withdrawal" as UC05
+
+  usecase "Sign in with TOTP MFA" as UC08
+  usecase "Review incident\n--\nextension points:\nAI advice\nduplicate check" as UC09
+  usecase "Request AI triage advice" as UC10
+  usecase "Review duplicate candidates" as UC11
+  usecase "Dispatch team" as UC12
+  usecase "Get team recommendations" as UC25
+  usecase "Decide backup request" as UC13
+  usecase "Promote or dismiss signal" as UC14
+  usecase "Close or reopen incident" as UC15
+  usecase "Publish updates and\nsafety content" as UC16
+  usecase "Manage campaigns, aid, resources,\nshelters and agencies" as UC17
+  usecase "Moderate evidence" as UC18
+
+  usecase "Acknowledge or reject dispatch" as UC19
+  usecase "Report progress / complete" as UC20
+  usecase "Request backup" as UC26
+
+  usecase "Invite and manage accounts" as UC21
+  usecase "Verify audit chain,\nview system status" as UC22
+
+  usecase "Ingest external alerts" as UC23
+  usecase "Escalate overdue dispatch" as UC24
+}
+
+P -- UC07
+P -- UC06
+C -- UC01
+C -- UC02
+C -- UC03
+C -- UC04
+C -- UC05
+
+STAFF -- UC08
+D -- UC09
+D -- UC12
+D -- UC13
+D -- UC14
+D -- UC15
+D -- UC16
+D -- UC17
+D -- UC18
+F -- UC19
+F -- UC20
+F -- UC26
+A -- UC21
+A -- UC22
+
+UC06 -- PG
+UC10 -- AI
+UC23 -- AF
+T -- UC23
+T -- UC24
+
+UC10 .> UC09 : <<extend>>\n(AI advice)
+UC11 .> UC09 : <<extend>>\n(duplicate check)
+UC12 .> UC25 : <<include>>
+
+note right of UC02
+  Precondition: signed in (UC "Register / sign in").
+  Authentication is a precondition, not an
+  «include» (guests may still donate).
+end note
+@enduml

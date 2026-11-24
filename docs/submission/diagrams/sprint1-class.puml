@@ -1,0 +1,98 @@
+@startuml sprint1-class
+!include _style.iuml
+title Sprint 1 — Class diagram: citizen report loop, public map, AI skeleton, payment interface
+
+package "Boundary" {
+  class CitizenRouter <<boundary>> {
+    +createIncident(body : IncidentCreate, idempotencyKey : String) : Incident
+    +myIncidents(page) : Page
+    +myIncident(id) : IncidentTimeline
+  }
+  class PublicRouter <<boundary>> {
+    +listIncidents(bbox, district) : PublicIncident [*]
+    +listCampaigns() : PublicCampaign [*]
+  }
+  class TriageApi <<boundary>> {
+    +triage(payload) : TriageResult
+    +health() : Health
+  }
+}
+
+package "Data transfer objects" {
+  class IncidentCreate {
+    +scenario : Scenario
+    +description : String
+    +reportedUrgency : Priority [0..1]
+    +peopleAffected : Integer [0..1]
+    +latitude : Decimal
+    +longitude : Decimal
+    +addressText : String [0..1]
+  }
+  class PublicIncident {
+    +incidentRef : String
+    +scenario : Scenario
+    +status : IncidentStatus
+    +latitude : Decimal {rounded to 4 dp}
+    +longitude : Decimal {rounded to 4 dp}
+    +district : String
+  }
+}
+
+package "Control" {
+  class Geo <<utility>> {
+    +isInGujarat(lat, lon) : Boolean
+    +districtFor(lat, lon) : String
+    +loadBoundaries() : Boolean
+  }
+  class RecommendationRules <<utility>> {
+    +requiredCapabilities(scenario) : String [*]
+    +haversineKm(a, b) : Decimal
+  }
+  class TriageRules <<utility>> {
+    +classify(text) : TriageResult
+  }
+  abstract class PaymentGateway <<control>> {
+    +name : String
+    +slug : String
+    +{abstract} createOrder(amount, currency, reference) : Order
+    +{abstract} verifyPayment(orderId, paymentId, signature) : Verification
+    +{abstract} parseWebhook(rawBody, headers) : WebhookEvent
+  }
+  class RazorpayGateway <<control>>
+  class Order {
+    +orderId : String
+    +amount : Decimal
+    +currency : String
+    +isSandbox : Boolean
+  }
+}
+
+package "Entity" {
+  class Incident <<entity>> {
+    +source : String
+    +district : String
+    +isSimulated : Boolean
+    +idempotencyKey : String [0..1]
+  }
+  class AdministrativeBoundary <<entity>> {
+    +level : String
+    +districtName : String [0..1]
+    +boundaryGeom : Geometry
+  }
+  class DonationCampaign <<entity>> {
+    +scenario : Scenario
+    +status : CampaignStatus
+  }
+}
+
+CitizenRouter ..> IncidentCreate : <<use>>
+CitizenRouter ..> Geo : <<use>>
+CitizenRouter ..> Incident : <<create>>
+PublicRouter ..> PublicIncident : <<create>>
+PublicRouter ..> Incident : <<use>>
+PublicRouter ..> DonationCampaign : <<use>>
+Geo ..> AdministrativeBoundary : <<use>>
+TriageApi ..> TriageRules : <<use>>
+PaymentGateway <|-- RazorpayGateway
+PaymentGateway ..> Order : <<create>>
+@enduml

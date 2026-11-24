@@ -1,0 +1,60 @@
+@startuml sprint0-sequence
+!include _style.iuml
+title Sprint 0 — Sequence: staff sign-in with password and TOTP, then verifying an incident
+autonumber
+
+actor Dispatcher as D
+boundary "Login page\n+ BFF /api/session" as FE
+boundary "AuthRouter" as AR
+control "Security" as SEC
+boundary "DmIncidentsRouter" as IR
+control "IncidentService" as IS
+control "AuditLogger" as AU
+database "PostgreSQL" as DB
+
+== Sign-in ==
+D -> FE : submit(email, password)
+activate FE
+FE -> AR : POST /auth/login
+activate AR
+AR -> DB : select user and user_auth
+AR -> SEC : verifyPassword(hash, password)
+alt wrong password
+  AR -> DB : failed_login_count += 1\n(5th failure: lock 15 min, token_version += 1)
+  AR -> AU : record(LOGIN, FAILURE)
+  AR --> FE : 401 INVALID_CREDENTIALS
+else password valid and MFA enabled
+  AR -> SEC : issueToken(user, "mfa")
+  AR --> FE : 200 {mfa_required, mfa_token}
+  deactivate AR
+  D -> FE : submit(totpCode)
+  FE -> AR : POST /auth/mfa/verify
+  activate AR
+  AR -> SEC : verifyTotp(decrypted secret, code)
+  AR -> AU : record(LOGIN, SUCCESS)
+  AU -> DB : insert audit_logs\n(trigger sets row_hash = SHA-256(prev_hash ‖ row))
+  AR --> FE : 200 session tokens
+  deactivate AR
+  FE --> D : httpOnly cookie set; redirect to /dm
+end
+deactivate FE
+
+== Verification ==
+D -> IR : POST /dm/incidents/{id}/verification\n(VERIFIED, priority, rationale, version)
+activate IR
+IR -> DB : load principal (role, status, token_version, permissions)
+IR -> IS : lockIncident(id)
+activate IS
+IS -> DB : SELECT … FOR UPDATE
+IS -> IS : checkVersion(); SUBMITTED → VERIFIED allowed?
+alt stale version
+  IS --> IR : 409 VERSION_CONFLICT
+else valid
+  IS -> DB : update incident (version + 1);\ninsert incident_status_history
+  IS -> AU : record(INCIDENT_VERIFIED)
+  IS --> IR : incident
+end
+deactivate IS
+IR --> D : 200 incident
+deactivate IR
+@enduml

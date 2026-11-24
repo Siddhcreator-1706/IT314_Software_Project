@@ -1,0 +1,24 @@
+@startuml state-donation
+!include _style.iuml
+title State machine — Donation (txn_status with failure_reason)
+
+[*] --> PENDING : create(campaign, amount)\n/ create gateway order
+
+PENDING --> CONFIRMED : paymentVerified(amount)\n[signature valid and amount matches]\n/ issue receipt
+PENDING --> FAILED : cancel\n/ failure_reason := ABANDONED
+PENDING --> FAILED : paymentFailed\n/ failure_reason := GATEWAY_DECLINED
+PENDING --> FAILED : after(30 min)\n/ failure_reason := EXPIRED
+FAILED --> CONFIRMED : paymentVerified(amount)\n[late capture, amount matches]\n/ issue receipt
+
+CONFIRMED --> [*]
+
+note right of CONFIRMED
+  A repeated webhook (same event id) is ignored.
+  A capture for a different payment on a CONFIRMED
+  donation is flagged PAYMENT_CONFLICT, not applied.
+end note
+note bottom of FAILED
+  FAILED is not final: a verified late capture
+  still confirms it, so captured money is never lost.
+end note
+@enduml

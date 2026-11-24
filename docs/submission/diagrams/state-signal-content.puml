@@ -1,0 +1,29 @@
+@startuml state-signal-content
+!include _style.iuml
+title State machines — Source signal, safety content version and team request
+
+state "Source signal" as SIG {
+  [*] --> PENDING : ingested / sanitise, detect language
+  PENDING --> PROMOTED : promote\n[PUBLISHER or SUPERVISOR,\nhas coordinates]\n/ create SUBMITTED incident
+  PENDING --> DISMISSED : dismiss(reason)\n[PUBLISHER or SUPERVISOR]
+  PROMOTED --> [*]
+  DISMISSED --> [*]
+}
+
+state "Safety content version" as SC {
+  [*] --> Draft : author
+  Draft --> Draft : edit
+  Draft --> Approved : approve [PUBLISHER]\n/ approved_by := actor
+  Approved --> Published : publish [PUBLISHER]\n/ archive previous version
+  Published --> Superseded : newer version published
+  Superseded --> [*]
+}
+
+state "Team request" as TR {
+  [*] --> OPEN : request(capability, note)
+  OPEN --> APPROVED : decide(approve, rationale) [DISPATCH]
+  OPEN --> DECLINED : decide(decline, rationale) [DISPATCH]
+  APPROVED --> [*]
+  DECLINED --> [*]
+}
+@enduml

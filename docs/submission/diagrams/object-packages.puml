@@ -1,0 +1,38 @@
+@startuml object-packages
+!include _style.iuml
+title Package diagram — Backend layering and allowed dependencies
+
+package "app.routers (boundary)" as R {
+  class "auth, citizen, public,\nfield, admin, donations,\ninternal, dm.* (16)" as R1
+}
+package "app.schemas" as SC {
+  class "Pydantic DTOs" as S1
+}
+package "app.services (control)" as SV {
+  class "incidents, dispatch, resources,\nrecommendations, signal_matching,\nduplicate_similarity, sessions,\ndonation_endings, ingestion, email,\nai_provider, csv_export, spatial_sync" as S2
+  package "app.services.ingest" as ING {
+    abstract class Adapter
+  }
+}
+package "app.payments" as PY {
+  abstract class PaymentGateway
+}
+package "app core (utility)" as CC {
+  class "auth, audit, errors, ratelimit,\ngeo, uploads, security,\nconfig, db, common" as C1
+}
+
+R ..> SC : <<import>>
+R ..> SV : <<use>>
+R ..> PY : <<use>>
+R ..> CC : <<use>>
+SV ..> CC : <<use>>
+PY ..> CC : <<use>>
+
+note bottom of CC
+  Rules: routers never call another router;
+  services receive an open connection (the caller
+  owns the transaction); every state change calls
+  audit.record() in the same transaction; errors
+  leave as {error:{code, message, details}}.
+end note
+@enduml

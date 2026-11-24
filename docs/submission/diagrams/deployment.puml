@@ -1,0 +1,53 @@
+@startuml deployment
+!include _style.iuml
+title ResQ — Deployment diagram (v1.0)
+
+node "User device" <<device>> {
+  node "Web browser" <<executionEnvironment>> as BR
+}
+
+node "Vercel" <<executionEnvironment>> {
+  artifact "Next.js build\n(pages + BFF)" as FE
+}
+
+node "Render" <<executionEnvironment>> {
+  node "Production web service" <<container>> {
+    artifact "drch_backend:vX.Y.Z" as BE
+  }
+  node "Staging web service" <<container>> {
+    artifact "drch_backend:sha-<short>" as STG
+  }
+  node "AI web service" <<container>> {
+    artifact "drch_ai_workers" as AIW
+  }
+}
+
+node "Neon" <<executionEnvironment>> {
+  database "PostgreSQL 16 + PostGIS\n(production and staging branches)" as DB
+}
+
+node "GitHub" <<executionEnvironment>> {
+  artifact "Actions workflows\nci.yml, cd.yml,\ncodeql.yml, ingest-cron.yml" as GH
+  artifact "GHCR container images" as GHCR
+}
+
+node "External services" <<executionEnvironment>> {
+  artifact "SACHET CAP feed" as SAC
+  artifact "Payment gateway (test mode)" as PG
+  artifact "SMTP" as SMTP
+}
+
+BR -- FE : <<HTTPS>>
+FE -- BE : <<HTTPS>> /api/v1
+BE -- DB : <<TLS / PostgreSQL>>
+STG -- DB : <<TLS / PostgreSQL>>
+BE -- AIW : <<HTTPS>> /triage
+BE -- SAC : <<HTTPS>>
+BE -- PG : <<HTTPS>> orders, webhooks
+BE -- SMTP : <<SMTP/TLS>>
+GH -- GHCR : <<build, Trivy scan>>
+GHCR -- STG : <<deploy hook>>
+GHCR -- BE : <<deploy after staging smoke test>>
+GH -- FE : <<deploy hook>>
+GH -- BE : <<HTTPS>> ingest every 15 min
+@enduml
