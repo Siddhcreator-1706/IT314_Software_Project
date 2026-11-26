@@ -7,15 +7,18 @@ The layout follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 No version has been released yet. `v1.0.0` is the first planned production release (see
 [Versions and releases](README.md#versions-and-releases)). The sprint sections below were written afterwards from
-the Git history of `main`. Their boundaries are approximate because work from neighbouring sprints overlapped.
-Each section lists what was true when it was merged; a later section says what was changed or removed.
+the Git history of `main`. The `sprint-1`, `sprint-2` and `sprint-3` tags are milestones added afterwards, not
+releases. Each section lists what was true when it was merged; a later section says what was changed or removed.
 
-| Section | Up to commit | Date | Summary |
-|---|---|---|---|
-| Unreleased | `d1387fd` | 21 Nov 2026 | Administration, shelters, session security, shared interface |
-| Sprint 3 | `d813b73` | 15 Nov 2026 | Hardening, citizen account features, delivery pipeline |
-| Sprint 2 | `7ca100a` | 6 Nov 2026 | Field response, ingestion, donations, first text analysis |
-| Sprint 1 | `40690d6` | 31 Oct 2026 | Foundation and core loop |
+| Section | Tag or commit | Merged up to | Planned dates | Summary |
+|---|---|---|---|---|
+| Unreleased | `d1387fd` | 21 Nov 2026 | Not applicable | Administration, shelters, session security, shared interface |
+| Sprint 3 | `sprint-3` (`d813b73`) | 15 Nov 2026 | 3 to 12 Nov 2026 | Hardening, citizen account features, delivery pipeline |
+| Sprint 2 | `sprint-2` (`7ca100a`) | 6 Nov 2026 | 29 Oct to 2 Nov 2026 | Field response, ingestion, donations, first text analysis |
+| Sprint 1 | `sprint-1` (`40690d6`) | 31 Oct 2026 | 24 to 28 Oct 2026 | Foundation and core loop |
+
+Planned dates come from the three-sprint roadmap that the README held at the time. Work finished later than planned
+and neighbouring sprints overlapped, so a sprint section can include work planned for another sprint.
 
 ## [Unreleased]
 
@@ -109,6 +112,9 @@ Merged after the Sprint 3 milestone, 16 to 21 November 2026.
 - Ingestion blocks off-host redirects and limits response size.
 
 ## Sprint 2: response and AI (milestone 6 November 2026)
+
+Also includes Sprint 1 work that was merged after the `sprint-1` tag: the payments foundation (3 November), the
+public map with its About and How-to pages (4 November) and the text dataset with baselines (5 November).
 
 ### Added
 
