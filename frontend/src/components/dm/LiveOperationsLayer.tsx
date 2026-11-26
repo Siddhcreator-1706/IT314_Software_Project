@@ -34,6 +34,8 @@ type MapResource = {
   agency_name: string | null;
   latitude: number;
   longitude: number;
+  /** When the team last reported its position; null when a dispatcher set it by hand. */
+  position_updated_at?: string | null;
 };
 type MapData = {
   generated_at: string;
@@ -52,6 +54,15 @@ function esc(value: unknown): string {
 
 function words(value: string) {
   return value.replace(/_/g, " ").toLowerCase();
+}
+
+/** How long ago a team reported its position, in words. */
+function reportedAgo(iso: string): string {
+  const minutes = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 60_000));
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes} min ago`;
+  const hours = Math.round(minutes / 60);
+  return hours < 24 ? `${hours} h ago` : `${Math.round(hours / 24)} d ago`;
 }
 
 // The portal loads Leaflet from its CDN as window.L, so there are no static types.
@@ -151,6 +162,9 @@ export function LiveOperationsLayer({ mapRef, visible }: { mapRef: RefObject<Lea
               <span style="color:#475569">${esc(words(r.type))} · ${esc(words(r.status))}</span><br/>
               <span style="font-size:11px;color:#0284c7">${Number(r.quantity_available)} of ${Number(r.quantity_total)} available</span>
               ${r.agency_name ? `<br/><span style="font-size:10px;color:#64748b">${esc(r.agency_name)}</span>` : ""}
+              <br/><span style="font-size:10px;color:#64748b">${
+                r.position_updated_at ? `Position reported ${esc(reportedAgo(r.position_updated_at))}` : "Position set by a dispatcher, not reported by the team"
+              }</span>
             </div>`)
           .addTo(layer);
       }

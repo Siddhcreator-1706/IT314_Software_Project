@@ -276,7 +276,9 @@
 | Acknowledge dispatch | `/api/v1/field/dispatches/{id}/acknowledgement` | `POST` |
 | Reject dispatch | `/api/v1/field/dispatches/{id}/rejection` | `POST` |
 | Report progress | `/api/v1/field/dispatches/{id}/progress` | `POST` |
+| Share team position | `/api/v1/field/location` | `POST` |
 | Request backup team | `/api/v1/field/dispatches/{id}/team-requests` | `POST` |
+| My team's backup requests and decisions | `/api/v1/field/team-requests` | `GET` |
 | Complete mission | `/api/v1/field/dispatches/{id}/completion` | `POST` |
 
 *(All routes require `Authorization: Bearer <token>` with `FIELD_TEAM` role. See Section 5 for full contracts.)*
@@ -565,6 +567,20 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 
 ---
 
+### 5.5.1 Share Team Position
+
+* **Path:** `POST /api/v1/field/location`
+* **Auth:** Bearer Token (`FIELD_TEAM` role). Rate limited to 240 updates per hour per client.
+* **Request Body:** `{"latitude": 22.3072, "longitude": 73.1812}`
+* **Response (200 OK):** `{"recorded_at": "2026-10-24T15:12:00Z"}`
+* **Effect:** moves the whole team's marker on the dispatchers' live map (`resources.current_geom`) and records when in `resources.position_updated_at`. It does not change the resource's `version`, so a dispatcher editing the same resource is never made to reload. Position updates are not audited one by one: they are frequent and are not a state change.
+* **Privacy:** a position is accepted only while the team has an active dispatch (`REQUESTED`, `ACKNOWLEDGED` or `DISPATCHED`), so an off-duty responder is never tracked. The field screen sends a position continuously only when the responder switches sharing on, which is off by default each time the page is opened. Separately, its "Arrived on scene" button attaches the device position to that one progress report when the device allows it.
+* **Also:** a progress report (section 5.5) that carries `latitude` and `longitude` moves the marker the same way. A position outside Gujarat is ignored there so the report itself is never lost.
+* **Dispatcher view:** `GET /api/v1/dm/map` returns `position_updated_at` for each located resource (null when a dispatcher set the position by hand), and the map popup shows how long ago it was reported.
+* **Errors:** `409 NO_ACTIVE_DISPATCH` (the team has no active dispatch), `422 OUTSIDE_GUJARAT` or `422` for a missing or out-of-range coordinate, `429 RATE_LIMITED`.
+
+---
+
 ### 5.6 Request Backup / Reinforcement Team
 
 * **Path:** `POST /api/v1/field/dispatches/{dispatch_id}/team-requests`
@@ -593,6 +609,34 @@ The configured scheduler targets a 15-minute cadence. Local development uses the
 * **Errors:**
   * `422 VALIDATION_FAILED`: `required_capability` missing or `note` exceeds 1000 characters.
   * `404 NOT_FOUND`: Dispatch not found or not assigned to caller's team.
+  * `409 DUPLICATE_OPEN_REQUEST`: the team already has an open request for the same capability (compared ignoring case and surrounding spaces) on this dispatch. Once a dispatcher has decided it, a new request is allowed.
+  * `429 RATE_LIMITED`: more than 20 backup requests in an hour from the same client.
+
+#### 5.6.1 My Team's Backup Requests
+
+* **Path:** `GET /api/v1/field/team-requests`
+* **Auth:** Bearer Token (`FIELD_TEAM` role)
+* **Query:** `status` (`OPEN`, `APPROVED`, `DECLINED` or `ALL`, default `ALL`), `limit` (1 to 100, default 50).
+* **Purpose:** lets a responder see what happened to a backup request. The dispatcher's decision is recorded on the request; this is the only way for a field responder to read it.
+* **Response (200 OK):**
+```json
+[
+  {
+    "request_id": "f7a8b9c0-0000-0000-0000-000000000004",
+    "dispatch_id": "d0000000-0000-0000-0000-000000000001",
+    "dispatch_ref": "DISP-2026-000042",
+    "required_capability": "hazmat",
+    "note": "Chemical spill detected in basement",
+    "status": "DECLINED",
+    "decision_rationale": "No hazmat unit is free; use the municipal team",
+    "decided_at": "2026-10-24T15:20:00Z",
+    "created_at": "2026-10-24T15:12:00Z"
+  }
+]
+```
+* **Visibility:** requests on dispatches the caller's team is assigned to, so every member of a team sees what a teammate asked, and a team never sees another team's requests. A request stays visible after the dispatch completes. Open requests come first, then newest first.
+* **Privacy:** the response does not name the dispatcher who decided, and `decision_rationale` and `decided_at` are null until a decision is made.
+* **Errors:** `422` for an invalid `status` or `limit`, `401`/`403` for anyone who is not a signed-in field responder.
 
 ---
 

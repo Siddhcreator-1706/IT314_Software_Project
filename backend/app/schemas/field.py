@@ -96,6 +96,33 @@ class FieldTeamRequestResponse(BaseModel):
     created_at: datetime
 
 
+class FieldLocationRequest(BaseModel):
+    """The team's current position, shared with dispatchers while it has an active dispatch."""
+
+    latitude: float = Field(..., ge=-90.0, le=90.0, description="Responder GPS latitude")
+    longitude: float = Field(..., ge=-180.0, le=180.0, description="Responder GPS longitude")
+
+
+class FieldLocationResponse(BaseModel):
+    """Confirmation that the team's position was recorded."""
+
+    recorded_at: datetime
+
+
+class FieldTeamRequestItem(BaseModel):
+    """One backup request on the responder's team's dispatches, with the dispatcher's decision once made."""
+
+    request_id: uuid.UUID
+    dispatch_id: uuid.UUID
+    dispatch_ref: str
+    required_capability: str
+    note: str | None = None
+    status: Literal["OPEN", "APPROVED", "DECLINED"]
+    decision_rationale: str | None = None
+    decided_at: datetime | None = None
+    created_at: datetime
+
+
 class FieldCompletionRequest(BaseModel):
     """Field mission completion summary and operational output metrics."""
 
