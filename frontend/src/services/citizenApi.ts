@@ -5,7 +5,7 @@
  * There is NO offline/demo fallback here: when the backend fails the caller receives `error` and
  * must show an error state - never invented data.
  *
- * Contracts: docs/api_contracts.md sections 1, 2.3 and 2.4.
+ * Contracts: docs/architecture/api_contracts.md sections 1, 2.3 and 2.4.
  */
 
 export interface ApiOptions {
@@ -247,6 +247,22 @@ export async function uploadAttachment(incidentId: string, file: File): Promise<
     undefined,
     { method: "POST", body: file, headers: { "Content-Type": file.type, "X-Filename": encodeURIComponent(file.name) } }
   );
+}
+
+/**
+ * Upload the photos picked on a report form once the report is filed, and describe the outcome for the
+ * reporter. A failed photo never undoes the report; the rest can be added later from My Reports.
+ */
+export async function uploadReportPhotos(incidentId: string, photos: File[]): Promise<string | undefined> {
+  if (photos.length === 0) return undefined;
+  let sent = 0;
+  for (const photo of photos) {
+    const uploaded = await uploadAttachment(incidentId, photo);
+    if (!uploaded.error) sent += 1;
+  }
+  return sent === photos.length
+    ? `${sent} photo${sent === 1 ? "" : "s"} attached. A moderator will review them.`
+    : `${sent} of ${photos.length} photos attached. You can add the rest later from My Reports.`;
 }
 
 export async function fetchAttachments(incidentId: string): Promise<ApiResult<{ items: AttachmentData[]; max_attachments: number }>> {

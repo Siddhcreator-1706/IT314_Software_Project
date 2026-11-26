@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Generate the ER diagram of the final schema from the SQL migrations (S3-16). Owner: Zalak.
 
-Reads backend/db/migrations/*.sql in order, follows CREATE TABLE and ALTER TABLE ... ADD COLUMN, and writes
-a Mermaid erDiagram to docs/er-diagram.md (GitHub renders Mermaid in Markdown). Re-run it after adding a
+Reads backend/db/migrations/*.sql in order, follows CREATE TABLE, ALTER TABLE ... ADD/DROP COLUMN and DROP TABLE,
+and writes
+a Mermaid erDiagram to docs/architecture/er-diagram.md (GitHub renders Mermaid in Markdown). Re-run it after adding a
 migration so the diagram in the final report matches the schema:
 
-  python scripts/generate_er_diagram.py            # writes docs/er-diagram.md
-  python scripts/generate_er_diagram.py --check    # exits 1 when docs/er-diagram.md is out of date
+  python scripts/generate_er_diagram.py            # writes docs/architecture/er-diagram.md
+  python scripts/generate_er_diagram.py --check    # exits 1 when docs/architecture/er-diagram.md is out of date
 
 It is a small parser for the DDL style used in this repository, not a full SQL parser.
 """
@@ -21,13 +22,18 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MIGRATIONS = ROOT / "backend" / "db" / "migrations"
-OUTPUT = ROOT / "docs" / "er-diagram.md"
+OUTPUT = ROOT / "docs" / "architecture" / "er-diagram.md"
 
 _COMMENT = re.compile(r"--[^\n]*")
 _CREATE = re.compile(r"CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([\w.]+)\s*\(", re.IGNORECASE)
 _ALTER_ADD = re.compile(
     r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?([\w.]+)\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?(.+?);",
     re.IGNORECASE | re.DOTALL,
+)
+_DROP_TABLE = re.compile(r"DROP\s+TABLE\s+(?:IF\s+EXISTS\s+)?([\w.]+)", re.IGNORECASE)
+_ALTER_DROP = re.compile(
+    r"ALTER\s+TABLE\s+(?:IF\s+EXISTS\s+)?(?:ONLY\s+)?([\w.]+)\s+DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?\"?(\w+)\"?",
+    re.IGNORECASE,
 )
 _REFERENCES = re.compile(r"REFERENCES\s+([\w.]+)\s*\(\s*(\w+)", re.IGNORECASE)
 _TABLE_CONSTRAINT = re.compile(r"^(CONSTRAINT|PRIMARY\s+KEY|UNIQUE|CHECK|FOREIGN\s+KEY|EXCLUDE)\b", re.IGNORECASE)
@@ -139,6 +145,17 @@ def parse(sql_texts: list[str]) -> dict[str, Table]:
             name = _strip_schema(match.group(1))
             if name in tables:
                 _apply_column(tables[name], match.group(2).strip())
+        # Removals come last in a migration file: a later migration may drop what an earlier one created.
+        for match in _ALTER_DROP.finditer(sql):
+            name, column = _strip_schema(match.group(1)), match.group(2).lower()
+            if name in tables:
+                tables[name].columns.pop(column, None)
+                tables[name].references = [r for r in tables[name].references if r[0] != column]
+        for match in _DROP_TABLE.finditer(sql):
+            dropped = _strip_schema(match.group(1))
+            tables.pop(dropped, None)
+            for table in tables.values():
+                table.references = [r for r in table.references if r[1] != dropped]
     return tables
 
 
@@ -173,17 +190,17 @@ def build_document(tables: dict[str, Table], migration_names: list[str]) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Generate docs/er-diagram.md from the SQL migrations")
-    parser.add_argument("--check", action="store_true", help="fail when docs/er-diagram.md is out of date")
+    parser = argparse.ArgumentParser(description="Generate docs/architecture/er-diagram.md from the SQL migrations")
+    parser.add_argument("--check", action="store_true", help="fail when docs/architecture/er-diagram.md is out of date")
     args = parser.parse_args()
     files = sorted(MIGRATIONS.glob("*.sql"), key=lambda p: p.name)
     document = build_document(parse([f.read_text(encoding="utf-8") for f in files]), [f.name for f in files])
     if args.check:
         current = OUTPUT.read_text(encoding="utf-8") if OUTPUT.exists() else ""
         if current != document:
-            print("docs/er-diagram.md is out of date: run python scripts/generate_er_diagram.py", file=sys.stderr)
+            print("docs/architecture/er-diagram.md is out of date: run python scripts/generate_er_diagram.py", file=sys.stderr)
             return 1
-        print("docs/er-diagram.md is up to date")
+        print("docs/architecture/er-diagram.md is up to date")
         return 0
     OUTPUT.write_text(document, encoding="utf-8", newline="\n")
     print(f"wrote {OUTPUT.relative_to(ROOT)}")

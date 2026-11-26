@@ -124,7 +124,7 @@ def test_field_profile_resolution(responder_principal: FieldPrincipal):
         yield mock_conn
 
     with (
-        patch("app.db.transaction", mock_tx),
+        patch("app.db.read_only", mock_tx),
         patch("app.routers.field.get_settings") as mock_settings,
     ):
         mock_settings.return_value.database_url = "postgresql://mock:5432/db"
@@ -163,6 +163,11 @@ def test_get_field_assignments_returns_only_assigned_dispatches(
             "dispatched_at": datetime.now(UTC),
             "acknowledged_at": None,
             "overdue": False,
+            # Latest field milestone columns: always selected by the query, NULL before any report.
+            "last_progress": None,
+            "last_progress_note": None,
+            "last_progress_at": None,
+            "on_scene_at": None,
         }
     ]
 
@@ -174,7 +179,7 @@ def test_get_field_assignments_returns_only_assigned_dispatches(
         yield mock_conn
 
     with (
-        patch("app.db.transaction", mock_tx),
+        patch("app.db.read_only", mock_tx),
         patch("app.routers.field.get_settings") as mock_settings,
     ):
         mock_settings.return_value.database_url = "postgresql://mock:5432/db"
@@ -185,6 +190,7 @@ def test_get_field_assignments_returns_only_assigned_dispatches(
     assert len(res) == 1
     assert isinstance(res[0], FieldAssignmentResponse)
     assert res[0].dispatch_ref == "DISP-2026-000777"
+    assert res[0].last_progress is None and res[0].on_scene_at is None
 
 
 # ── 3. Cross-Team Security Isolation ────────────────────────────────────

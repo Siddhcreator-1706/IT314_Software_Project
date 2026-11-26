@@ -1,6 +1,6 @@
 """Citizen incident reporting and tracking (NU-FR-03..07).
 
-Contract: docs/api_contracts.md sections 2.3 and 2.4.
+Contract: docs/architecture/api_contracts.md sections 2.3 and 2.4.
 Every query is scoped to the authenticated citizen (reporter_id); another
 citizen's incident is reported as 404 so its existence is never revealed.
 """
@@ -25,7 +25,7 @@ from app.geo import district_for, is_in_gujarat
 from app.ratelimit import rate_limit
 from app.routers.auth import _PHONE_RE
 from app.routers.auth import _check_password_policy as check_password_policy
-from app.uploads import read_capped_body, safe_filename, sniff_image_type
+from app.uploads import read_capped_body, safe_filename, sniff_image_type, strip_image_metadata
 
 router = APIRouter(prefix="/api/v1", tags=["citizen"])
 
@@ -115,7 +115,7 @@ def create_incident(
     principal: Citizen,
     idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key", max_length=100)] = None,
 ):
-    # Required (docs/api_contracts.md s.2.3): without a key, every client retry of the same
+    # Required (docs/architecture/api_contracts.md s.2.3): without a key, every client retry of the same
     # emergency would create another report. Same rule and error code as POST /donations.
     if not idempotency_key or not idempotency_key.strip():
         raise ApiError(422, "IDEMPOTENCY_KEY_REQUIRED", "The Idempotency-Key header is required")
@@ -434,6 +434,8 @@ async def upload_attachment(incident_id: uuid.UUID, request: Request, principal:
     mime = sniff_image_type(content)
     if mime is None:
         raise ApiError(415, "INVALID_IMAGE", "The file is not a JPEG, PNG or WebP image.")
+    # Strip GPS, camera and text metadata before anything is stored or hashed (#180).
+    content = strip_image_metadata(content, mime)
     filename = safe_filename(request.headers.get("x-filename"))
     body, created = await run_in_threadpool(_store_attachment, principal, incident_id, filename, mime, content)
     return JSONResponse(status_code=201 if created else 200, content=jsonable_encoder(body))

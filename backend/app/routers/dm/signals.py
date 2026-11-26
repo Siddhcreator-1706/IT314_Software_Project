@@ -1,4 +1,4 @@
-"""Raw signal queue and promotion to incidents (docs/api_contracts.md sections 4.2-4.3). Owner: Shlok.
+"""Raw signal queue and promotion to incidents (docs/architecture/api_contracts.md sections 4.2-4.3). Owner: Shlok.
 
 Signals are unverified items from ingestion. A human must promote one; the new incident starts as
 SUBMITTED and is NOT public until a dispatcher verifies it. Promotion needs PUBLISHER or SUPERVISOR.
@@ -39,7 +39,7 @@ def list_signals(
     status: Literal["PENDING", "PROMOTED", "DISMISSED"] | None = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ):
-    with db.transaction() as conn:
+    with db.read_only() as conn:
         return conn.execute(
             """
             SELECT signal_id, source, content_text, language, ai_label, ai_confidence::float AS ai_confidence,
@@ -64,7 +64,7 @@ def related_signals(
 ):
     """Advisory, read-only suggestions of pending signals that may describe the same event.
 
-    Heuristic ranking (docs/signal-matching.md); never promotes, dismisses, merges or dispatches anything.
+    Heuristic ranking (docs/architecture/signal-matching.md); never promotes, dismisses, merges or dispatches anything.
     """
     with db.transaction() as conn:
         return find_related_signals(conn, signal_id=signal_id, limit=limit)
