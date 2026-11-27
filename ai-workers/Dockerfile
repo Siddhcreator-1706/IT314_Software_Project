@@ -34,8 +34,12 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PATH="/opt/venv/bin:$PATH"
 
 # Install curl for container healthchecking if needed
-# "apt-get upgrade" pulls the fixed Debian security versions of the base image's packages.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# "apt-get upgrade" pulls the fixed Debian security versions of the base image's packages; versions are not
+# pinned, because Debian's security mirror keeps only the newest fix. CI caches image layers, so a cached
+# upgrade can go stale: change APT_REFRESH (for example to today's date) to force a fresh apt layer when Trivy
+# reports a Debian package that Debian has already fixed.
+ARG APT_REFRESH=2026-11-27
+RUN echo "apt refresh ${APT_REFRESH}" && apt-get update && apt-get install -y --no-install-recommends \
     curl \
     && apt-get upgrade -y \
     && rm -rf /var/lib/apt/lists/*
