@@ -436,8 +436,8 @@ async def _verify_google_token(credential: str) -> dict:
             if resp.status_code != 200:
                 raise ApiError(401, "GOOGLE_AUTH_FAILED", "Invalid Google credentials")
             payload = resp.json()
-    except httpx.RequestError:
-        raise ApiError(502, "GOOGLE_SERVICE_UNAVAILABLE", "Failed to connect to Google authentication service")
+    except httpx.RequestError as exc:
+        raise ApiError(502, "GOOGLE_SERVICE_UNAVAILABLE", "Failed to connect to Google authentication service") from exc
 
     # 2. Verify audience matches our configured GOOGLE_CLIENT_ID (prevents token substitution attacks)
     if payload.get("aud") != expected_client_id:
