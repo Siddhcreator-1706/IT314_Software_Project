@@ -339,7 +339,8 @@ async def payment_webhook(gateway_slug: str, request: Request):
     try:
         event = gateway.parse_webhook(raw_body, request.headers)
     except InvalidWebhook as exc:
-        audit.record_standalone(
+        await run_in_threadpool(
+            audit.record_standalone,
             actor=None, action="PAYMENT_WEBHOOK_REJECTED", entity_type="payment_webhook",
             result="FAILURE", rationale=str(exc), ip=request.client.host if request.client else None,
         )

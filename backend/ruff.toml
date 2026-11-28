@@ -3,3 +3,11 @@ line-length = 120
 
 [lint.isort]
 known-first-party = ["app", "main", "tests"]
+
+[lint]
+# Static testing gate, on top of ruff's defaults: likely bugs (B), blocking calls in async code
+# (ASYNC), timezone-naive datetimes (DTZ) and pylint errors (PLE).
+extend-select = ["B", "ASYNC", "DTZ", "PLE"]
+
+[lint.flake8-bugbear]
+extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Header"]

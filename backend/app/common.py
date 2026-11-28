@@ -94,14 +94,16 @@ def _email_copy(conn, user_id, title: str, body: str) -> None:
     accounts never get these, and in-app stays the source of truth.
     """
     try:
-        row = conn.execute(
-            """
-            SELECT u.email, u.full_name, u.alert_preferences
-            FROM users u JOIN roles r ON r.role_id = u.role_id
-            WHERE u.user_id = %s AND r.code = 'NORMAL_USER' AND u.status = 'ACTIVE'
-            """,
-            (user_id,),
-        ).fetchone()
+        # Savepoint: a failed statement would otherwise abort the caller's whole transaction.
+        with conn.transaction():
+            row = conn.execute(
+                """
+                SELECT u.email, u.full_name, u.alert_preferences
+                FROM users u JOIN roles r ON r.role_id = u.role_id
+                WHERE u.user_id = %s AND r.code = 'NORMAL_USER' AND u.status = 'ACTIVE'
+                """,
+                (user_id,),
+            ).fetchone()
         if row is None or not (row["alert_preferences"] or {}).get("email", True):
             return
         from app import db

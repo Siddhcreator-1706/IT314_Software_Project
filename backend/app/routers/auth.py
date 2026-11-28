@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 import httpx
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, Field, field_validator
+from starlette.concurrency import run_in_threadpool
 
 from app import audit, db, security
 from app.auth import (
@@ -435,8 +436,8 @@ async def _verify_google_token(credential: str) -> dict:
             if resp.status_code != 200:
                 raise ApiError(401, "GOOGLE_AUTH_FAILED", "Invalid Google credentials")
             payload = resp.json()
-    except httpx.RequestError:
-        raise ApiError(502, "GOOGLE_SERVICE_UNAVAILABLE", "Failed to connect to Google authentication service")
+    except httpx.RequestError as exc:
+        raise ApiError(502, "GOOGLE_SERVICE_UNAVAILABLE", "Failed to connect to Google authentication service") from exc
 
     # 2. Verify audience matches our configured GOOGLE_CLIENT_ID (prevents token substitution attacks)
     if payload.get("aud") != expected_client_id:
@@ -474,11 +475,13 @@ async def google_auth(body: GoogleAuthRequest, request: Request):
     email = google_user["email"]
     name = google_user["name"]
 
+    # Database calls are blocking, so they run in a worker thread to keep the event loop free.
     try:
-        return _google_sign_in(email, name, google_user["sub"], ip)
+        return await run_in_threadpool(_google_sign_in, email, name, google_user["sub"], ip)
     except _GoogleStaffRefused as refused:
         # Audited outside the rolled-back transaction, so the denial is kept.
-        audit.record_standalone(
+        await run_in_threadpool(
+            audit.record_standalone,
             actor=None,
             action="GOOGLE_LOGIN_DENIED",
             entity_type="user",

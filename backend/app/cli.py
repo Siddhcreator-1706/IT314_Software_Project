@@ -314,8 +314,8 @@ def verify_audit(args) -> None:
     with db.transaction() as conn:
         valid, _count, msg = audit.verify_audit_chain(conn)
         if not valid:
-            sys.exit(f"❌ [AUDIT TAMPERING DETECTED] {msg}")
-        print(f"✅ [AUDIT INTEGRITY VERIFIED] {msg}")
+            sys.exit(f"[AUDIT TAMPERING DETECTED] {msg}")
+        print(f"[AUDIT INTEGRITY VERIFIED] {msg}")
 
 
 def purge_demo_data(args) -> None:
