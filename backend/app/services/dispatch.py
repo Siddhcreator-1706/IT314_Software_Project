@@ -149,14 +149,16 @@ def record_dispatch_progress(
                 user_uuid = None
 
     try:
-        row = conn.execute(
-            """
-            INSERT INTO dispatch_progress (dispatch_id, status, note, recorded_by)
-            VALUES (%s, %s, %s, %s)
-            RETURNING progress_id
-            """,
-            (dispatch_id, status, note, user_uuid),
-        ).fetchone()
+        # Savepoint: a failed insert would otherwise abort the caller's whole transaction.
+        with conn.transaction():
+            row = conn.execute(
+                """
+                INSERT INTO dispatch_progress (dispatch_id, status, note, recorded_by)
+                VALUES (%s, %s, %s, %s)
+                RETURNING progress_id
+                """,
+                (dispatch_id, status, note, user_uuid),
+            ).fetchone()
         return row["progress_id"] if row else None
     except Exception:
         logger.exception("Failed to insert record into dispatch_progress table")
