@@ -1,6 +1,10 @@
-"""Startup validation outside development and audit-chain integrity under concurrency."""
+"""Startup validation outside development, audit-chain integrity under concurrency and the CLI check."""
 
+import argparse
+import io
+import sys
 import threading
+from contextlib import nullcontext
 
 import pytest
 
@@ -65,3 +69,25 @@ def test_audit_chain_stays_valid_under_concurrent_writes(sql):
     [t.join() for t in threads]
     valid, _count, message = audit.verify_audit_chain(sql)
     assert valid, message
+
+
+@pytest.mark.parametrize("valid", [True, False])
+def test_verify_audit_output_fits_a_legacy_windows_encoding(monkeypatch, valid):
+    """Redirected output on Windows is cp1252; a character it cannot write must not fail the check."""
+    from app import cli
+
+    monkeypatch.setattr(cli.db, "transaction", lambda: nullcontext(None))
+    monkeypatch.setattr(cli.audit, "verify_audit_chain", lambda _conn: (valid, 3, "checked 3 records"))
+    stream = io.TextIOWrapper(io.BytesIO(), encoding="cp1252")
+    monkeypatch.setattr(sys, "stdout", stream)
+
+    if valid:
+        cli.verify_audit(argparse.Namespace())
+        stream.flush()
+        assert b"AUDIT INTEGRITY VERIFIED" in stream.buffer.getvalue()
+    else:
+        with pytest.raises(SystemExit) as stopped:
+            cli.verify_audit(argparse.Namespace())
+        message = str(stopped.value.code)
+        assert "AUDIT TAMPERING DETECTED" in message
+        message.encode("cp1252")
