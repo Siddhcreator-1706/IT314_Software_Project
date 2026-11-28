@@ -23,8 +23,9 @@ defects that tests miss because no test happens to take that path. This report r
 | Security analysis (all levels) | Bandit | Application code, 14,478 lines | 9 low, 1 medium, 0 high; all false positives |
 | Security patterns | Semgrep (Python, TypeScript, React, OWASP Top 10, Dockerfile, GitHub Actions) | 275 files | 57 findings, all in CI and package configuration |
 | Python dependencies | pip-audit 2.10.1 | Backend and AI worker requirements | No known vulnerabilities |
+| Model service dependencies | GitHub Dependabot, pip-audit | `models/*/deployment/requirements.txt` | 6 open alerts (4 high, 1 moderate, 1 low), see section 3.3 |
 | JavaScript dependencies | `npm audit` | Frontend, including development dependencies | 0 vulnerabilities |
-| Vulnerability, misconfiguration and secret scan | Trivy (high and critical) | Requirements, lockfile, Dockerfiles | 0 findings |
+| Vulnerability, misconfiguration and secret scan | Trivy (high and critical) | Backend and AI worker requirements, frontend lockfile, 3 Dockerfiles (`models/` not scanned) | 0 findings |
 | Secrets in history | Gitleaks | 493 commits | 1 finding, false positive |
 | Dockerfile lint | Hadolint | 3 Dockerfiles | 14 warnings and notes, accepted |
 | Frontend lint | ESLint | `frontend/` | Passed |
@@ -53,11 +54,19 @@ defects that tests miss because no test happens to take that path. This report r
 | Ruff `S310` URL open, `ai-workers/service/llm.py` | 2 | The scheme is checked to be HTTP or HTTPS first. |
 | Gitleaks `linkedin-client-secret`, commit `9928413` | 1 | A property assignment in old frontend code matched the pattern. Not a secret. |
 | Vulture unused `attrs`, `services/ingest/signals.py` | 1 | Required by the `HTMLParser.handle_starttag` signature. |
-| Hadolint unpinned system packages (`DL3008`, `DL3013`, `DL3018`) | 8 | Base image packages are left unpinned so rebuilds receive security patches. Application dependencies are pinned. |
+| Hadolint unpinned system packages (`DL3008`, `DL3013`, `DL3018`) | 8 | Base image packages are left unpinned so rebuilds receive security patches. Backend and AI worker dependencies are pinned. |
 | Hadolint `DL3025`, `DL3066` | 6 | The health check needs a shell for `|| exit 1`; the user name resolves inside the image. |
 | Ruff style rules (long lines, message style, unused arguments, `print` in command-line tools) | Most of 254 | Style only. Unused arguments are FastAPI dependencies and interface methods. |
 
-### 3.3 Open recommendations
+### 3.3 Open defect
+
+[#208](https://github.com/Siddhcreator-1706/IT314_Software_Project/issues/208): the model services pin
+`transformers==4.57.6` and `torch==2.12.1`, which have 6 open Dependabot alerts. CI's `pip-audit` step does not
+cover `models/`. Current exposure is limited: the text service loads only a local tokenizer and runs the model with
+ONNX Runtime, and the image service loads a pinned checkpoint revision with `weights_only=True`. The upgrade is not
+made here because it crosses a major version and the model outputs have to be checked again with the model weights.
+
+### 3.4 Open recommendations
 
 These are hardening or maintenance work, not defects. They are listed so the team can decide.
 
